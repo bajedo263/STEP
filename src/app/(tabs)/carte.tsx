@@ -18,7 +18,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { SegmentedChoice } from '@/components/ui/segmented-choice';
 import { TextField } from '@/components/ui/text-field';
-import { BottomTabInset, MaxContentWidth, PoiColor, Spacing } from '@/constants/theme';
+import { BottomTabInset, MaxContentWidth, PoiColor, Spacing, VisitedPoiColor } from '@/constants/theme';
 import { useCurrentLocation } from '@/hooks/use-current-location';
 import { useDestinationRoute, usePlaceSearch } from '@/hooks/use-destination';
 import { useLoopRoute } from '@/hooks/use-loop-route';
@@ -114,8 +114,8 @@ export default function MapScreen() {
             key={poi.id}
             coordinate={poi.coords}
             title={poi.title}
-            description={poi.description ?? POI_KIND_LABELS[poi.kind]}
-            pinColor={PoiColor}
+            description={poi.visited ? 'Déjà découvert' : (poi.description ?? POI_KIND_LABELS[poi.kind])}
+            pinColor={poi.visited ? VisitedPoiColor : PoiColor}
           />
         ))}
         {mode === 'loop' && loopRoute ? (

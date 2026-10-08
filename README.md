@@ -76,4 +76,5 @@ supabase/         configuration, migrations de la base et fonctions Edge
 
 - ✅ Mode Destination (recherche de lieu et itinéraire à pied)
 - ✅ Points d'intérêt le long du trajet (OpenStreetMap : plaques, monuments, œuvres) ; les boucles et les détours passent par eux
+- ✅ Lieux découverts : passer à moins de 40 m d'un lieu le marque comme visité ; Stats affiche les lieux vus sur le total de chaque quartier (lieux gardés en base par tuile de ~800 m)
 - Publicité, Premium

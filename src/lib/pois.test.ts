@@ -115,3 +115,19 @@ test('overpassQueryNear cherche autour de chaque point', async () => {
   assert.match(query, /\(around:300,48\.880000,2\.330000\);/);
   assert.match(query, /\(around:300,48\.883600,2\.330000\);/);
 });
+
+test('zoneOf et zoneBbox sont cohérents', async () => {
+  const { zoneOf, zoneBbox, zonesAround, zonesAlongPath, overpassQueryBbox } = await import(
+    '../../supabase/functions/_shared/pois.ts'
+  );
+  const point = { latitude: 48.8566, longitude: 2.3522 };
+  const zone = zoneOf(point);
+  assert.deepEqual(zone, { x: 16598, y: 11273 });
+  const box = zoneBbox(zone);
+  assert.ok(box.south <= point.latitude && point.latitude <= box.north);
+  assert.ok(box.west <= point.longitude && point.longitude <= box.east);
+  assert.ok(distanceM({ latitude: box.south, longitude: box.west }, { latitude: box.south, longitude: box.east }) < 900);
+  assert.equal(zonesAround(point).length, 9);
+  assert.ok(zonesAlongPath(street).length >= 1);
+  assert.match(overpassQueryBbox(box), /\(48\.\d{6},2\.\d{6},48\.\d{6},2\.\d{6}\);/);
+});
