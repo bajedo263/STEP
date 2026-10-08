@@ -36,7 +36,7 @@ npx supabase db push        # appliquer les migrations au projet distant
 
 ## Fonctions serveur
 
-`supabase/functions/loop-route` calcule les boucles du mode Boucle et `supabase/functions/destination` cherche les lieux et l'itinéraire du mode Destination, avec [OpenRouteService](https://openrouteservice.org). Le workflow GitHub « Fonctions Supabase » les déploie à chaque fusion dans `main`. Il lui faut deux secrets dans les réglages GitHub du dépôt (Settings → Secrets and variables → Actions) :
+`supabase/functions/loop-route` calcule les boucles du mode Boucle `supabase/functions/destination` cherche les lieux et l'itinéraire du mode Destination, et `supabase/functions/pois` trouve les points d'intérêt le long d'un tracé (API Overpass d'OpenStreetMap), avec [OpenRouteService](https://openrouteservice.org). Le workflow GitHub « Fonctions Supabase » les déploie à chaque fusion dans `main`. Il lui faut deux secrets dans les réglages GitHub du dépôt (Settings → Secrets and variables → Actions) :
 
 - `SUPABASE_ACCESS_TOKEN` : jeton personnel créé sur supabase.com → Account → Access Tokens
 - `ORS_API_KEY` : clé gratuite créée sur openrouteservice.org (Dashboard → Tokens)
@@ -75,4 +75,5 @@ supabase/         configuration, migrations de la base et fonctions Edge
 ## Après le MVP
 
 - ✅ Mode Destination (recherche de lieu et itinéraire à pied)
-- Points d'intérêt, publicité, Premium
+- ✅ Points d'intérêt le long du trajet (OpenStreetMap : plaques, monuments, œuvres) ; les détours passent par l'un d'eux
+- Publicité, Premium

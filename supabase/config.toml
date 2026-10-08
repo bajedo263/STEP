@@ -420,3 +420,6 @@ verify_jwt = false
 
 [functions.destination]
 verify_jwt = false
+
+[functions.pois]
+verify_jwt = false

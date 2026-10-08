@@ -69,3 +69,5 @@ export const Spacing = {
 
 export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
 export const MaxContentWidth = 800;
+/** Repères des points d'intérêt, sur la carte et pendant la marche. */
+export const PoiColor = '#F08C00';

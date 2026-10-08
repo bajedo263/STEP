@@ -21,6 +21,8 @@ import {
   parseOrsResponse,
   type LoopRoute,
 } from '../_shared/loop.ts';
+import { fetchOverpassPois } from '../_shared/overpass.ts';
+import { bestPoiNear, overpassQuery, type Poi } from '../_shared/pois.ts';
 
 const ORS = 'https://api.openrouteservice.org';
 const NOT_FOUND = 'Aucun itinéraire à pied trouvé vers ce lieu.';
@@ -89,24 +91,33 @@ Deno.serve(async (req) => {
 
   // Le chemin direct suffit (ou dépasse) les pas à faire : on le garde.
   if (!targetM || direct.distanceM >= targetM * (1 - LOOP_TOLERANCE)) {
-    return json({ ...direct, lengthened: false });
+    return json({ ...direct, lengthened: false, via: null });
   }
 
   // Sinon on rallonge par un point de passage sur le côté, corrigé jusqu'à 3 fois.
+  // Le point de passage est déplacé sur un lieu remarquable proche quand il y en a un :
+  // le détour a alors une raison d'être.
   const side = seed % 2 === 0 ? 1 : -1;
-  const routes: LoopRoute[] = [];
   let requested = targetM / ROUTE_DETOUR_FACTOR;
+  const snapRadiusM = Math.min(600, Math.max(200, requested * 0.1));
+  const candidates = await fetchOverpassPois(
+    overpassQuery([detourWaypoint(start, end, requested, side)], snapRadiusM * 1.5)
+  );
+
+  const routes: (LoopRoute & { via: Poi | null })[] = [];
   for (let attempt = 0; attempt < MAX_LOOP_ATTEMPTS; attempt++) {
-    const route = await directions(orsViaBody(start, detourWaypoint(start, end, requested, side), end));
+    const target = detourWaypoint(start, end, requested, side);
+    const via = bestPoiNear(candidates, target, snapRadiusM);
+    const route = await directions(orsViaBody(start, via?.coords ?? target, end));
     if (!route) break;
-    routes.push(route);
+    routes.push({ ...route, via });
     if (isCloseEnough(targetM, route.distanceM)) break;
     requested = nextRequestedLength(targetM, requested, route.distanceM);
   }
 
   const best = closestRoute(targetM, routes);
   if (!best || Math.abs(best.distanceM - targetM) >= Math.abs(direct.distanceM - targetM)) {
-    return json({ ...direct, lengthened: false });
+    return json({ ...direct, lengthened: false, via: null });
   }
   return json({ ...best, lengthened: true });
 });
