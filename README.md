@@ -21,6 +21,10 @@ L'URL et la clé publique du projet Supabase sont dans `.env`. Pour pointer vers
 
 Le podomètre, la localisation en arrière-plan et HealthKit ne fonctionnent pas dans Expo Go : il faudra un *development build* (`npx eas-cli@latest build --profile development`).
 
+## Tester sur téléphone sans ordinateur
+
+Chaque fusion dans `main` est publiée sur Expo par l'action « Publication Expo » (secret `EXPO_TOKEN` requis). Sur le téléphone : installer Expo Go et s'y connecter avec le compte Expo, puis ouvrir le projet sur [expo.dev](https://expo.dev), onglet **Updates**, et ouvrir la dernière mise à jour dans Expo Go.
+
 ## Base de données
 
 Les migrations sont dans `supabase/migrations`. Sans outil, on peut coller leur contenu dans l'éditeur SQL du tableau de bord Supabase, dans l'ordre. Avec la [CLI Supabase](https://supabase.com/docs/guides/local-development) :
