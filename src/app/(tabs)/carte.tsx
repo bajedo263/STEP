@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { useEffect, useMemo, useRef } from 'react';
 import { ActivityIndicator, Linking, StyleSheet, View } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
@@ -9,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useCurrentLocation } from '@/hooks/use-current-location';
 import { useLoopRoute } from '@/hooks/use-loop-route';
+import { setPlannedWalk } from '@/hooks/use-planned-walk';
 import { useProfile } from '@/hooks/use-profile';
 import { useTheme } from '@/hooks/use-theme';
 import { useTodaySteps } from '@/hooks/use-today-steps';
@@ -90,13 +92,17 @@ export default function MapScreen() {
                 <Stat value={formatDuration(route.durationS)} label="de marche" />
               </View>
               <Button
+                title="Partir"
+                onPress={() => {
+                  setPlannedWalk({ mode: 'loop', route });
+                  router.push('/trajet');
+                }}
+              />
+              <Button
                 title="Autre boucle"
                 variant="secondary"
                 onPress={() => loop.generate(start, targetM)}
               />
-              <ThemedText type="small" themeColor="textSecondary" style={styles.centered}>
-                Le suivi du trajet en direct arrive à la prochaine étape.
-              </ThemedText>
             </>
           ) : (
             <>
@@ -115,6 +121,14 @@ export default function MapScreen() {
                 title="Proposer une boucle"
                 loading={loop.status === 'loading'}
                 onPress={() => loop.generate(start, targetM)}
+              />
+              <Button
+                title="Marcher librement"
+                variant="secondary"
+                onPress={() => {
+                  setPlannedWalk({ mode: 'free' });
+                  router.push('/trajet');
+                }}
               />
             </>
           )}

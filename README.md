@@ -68,6 +68,6 @@ supabase/         configuration, migrations de la base et fonctions Edge
 3. 🟡 Pas du jour : podomètre du téléphone (fait) ; HealthKit et Health Connect (à venir, version de test dédiée)
 4. ✅ Carte et géolocalisation
 5. ✅ Mode Boucle via OpenRouteService
-6. Suivi de trajet en arrière-plan et écran de fin
-7. Statistiques de base
+6. 🟡 Suivi de trajet et écran de fin : écran ouvert (fait) ; arrière-plan (à venir, version de test dédiée)
+7. ✅ Statistiques de base (7 derniers jours, derniers trajets)
 8. Bêta fermée (TestFlight, test interne Google Play)
