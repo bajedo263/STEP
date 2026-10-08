@@ -40,6 +40,18 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "owner": "bajedo",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/464e9ee9-2a37-4091-84bc-561de32842bb"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "464e9ee9-2a37-4091-84bc-561de32842bb"
+      }
     }
   }
 }
