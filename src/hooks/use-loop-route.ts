@@ -2,13 +2,17 @@ import { FunctionsHttpError } from '@supabase/supabase-js';
 import { useCallback, useState } from 'react';
 
 import type { LatLng, LoopRoute } from '@/lib/loop';
+import type { Poi } from '@/lib/pois';
 import { supabase } from '@/lib/supabase';
 
 export type LoopState =
   | { status: 'idle' }
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; route: LoopRoute };
+  | { status: 'ready'; route: LoopResult };
+
+/** Boucle renvoyée par le serveur, avec les lieux remarquables par lesquels elle passe. */
+export type LoopResult = LoopRoute & { via: Poi[] };
 
 const GENERIC_ERROR = 'Impossible de calculer une boucle pour le moment. Réessayez dans un instant.';
 
@@ -31,14 +35,14 @@ export function useLoopRoute() {
     }
     setState({ status: 'loading' });
 
-    const { data, error } = await supabase.functions.invoke<LoopRoute>('loop-route', {
+    const { data, error } = await supabase.functions.invoke<LoopResult>('loop-route', {
       body: { start, distanceM, seed: Math.floor(Math.random() * 1_000_000) },
     });
     if (error || !data) {
       setState({ status: 'error', message: await errorMessage(error) });
       return;
     }
-    setState({ status: 'ready', route: data });
+    setState({ status: 'ready', route: { ...data, via: data.via ?? [] } });
   }, []);
 
   const clear = useCallback(() => setState({ status: 'idle' }), []);

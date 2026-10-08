@@ -75,5 +75,5 @@ supabase/         configuration, migrations de la base et fonctions Edge
 ## Après le MVP
 
 - ✅ Mode Destination (recherche de lieu et itinéraire à pied)
-- ✅ Points d'intérêt le long du trajet (OpenStreetMap : plaques, monuments, œuvres) ; les détours passent par l'un d'eux
+- ✅ Points d'intérêt le long du trajet (OpenStreetMap : plaques, monuments, œuvres) ; les boucles et les détours passent par eux
 - Publicité, Premium

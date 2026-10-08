@@ -137,7 +137,7 @@ export default function MapScreen() {
               route ? (
                 <>
                   <RouteStats route={route} strideM={strideM} />
-                  <PoiSummary pois={pois} via={null} />
+                  <PoiSummary pois={pois} via={loopRoute?.via ?? []} />
                   <Button title="Partir" onPress={() => go({ mode: 'loop', route, pois })} />
                   <Button
                     title="Autre boucle"
@@ -176,7 +176,10 @@ export default function MapScreen() {
                     Itinéraire rallongé par un détour pour finir votre objectif en chemin.
                   </ThemedText>
                 ) : null}
-                <PoiSummary pois={pois} via={destination.route.via} />
+                <PoiSummary
+                  pois={pois}
+                  via={destination.route.via ? [destination.route.via] : []}
+                />
                 <Button
                   title="Partir"
                   onPress={() =>
@@ -279,16 +282,21 @@ function RouteStats({ route, strideM }: { route: LoopRoute; strideM: number }) {
   );
 }
 
-/** Ce qu'il y a à voir en chemin, et pourquoi le détour passe par là. */
-function PoiSummary({ pois, via }: { pois: Poi[]; via: Poi | null }) {
-  if (!via && pois.length === 0) return null;
-  const others = pois.filter((poi) => poi.id !== via?.id).length;
+/** « 1 lieu remarquable », « 3 autres lieux remarquables »… */
+function poiCountLabel(count: number, others: boolean): string {
+  if (count === 1) return others ? '1 autre lieu remarquable' : '1 lieu remarquable';
+  return others ? `${count} autres lieux remarquables` : `${count} lieux remarquables`;
+}
+
+/** Ce qu'il y a à voir en chemin, et pourquoi le tracé passe par là. */
+function PoiSummary({ pois, via }: { pois: Poi[]; via: Poi[] }) {
+  if (via.length === 0 && pois.length === 0) return null;
+  const viaIds = new Set(via.map((poi) => poi.id));
+  const others = pois.filter((poi) => !viaIds.has(poi.id)).length;
   return (
     <ThemedText type="small" themeColor="textSecondary">
-      {via ? `Détour par : ${via.title}. ` : ''}
-      {others > 0
-        ? `${others} ${others > 1 ? 'lieux remarquables' : 'lieu remarquable'} sur le trajet (repères orange).`
-        : ''}
+      {via.length > 0 ? `Passe par : ${via.map((poi) => poi.title).join(' et ')}. ` : ''}
+      {others > 0 ? `${poiCountLabel(others, via.length > 0)} en chemin (repères orange).` : ''}
     </ThemedText>
   );
 }
