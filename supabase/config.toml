@@ -417,3 +417,6 @@ enabled = true
 # La fonction vérifie elle-même la session (compatible avec les nouvelles clés de signature JWT).
 [functions.loop-route]
 verify_jwt = false
+
+[functions.destination]
+verify_jwt = false

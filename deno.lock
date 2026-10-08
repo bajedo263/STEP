@@ -1,0 +1,53 @@
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@supabase/supabase-js@2": "2.117.3"
+  },
+  "jsr": {
+    "@supabase/supabase-js@2.117.3": {
+      "integrity": "f188c6d5a1bc5510445cf5f535702292753d534a22c64bd92962094fe6111f94"
+    }
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@expo/ui@~57.0.22",
+        "npm:@supabase/supabase-js@^2.117.3",
+        "npm:@types/node@^22.20.5",
+        "npm:@types/react@~19.2.2",
+        "npm:eslint-config-expo@~57.0.2",
+        "npm:eslint@9",
+        "npm:expo-constants@~57.0.21",
+        "npm:expo-device@~57.0.2",
+        "npm:expo-font@~57.0.4",
+        "npm:expo-glass-effect@~57.0.4",
+        "npm:expo-image@~57.0.5",
+        "npm:expo-keep-awake@~57.0.2",
+        "npm:expo-linking@~57.0.12",
+        "npm:expo-location@~57.0.20",
+        "npm:expo-router@~57.0.25",
+        "npm:expo-sensors@~57.0.3",
+        "npm:expo-splash-screen@~57.0.9",
+        "npm:expo-sqlite@~57.0.4",
+        "npm:expo-status-bar@~57.0.1",
+        "npm:expo-symbols@~57.0.3",
+        "npm:expo-system-ui@~57.0.4",
+        "npm:expo-updates@~57.0.25",
+        "npm:expo-web-browser@~57.0.3",
+        "npm:expo@~57.0.27",
+        "npm:react-dom@19.2.3",
+        "npm:react-native-gesture-handler@2.32",
+        "npm:react-native-maps@1.27.2",
+        "npm:react-native-reanimated@4.5.1",
+        "npm:react-native-safe-area-context@5.7",
+        "npm:react-native-screens@4.26",
+        "npm:react-native-svg@15.15.4",
+        "npm:react-native-web@0.21",
+        "npm:react-native-worklets@0.10.1",
+        "npm:react-native@0.86.3",
+        "npm:react@19.2.3",
+        "npm:typescript@~6.0.3"
+      ]
+    }
+  }
+}

@@ -1,7 +1,7 @@
 import { walkingCalories } from './steps.ts';
 import { toLineStringWkt, type Track } from './track.ts';
 
-export type WalkMode = 'loop' | 'free';
+export type WalkMode = 'loop' | 'destination' | 'free';
 
 export type WalkSummary = {
   mode: WalkMode;
