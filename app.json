@@ -44,6 +44,12 @@
         {
           "motionPermission": "STEP compte vos pas pour suivre votre objectif quotidien."
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "STEP utilise votre position pour tracer des boucles de marche autour de vous."
+        }
       ]
     ],
     "experiments": {

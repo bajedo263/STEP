@@ -1,0 +1,38 @@
+name: Fonctions Supabase
+
+# Déploie les fonctions Edge (calcul de boucle…) sur le projet Supabase de STEP
+# à chaque fusion dans main qui les modifie.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/**'
+      - '.github/workflows/supabase-functions.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: supabase-functions
+  cancel-in-progress: true
+
+env:
+  SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+  PROJECT_REF: nkrkxmieqdkugtpsoufc
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Clé OpenRouteService
+        env:
+          ORS_API_KEY: ${{ secrets.ORS_API_KEY }}
+        run: |
+          if [ -z "$ORS_API_KEY" ]; then
+            echo "::warning::Secret ORS_API_KEY absent : la boucle répondra « pas encore configuré »."
+          else
+            supabase secrets set --project-ref "$PROJECT_REF" ORS_API_KEY="$ORS_API_KEY"
+          fi
+      - run: supabase functions deploy loop-route --project-ref "$PROJECT_REF" --no-verify-jwt --use-api
