@@ -1,6 +1,6 @@
 name: Fonctions Supabase
 
-# Déploie les fonctions Edge (calcul de boucle…) sur le projet Supabase de STEP
+# Déploie les fonctions Edge (boucle, destination…) sur le projet Supabase de STEP
 # à chaque fusion dans main qui les modifie.
 on:
   push:
@@ -35,4 +35,4 @@ jobs:
           else
             supabase secrets set --project-ref "$PROJECT_REF" ORS_API_KEY="$ORS_API_KEY"
           fi
-      - run: supabase functions deploy loop-route --project-ref "$PROJECT_REF" --no-verify-jwt --use-api
+      - run: supabase functions deploy --project-ref "$PROJECT_REF" --no-verify-jwt --use-api

@@ -2,7 +2,7 @@ import { useKeepAwake } from 'expo-keep-awake';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, BackHandler, StyleSheet, View } from 'react-native';
-import MapView, { Polyline } from 'react-native-maps';
+import MapView, { Marker, Polyline } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -98,7 +98,8 @@ function ActiveWalk({
   useKeepAwake();
   const theme = useTheme();
   const elapsed = useElapsedSeconds(tracker.startedAt, true);
-  const start = planned.mode === 'loop' ? planned.route.coordinates[0] : tracker.track.points[0];
+  const plannedRoute = planned.mode === 'free' ? null : planned.route;
+  const start = plannedRoute ? plannedRoute.coordinates[0] : tracker.track.points[0];
 
   // Bouton retour d'Android : on propose de terminer plutôt que de perdre le trajet.
   const failed = tracker.status === 'denied' || tracker.status === 'error';
@@ -133,13 +134,16 @@ function ActiveWalk({
           showsUserLocation
           followsUserLocation
           showsPointsOfInterests={false}>
-          {planned.mode === 'loop' ? (
+          {plannedRoute ? (
             <Polyline
-              coordinates={planned.route.coordinates}
+              coordinates={plannedRoute.coordinates}
               strokeColor={theme.textSecondary}
               strokeWidth={4}
               lineDashPattern={[8, 8]}
             />
+          ) : null}
+          {planned.mode === 'destination' ? (
+            <Marker coordinate={planned.route.coordinates.at(-1)!} title={planned.label} pinColor={theme.tint} />
           ) : null}
           {tracker.track.points.length > 1 ? (
             <Polyline
@@ -165,9 +169,9 @@ function ActiveWalk({
           <View style={styles.stats}>
             <Stat value={formatDistance(tracker.track.distanceM)} label="parcourus" />
             <Stat value={formatNumber(estimatedSteps)} label="pas" />
-            {planned.mode === 'loop' ? (
+            {plannedRoute ? (
               <Stat
-                value={formatDistance(Math.max(0, planned.route.distanceM - tracker.track.distanceM))}
+                value={formatDistance(Math.max(0, plannedRoute.distanceM - tracker.track.distanceM))}
                 label="restants"
               />
             ) : null}

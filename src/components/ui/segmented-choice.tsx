@@ -7,7 +7,7 @@ import { useTheme } from '@/hooks/use-theme';
 type Option<T extends string> = { value: T; label: string };
 
 type SegmentedChoiceProps<T extends string> = {
-  label: string;
+  label?: string;
   options: Option<T>[];
   value: T;
   onChange: (value: T) => void;
@@ -18,7 +18,7 @@ export function SegmentedChoice<T extends string>({ label, options, value, onCha
 
   return (
     <View style={styles.container}>
-      <ThemedText type="smallBold">{label}</ThemedText>
+      {label ? <ThemedText type="smallBold">{label}</ThemedText> : null}
       <View style={[styles.track, { backgroundColor: theme.backgroundElement }]}>
         {options.map((option) => {
           const selected = option.value === value;

@@ -36,12 +36,12 @@ npx supabase db push        # appliquer les migrations au projet distant
 
 ## Fonctions serveur
 
-`supabase/functions/loop-route` calcule les boucles du mode Boucle avec [OpenRouteService](https://openrouteservice.org). Le workflow GitHub « Fonctions Supabase » la déploie à chaque fusion dans `main`. Il lui faut deux secrets dans les réglages GitHub du dépôt (Settings → Secrets and variables → Actions) :
+`supabase/functions/loop-route` calcule les boucles du mode Boucle et `supabase/functions/destination` cherche les lieux et l'itinéraire du mode Destination, avec [OpenRouteService](https://openrouteservice.org). Le workflow GitHub « Fonctions Supabase » les déploie à chaque fusion dans `main`. Il lui faut deux secrets dans les réglages GitHub du dépôt (Settings → Secrets and variables → Actions) :
 
 - `SUPABASE_ACCESS_TOKEN` : jeton personnel créé sur supabase.com → Account → Access Tokens
 - `ORS_API_KEY` : clé gratuite créée sur openrouteservice.org (Dashboard → Tokens)
 
-La logique testable (validation, correction de la distance) est dans `supabase/functions/_shared/loop.ts`.
+La logique testable est dans `supabase/functions/_shared/`.
 
 ## Vérifications
 
@@ -71,3 +71,8 @@ supabase/         configuration, migrations de la base et fonctions Edge
 6. 🟡 Suivi de trajet et écran de fin : écran ouvert (fait) ; arrière-plan (à venir, version de test dédiée)
 7. ✅ Statistiques de base (7 derniers jours, derniers trajets)
 8. Bêta fermée (TestFlight, test interne Google Play)
+
+## Après le MVP
+
+- ✅ Mode Destination (recherche de lieu et itinéraire à pied)
+- Points d'intérêt, publicité, Premium

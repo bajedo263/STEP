@@ -1,32 +1,55 @@
 import { router } from 'expo-router';
-import { useEffect, useMemo, useRef } from 'react';
-import { ActivityIndicator, Linking, StyleSheet, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Keyboard,
+  KeyboardAvoidingView,
+  Linking,
+  Platform,
+  Pressable,
+  StyleSheet,
+  View,
+} from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
+import { SegmentedChoice } from '@/components/ui/segmented-choice';
+import { TextField } from '@/components/ui/text-field';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useCurrentLocation } from '@/hooks/use-current-location';
+import { useDestinationRoute, usePlaceSearch } from '@/hooks/use-destination';
 import { useLoopRoute } from '@/hooks/use-loop-route';
 import { setPlannedWalk } from '@/hooks/use-planned-walk';
 import { useProfile } from '@/hooks/use-profile';
 import { useTheme } from '@/hooks/use-theme';
 import { useTodaySteps } from '@/hooks/use-today-steps';
 import { dailyProgress, formatDistance } from '@/lib/daily-progress';
-import { formatDuration, loopTargetDistance, regionForCoordinates } from '@/lib/loop';
+import { formatDuration, loopTargetDistance, regionForCoordinates, type LoopRoute } from '@/lib/loop';
 import { strideLengthMeters } from '@/lib/steps';
 
 const formatNumber = (value: number) => Math.round(value).toLocaleString('fr-FR');
+
+type MapMode = 'loop' | 'destination';
+
+const MODE_OPTIONS: { value: MapMode; label: string }[] = [
+  { value: 'loop', label: 'Boucle' },
+  { value: 'destination', label: 'Destination' },
+];
 
 export default function MapScreen() {
   const theme = useTheme();
   const location = useCurrentLocation();
   const loop = useLoopRoute();
+  const destination = useDestinationRoute();
   const today = useTodaySteps();
   const profile = useProfile();
   const mapRef = useRef<MapView>(null);
+  const [mode, setMode] = useState<MapMode>('loop');
+  const [query, setQuery] = useState('');
+  const search = usePlaceSearch(query, location.status === 'ready' ? location.coords : null);
 
   const progress = useMemo(
     () =>
@@ -45,8 +68,11 @@ export default function MapScreen() {
   const targetM = loopTargetDistance(progress?.remainingDistanceM);
   const strideM = strideLengthMeters(profile?.height_cm ?? 170, profile?.sex ?? 'unspecified');
 
-  // Recadre la carte sur la boucle dès qu'elle arrive.
-  const route = loop.status === 'ready' ? loop.route : null;
+  const loopRoute = loop.status === 'ready' ? loop.route : null;
+  const destinationRoute = destination.status === 'ready' ? destination.route : null;
+  const route = mode === 'loop' ? loopRoute : destinationRoute;
+
+  // Recadre la carte sur le tracé affiché.
   useEffect(() => {
     const region = route ? regionForCoordinates(route.coordinates) : null;
     if (region) mapRef.current?.animateToRegion(region, 400);
@@ -57,6 +83,10 @@ export default function MapScreen() {
   }
 
   const start = location.coords;
+  const go = (walk: Parameters<typeof setPlannedWalk>[0]) => {
+    setPlannedWalk(walk);
+    router.push('/trajet');
+  };
 
   return (
     <View style={styles.container}>
@@ -68,73 +98,148 @@ export default function MapScreen() {
         showsMyLocationButton={false}
         showsPointsOfInterests={false}>
         {route ? (
-          <>
-            <Polyline
-              coordinates={route.coordinates}
-              strokeColor={theme.tint}
-              strokeWidth={5}
-              lineJoin="round"
-              lineCap="round"
-            />
-            <Marker coordinate={route.coordinates[0]} title="Départ et arrivée" pinColor={theme.tint} />
-          </>
+          <Polyline
+            coordinates={route.coordinates}
+            strokeColor={theme.tint}
+            strokeWidth={5}
+            lineJoin="round"
+            lineCap="round"
+          />
+        ) : null}
+        {mode === 'loop' && loopRoute ? (
+          <Marker coordinate={loopRoute.coordinates[0]} title="Départ et arrivée" pinColor={theme.tint} />
+        ) : null}
+        {mode === 'destination' && destination.status !== 'idle' ? (
+          <Marker coordinate={destination.place.coords} title={destination.place.label} pinColor={theme.tint} />
         ) : null}
       </MapView>
 
-      <SafeAreaView edges={['left', 'right']} style={styles.overlay}>
-        <ThemedView style={styles.card}>
-          {route ? (
-            <>
-              <ThemedText type="smallBold">Votre boucle</ThemedText>
-              <View style={styles.stats}>
-                <Stat value={formatDistance(route.distanceM)} label="distance" />
-                <Stat value={`${formatNumber(route.distanceM / strideM)}`} label="pas environ" />
-                <Stat value={formatDuration(route.durationS)} label="de marche" />
-              </View>
-              <Button
-                title="Partir"
-                onPress={() => {
-                  setPlannedWalk({ mode: 'loop', route });
-                  router.push('/trajet');
-                }}
-              />
-              <Button
-                title="Autre boucle"
-                variant="secondary"
-                onPress={() => loop.generate(start, targetM)}
-              />
-            </>
-          ) : (
-            <>
-              <ThemedText type="smallBold">Mode Boucle</ThemedText>
-              <ThemedText themeColor="textSecondary">
-                {goalReached
-                  ? `Objectif atteint ! Une boucle bonus de ${formatDistance(targetM)} ?`
-                  : `Une boucle d’environ ${formatDistance(targetM)} depuis votre position pour finir votre objectif.`}
-              </ThemedText>
-              {loop.status === 'error' ? (
-                <ThemedText type="small" style={{ color: theme.danger }}>
-                  {loop.message}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.overlay}>
+        <SafeAreaView edges={['left', 'right']} style={styles.overlayInner}>
+          <ThemedView style={styles.card}>
+            <SegmentedChoice options={MODE_OPTIONS} value={mode} onChange={setMode} />
+
+            {mode === 'loop' ? (
+              route ? (
+                <>
+                  <RouteStats route={route} strideM={strideM} />
+                  <Button title="Partir" onPress={() => go({ mode: 'loop', route })} />
+                  <Button
+                    title="Autre boucle"
+                    variant="secondary"
+                    onPress={() => loop.generate(start, targetM)}
+                  />
+                </>
+              ) : (
+                <>
+                  <ThemedText themeColor="textSecondary">
+                    {goalReached
+                      ? `Objectif atteint ! Une boucle bonus de ${formatDistance(targetM)} ?`
+                      : `Une boucle d’environ ${formatDistance(targetM)} depuis votre position pour finir votre objectif.`}
+                  </ThemedText>
+                  {loop.status === 'error' ? <ErrorText message={loop.message} /> : null}
+                  <Button
+                    title="Proposer une boucle"
+                    loading={loop.status === 'loading'}
+                    onPress={() => loop.generate(start, targetM)}
+                  />
+                  <Button
+                    title="Marcher librement"
+                    variant="secondary"
+                    onPress={() => go({ mode: 'free' })}
+                  />
+                </>
+              )
+            ) : destination.status === 'ready' ? (
+              <>
+                <ThemedText type="smallBold" numberOfLines={2}>
+                  {destination.place.label}
                 </ThemedText>
-              ) : null}
-              <Button
-                title="Proposer une boucle"
-                loading={loop.status === 'loading'}
-                onPress={() => loop.generate(start, targetM)}
-              />
-              <Button
-                title="Marcher librement"
-                variant="secondary"
-                onPress={() => {
-                  setPlannedWalk({ mode: 'free' });
-                  router.push('/trajet');
-                }}
-              />
-            </>
-          )}
-        </ThemedView>
-      </SafeAreaView>
+                <RouteStats route={destination.route} strideM={strideM} />
+                <Button
+                  title="Partir"
+                  onPress={() =>
+                    go({ mode: 'destination', route: destination.route, label: destination.place.label })
+                  }
+                />
+                <Button
+                  title="Changer de destination"
+                  variant="secondary"
+                  onPress={destination.clear}
+                />
+              </>
+            ) : destination.status === 'loading' ? (
+              <View style={styles.loadingRow}>
+                <ActivityIndicator />
+                <ThemedText themeColor="textSecondary" numberOfLines={1} style={styles.flex}>
+                  Itinéraire vers {destination.place.label}…
+                </ThemedText>
+              </View>
+            ) : (
+              <>
+                <TextField
+                  label="Où allez-vous ?"
+                  placeholder="Une adresse, un lieu, un parc…"
+                  value={query}
+                  onChangeText={setQuery}
+                  autoCorrect={false}
+                  returnKeyType="search"
+                />
+                {destination.status === 'error' ? <ErrorText message={destination.message} /> : null}
+                {search.status === 'loading' ? <ActivityIndicator /> : null}
+                {search.status === 'error' ? <ErrorText message={search.message} /> : null}
+                {search.status === 'ready' && search.places.length === 0 ? (
+                  <ThemedText type="small" themeColor="textSecondary">
+                    Aucun lieu trouvé.
+                  </ThemedText>
+                ) : null}
+                {search.status === 'ready'
+                  ? search.places.slice(0, 5).map((place) => (
+                      <Pressable
+                        key={place.id}
+                        accessibilityRole="button"
+                        onPress={() => {
+                          Keyboard.dismiss();
+                          destination.choose(start, place);
+                        }}
+                        style={({ pressed }) => [
+                          styles.place,
+                          { backgroundColor: theme.backgroundElement },
+                          pressed && styles.pressed,
+                        ]}>
+                        <ThemedText type="small" numberOfLines={2}>
+                          {place.label}
+                        </ThemedText>
+                      </Pressable>
+                    ))
+                  : null}
+              </>
+            )}
+          </ThemedView>
+        </SafeAreaView>
+      </KeyboardAvoidingView>
     </View>
+  );
+}
+
+function RouteStats({ route, strideM }: { route: LoopRoute; strideM: number }) {
+  return (
+    <View style={styles.stats}>
+      <Stat value={formatDistance(route.distanceM)} label="distance" />
+      <Stat value={formatNumber(route.distanceM / strideM)} label="pas environ" />
+      <Stat value={formatDuration(route.durationS)} label="de marche" />
+    </View>
+  );
+}
+
+function ErrorText({ message }: { message: string }) {
+  const theme = useTheme();
+  return (
+    <ThemedText type="small" style={{ color: theme.danger }}>
+      {message}
+    </ThemedText>
   );
 }
 
@@ -192,10 +297,29 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     pointerEvents: 'box-none',
+  },
+  overlayInner: {
+    flex: 1,
+    pointerEvents: 'box-none',
     justifyContent: 'flex-end',
     alignItems: 'center',
     padding: Spacing.three,
     paddingBottom: BottomTabInset + Spacing.three,
+  },
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  flex: {
+    flex: 1,
+  },
+  place: {
+    padding: Spacing.three,
+    borderRadius: Spacing.three,
+  },
+  pressed: {
+    opacity: 0.6,
   },
   card: {
     alignSelf: 'stretch',
