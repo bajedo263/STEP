@@ -52,7 +52,7 @@ supabase/         configuration et migrations de la base
 
 1. ✅ Initialiser le projet (Expo, Supabase, CI, EAS)
 2. ✅ Connexion par email et profil (Apple et Google à venir)
-3. Pas du jour via HealthKit et Health Connect
+3. 🟡 Pas du jour : podomètre du téléphone (fait) ; HealthKit et Health Connect (à venir, version de test dédiée)
 4. Carte Mapbox et géolocalisation
 5. Mode Boucle via OpenRouteService
 6. Suivi de trajet en arrière-plan et écran de fin
