@@ -1,56 +1,58 @@
-# Welcome to your Expo app 👋
+# STEP
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Application mobile qui aide à atteindre 10 000 pas par jour grâce à des trajets générés sur mesure (Boucle, Destination), un mode Conquête entre amis, des points d'intérêt à collectionner et des statistiques détaillées.
 
-## Get started
+Le cadrage complet (besoins, architecture, plan) est dans le [document de cadrage](https://claude.ai/code/artifact/03f0918a-d647-4753-909d-3e089ea47180).
 
-1. Install dependencies
+## Stack
 
-   ```bash
-   npm install
-   ```
+- **App** : React Native + Expo (SDK 57), TypeScript, Expo Router
+- **Backend** : Supabase (Auth, Postgres + PostGIS, Edge Functions, Realtime)
+- **Carte et itinéraires** : Mapbox, OpenRouteService (à venir)
 
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Démarrer
 
 ```bash
-npm run reset-project
+npm install
+cp .env.example .env.local   # puis renseigner l'URL et la clé du projet Supabase
+npx expo start
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Le podomètre, la localisation en arrière-plan et HealthKit ne fonctionnent pas dans Expo Go : il faudra un *development build* (`npx eas-cli@latest build --profile development`).
 
-### Other setup steps
+## Base de données
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+Les migrations sont dans `supabase/migrations`. Avec la [CLI Supabase](https://supabase.com/docs/guides/local-development) :
 
-## Learn more
+```bash
+npx supabase start          # base locale (Docker requis)
+npx supabase db push        # appliquer les migrations au projet distant
+```
 
-To learn more about developing your project with Expo, look at the following resources:
+## Vérifications
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+```bash
+npm run lint
+npm run typecheck
+npm test
+```
 
-## Join the community
+## Structure
 
-Join our community of developers creating universal apps.
+```
+src/app/          écrans (Expo Router) : accueil, carte, stats, profil
+src/components/   composants partagés
+src/lib/          logique métier (calcul pas → distance, client Supabase)
+supabase/         configuration et migrations de la base
+```
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## Feuille de route du MVP
+
+1. ✅ Initialiser le projet (Expo, Supabase, CI, EAS)
+2. Authentification : email, Apple, Google ; profil
+3. Pas du jour via HealthKit et Health Connect
+4. Carte Mapbox et géolocalisation
+5. Mode Boucle via OpenRouteService
+6. Suivi de trajet en arrière-plan et écran de fin
+7. Statistiques de base
+8. Bêta fermée (TestFlight, test interne Google Play)
