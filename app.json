@@ -19,7 +19,10 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.bajedo263.step"
+      "package": "com.bajedo263.step",
+      "permissions": [
+        "android.permission.ACTIVITY_RECOGNITION"
+      ]
     },
     "web": {
       "output": "static",
@@ -35,7 +38,13 @@
           "imageWidth": 76
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "expo-sensors",
+        {
+          "motionPermission": "STEP compte vos pas pour suivre votre objectif quotidien."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
