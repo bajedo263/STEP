@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { useMemo } from 'react';
 import { ActivityIndicator, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -79,10 +80,7 @@ export default function HomeScreen() {
             <StepsUnavailable status={today.status} />
           )}
 
-          <Button title="Partir" disabled onPress={() => {}} />
-          <ThemedText type="small" themeColor="textSecondary">
-            Le mode Boucle arrive bientôt.
-          </ThemedText>
+          <Button title="Partir en boucle" onPress={() => router.navigate('/carte')} />
         </ScrollView>
       </SafeAreaView>
     </ThemedView>

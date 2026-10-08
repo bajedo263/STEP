@@ -8,7 +8,7 @@ Le cadrage complet (besoins, architecture, plan) est dans le [document de cadrag
 
 - **App** : React Native + Expo (SDK 57), TypeScript, Expo Router
 - **Backend** : Supabase (Auth, Postgres + PostGIS, Edge Functions, Realtime)
-- **Carte et itinéraires** : Mapbox, OpenRouteService (à venir)
+- **Carte et itinéraires** : react-native-maps (Apple Plans sur iPhone, Google Maps sur Android), OpenRouteService pour le calcul des boucles
 
 ## Démarrer
 
@@ -34,6 +34,15 @@ npx supabase start          # base locale (Docker requis)
 npx supabase db push        # appliquer les migrations au projet distant
 ```
 
+## Fonctions serveur
+
+`supabase/functions/loop-route` calcule les boucles du mode Boucle avec [OpenRouteService](https://openrouteservice.org). Le workflow GitHub « Fonctions Supabase » la déploie à chaque fusion dans `main`. Il lui faut deux secrets dans les réglages GitHub du dépôt (Settings → Secrets and variables → Actions) :
+
+- `SUPABASE_ACCESS_TOKEN` : jeton personnel créé sur supabase.com → Account → Access Tokens
+- `ORS_API_KEY` : clé gratuite créée sur openrouteservice.org (Dashboard → Tokens)
+
+La logique testable (validation, correction de la distance) est dans `supabase/functions/_shared/loop.ts`.
+
 ## Vérifications
 
 ```bash
@@ -49,7 +58,7 @@ src/app/          écrans (Expo Router) : connexion, puis onglets accueil, carte
 src/providers/    contexte de session (AuthProvider)
 src/components/   composants partagés
 src/lib/          logique métier (calcul pas → distance, client Supabase)
-supabase/         configuration et migrations de la base
+supabase/         configuration, migrations de la base et fonctions Edge
 ```
 
 ## Feuille de route du MVP
@@ -57,8 +66,8 @@ supabase/         configuration et migrations de la base
 1. ✅ Initialiser le projet (Expo, Supabase, CI, EAS)
 2. ✅ Connexion par email et profil (Apple et Google à venir)
 3. 🟡 Pas du jour : podomètre du téléphone (fait) ; HealthKit et Health Connect (à venir, version de test dédiée)
-4. Carte Mapbox et géolocalisation
-5. Mode Boucle via OpenRouteService
+4. ✅ Carte et géolocalisation
+5. ✅ Mode Boucle via OpenRouteService
 6. Suivi de trajet en arrière-plan et écran de fin
 7. Statistiques de base
 8. Bêta fermée (TestFlight, test interne Google Play)
