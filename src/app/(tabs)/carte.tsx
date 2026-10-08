@@ -18,16 +18,18 @@ import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { SegmentedChoice } from '@/components/ui/segmented-choice';
 import { TextField } from '@/components/ui/text-field';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { BottomTabInset, MaxContentWidth, PoiColor, Spacing } from '@/constants/theme';
 import { useCurrentLocation } from '@/hooks/use-current-location';
 import { useDestinationRoute, usePlaceSearch } from '@/hooks/use-destination';
 import { useLoopRoute } from '@/hooks/use-loop-route';
 import { setPlannedWalk } from '@/hooks/use-planned-walk';
 import { useProfile } from '@/hooks/use-profile';
+import { useRoutePois } from '@/hooks/use-route-pois';
 import { useTheme } from '@/hooks/use-theme';
 import { useTodaySteps } from '@/hooks/use-today-steps';
 import { dailyProgress, formatDistance } from '@/lib/daily-progress';
 import { formatDuration, loopTargetDistance, regionForCoordinates, type LoopRoute } from '@/lib/loop';
+import { POI_KIND_LABELS, type Poi } from '@/lib/pois';
 import { strideLengthMeters } from '@/lib/steps';
 
 const formatNumber = (value: number) => Math.round(value).toLocaleString('fr-FR');
@@ -71,6 +73,7 @@ export default function MapScreen() {
   const loopRoute = loop.status === 'ready' ? loop.route : null;
   const destinationRoute = destination.status === 'ready' ? destination.route : null;
   const route = mode === 'loop' ? loopRoute : destinationRoute;
+  const pois = useRoutePois(route?.coordinates ?? null);
 
   // Recadre la carte sur le tracé affiché.
   useEffect(() => {
@@ -106,6 +109,15 @@ export default function MapScreen() {
             lineCap="round"
           />
         ) : null}
+        {pois.map((poi) => (
+          <Marker
+            key={poi.id}
+            coordinate={poi.coords}
+            title={poi.title}
+            description={poi.description ?? POI_KIND_LABELS[poi.kind]}
+            pinColor={PoiColor}
+          />
+        ))}
         {mode === 'loop' && loopRoute ? (
           <Marker coordinate={loopRoute.coordinates[0]} title="Départ et arrivée" pinColor={theme.tint} />
         ) : null}
@@ -125,7 +137,8 @@ export default function MapScreen() {
               route ? (
                 <>
                   <RouteStats route={route} strideM={strideM} />
-                  <Button title="Partir" onPress={() => go({ mode: 'loop', route })} />
+                  <PoiSummary pois={pois} via={null} />
+                  <Button title="Partir" onPress={() => go({ mode: 'loop', route, pois })} />
                   <Button
                     title="Autre boucle"
                     variant="secondary"
@@ -158,15 +171,21 @@ export default function MapScreen() {
                   {destination.place.label}
                 </ThemedText>
                 <RouteStats route={destination.route} strideM={strideM} />
-                {destination.route.lengthened ? (
+                {destination.route.lengthened && !destination.route.via ? (
                   <ThemedText type="small" themeColor="textSecondary">
                     Itinéraire rallongé par un détour pour finir votre objectif en chemin.
                   </ThemedText>
                 ) : null}
+                <PoiSummary pois={pois} via={destination.route.via} />
                 <Button
                   title="Partir"
                   onPress={() =>
-                    go({ mode: 'destination', route: destination.route, label: destination.place.label })
+                    go({
+                      mode: 'destination',
+                      route: destination.route,
+                      label: destination.place.label,
+                      pois,
+                    })
                   }
                 />
                 {destination.route.lengthened ? (
@@ -257,6 +276,20 @@ function RouteStats({ route, strideM }: { route: LoopRoute; strideM: number }) {
       <Stat value={formatNumber(route.distanceM / strideM)} label="pas environ" />
       <Stat value={formatDuration(route.durationS)} label="de marche" />
     </View>
+  );
+}
+
+/** Ce qu'il y a à voir en chemin, et pourquoi le détour passe par là. */
+function PoiSummary({ pois, via }: { pois: Poi[]; via: Poi | null }) {
+  if (!via && pois.length === 0) return null;
+  const others = pois.filter((poi) => poi.id !== via?.id).length;
+  return (
+    <ThemedText type="small" themeColor="textSecondary">
+      {via ? `Détour par : ${via.title}. ` : ''}
+      {others > 0
+        ? `${others} ${others > 1 ? 'lieux remarquables' : 'lieu remarquable'} sur le trajet (repères orange).`
+        : ''}
+    </ThemedText>
   );
 }
 

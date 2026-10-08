@@ -1,20 +1,21 @@
 import { useKeepAwake } from 'expo-keep-awake';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, BackHandler, StyleSheet, View } from 'react-native';
+import { Alert, BackHandler, Linking, Pressable, StyleSheet, View } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { MaxContentWidth, PoiColor, Spacing } from '@/constants/theme';
 import { usePlannedWalk } from '@/hooks/use-planned-walk';
 import { useProfile } from '@/hooks/use-profile';
 import { useTheme } from '@/hooks/use-theme';
 import { useElapsedSeconds, useWalkTracker } from '@/hooks/use-walk-tracker';
 import { formatDistance } from '@/lib/daily-progress';
 import { formatDuration } from '@/lib/loop';
+import { nearbyPoi, POI_KIND_LABELS, type Poi } from '@/lib/pois';
 import { strideLengthMeters } from '@/lib/steps';
 import { supabase } from '@/lib/supabase';
 import { formatElapsed } from '@/lib/track';
@@ -99,6 +100,8 @@ function ActiveWalk({
   const theme = useTheme();
   const elapsed = useElapsedSeconds(tracker.startedAt, true);
   const plannedRoute = planned.mode === 'free' ? null : planned.route;
+  const pois = planned.mode === 'free' ? [] : planned.pois;
+  const here = nearbyPoi(pois, tracker.track.points.at(-1));
   const start = plannedRoute ? plannedRoute.coordinates[0] : tracker.track.points[0];
 
   // Bouton retour d'Android : on propose de terminer plutôt que de perdre le trajet.
@@ -145,6 +148,15 @@ function ActiveWalk({
           {planned.mode === 'destination' ? (
             <Marker coordinate={planned.route.coordinates.at(-1)!} title={planned.label} pinColor={theme.tint} />
           ) : null}
+          {pois.map((poi) => (
+            <Marker
+              key={poi.id}
+              coordinate={poi.coords}
+              title={poi.title}
+              description={poi.description ?? POI_KIND_LABELS[poi.kind]}
+              pinColor={PoiColor}
+            />
+          ))}
           {tracker.track.points.length > 1 ? (
             <Polyline
               coordinates={tracker.track.points}
@@ -162,6 +174,7 @@ function ActiveWalk({
       )}
 
       <SafeAreaView edges={['bottom', 'left', 'right']} style={styles.overlay}>
+        {here ? <PoiBanner poi={here} /> : null}
         <ThemedView style={styles.card}>
           <ThemedText type="title" style={styles.centered}>
             {formatElapsed(elapsed)}
@@ -183,6 +196,27 @@ function ActiveWalk({
         </ThemedView>
       </SafeAreaView>
     </View>
+  );
+}
+
+/** Le lieu devant lequel on passe : c'est pour lui que le trajet passe par là. */
+function PoiBanner({ poi }: { poi: Poi }) {
+  const theme = useTheme();
+  return (
+    <ThemedView style={[styles.card, styles.banner, { borderColor: PoiColor }]}>
+      <ThemedText type="small" style={{ color: PoiColor }}>
+        {`À voir ici · ${POI_KIND_LABELS[poi.kind]}`}
+      </ThemedText>
+      <ThemedText type="smallBold">{poi.title}</ThemedText>
+      {poi.description ? <ThemedText type="small">{poi.description}</ThemedText> : null}
+      {poi.wikipediaUrl ? (
+        <Pressable accessibilityRole="link" onPress={() => Linking.openURL(poi.wikipediaUrl!)}>
+          <ThemedText type="small" style={{ color: theme.tint }}>
+            En savoir plus sur Wikipédia
+          </ThemedText>
+        </Pressable>
+      ) : null}
+    </ThemedView>
   );
 }
 
@@ -278,6 +312,12 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
     elevation: 6,
+  },
+  banner: {
+    gap: Spacing.one,
+    padding: Spacing.three,
+    marginBottom: Spacing.two,
+    borderWidth: 2,
   },
   stats: {
     flexDirection: 'row',

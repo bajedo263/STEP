@@ -2,6 +2,7 @@ import { FunctionsHttpError } from '@supabase/supabase-js';
 import { useCallback, useEffect, useState } from 'react';
 
 import type { Place } from '../../supabase/functions/_shared/destination.ts';
+import type { Poi } from '@/lib/pois';
 import type { LatLng, LoopRoute } from '@/lib/loop';
 import { supabase } from '@/lib/supabase';
 
@@ -57,8 +58,11 @@ export type DestinationRouteState =
   | { status: 'error'; place: Place; message: string }
   | { status: 'ready'; place: Place; route: DestinationRoute };
 
-/** Itinéraire renvoyé par le serveur ; `lengthened` s'il a été rallongé par un détour. */
-export type DestinationRoute = LoopRoute & { lengthened: boolean };
+/**
+ * Itinéraire renvoyé par le serveur ; `lengthened` s'il a été rallongé par un détour,
+ * `via` le lieu remarquable par lequel passe ce détour.
+ */
+export type DestinationRoute = LoopRoute & { lengthened: boolean; via: Poi | null };
 
 /**
  * Itinéraire à pied de la position actuelle vers le lieu choisi, rallongé par un détour

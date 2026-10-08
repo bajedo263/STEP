@@ -98,8 +98,8 @@ export function nextRequestedLength(targetM: number, requestedM: number, actualM
 }
 
 /** Boucle la plus proche de la distance visée. */
-export function closestRoute(targetM: number, routes: LoopRoute[]): LoopRoute | null {
-  let best: LoopRoute | null = null;
+export function closestRoute<T extends LoopRoute>(targetM: number, routes: T[]): T | null {
+  let best: T | null = null;
   for (const route of routes) {
     if (!best || Math.abs(route.distanceM - targetM) < Math.abs(best.distanceM - targetM)) {
       best = route;
