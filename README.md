@@ -14,15 +14,16 @@ Le cadrage complet (besoins, architecture, plan) est dans le [document de cadrag
 
 ```bash
 npm install
-cp .env.example .env.local   # puis renseigner l'URL et la clé du projet Supabase
 npx expo start
 ```
+
+L'URL et la clé publique du projet Supabase sont dans `.env`. Pour pointer vers un autre projet (local par exemple), les surcharger dans un `.env.local`, non versionné.
 
 Le podomètre, la localisation en arrière-plan et HealthKit ne fonctionnent pas dans Expo Go : il faudra un *development build* (`npx eas-cli@latest build --profile development`).
 
 ## Base de données
 
-Les migrations sont dans `supabase/migrations`. Avec la [CLI Supabase](https://supabase.com/docs/guides/local-development) :
+Les migrations sont dans `supabase/migrations`. Sans outil, on peut coller leur contenu dans l'éditeur SQL du tableau de bord Supabase, dans l'ordre. Avec la [CLI Supabase](https://supabase.com/docs/guides/local-development) :
 
 ```bash
 npx supabase start          # base locale (Docker requis)
@@ -40,7 +41,8 @@ npm test
 ## Structure
 
 ```
-src/app/          écrans (Expo Router) : accueil, carte, stats, profil
+src/app/          écrans (Expo Router) : connexion, puis onglets accueil, carte, stats, profil
+src/providers/    contexte de session (AuthProvider)
 src/components/   composants partagés
 src/lib/          logique métier (calcul pas → distance, client Supabase)
 supabase/         configuration et migrations de la base
@@ -49,7 +51,7 @@ supabase/         configuration et migrations de la base
 ## Feuille de route du MVP
 
 1. ✅ Initialiser le projet (Expo, Supabase, CI, EAS)
-2. Authentification : email, Apple, Google ; profil
+2. ✅ Connexion par email et profil (Apple et Google à venir)
 3. Pas du jour via HealthKit et Health Connect
 4. Carte Mapbox et géolocalisation
 5. Mode Boucle via OpenRouteService
