@@ -1,0 +1,32 @@
+name: Diagnostic POI
+on:
+  push:
+    branches: ['diag/poi-logs']
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Overpass depuis GitHub
+        run: |
+          Q='[out:json][timeout:20];(nwr["historic"="memorial"](around:300,48.8566,2.3522);nwr["tourism"="artwork"]["name"](around:300,48.8566,2.3522););out center tags 5;'
+          for url in https://overpass-api.de/api/interpreter https://overpass.kumi.systems/api/interpreter https://overpass.private.coffee/api/interpreter; do
+            echo "== $url"
+            curl -sS -m 30 -o /tmp/o.json -w "HTTP %{http_code}\n" -A "STEP (https://github.com/bajedo263/step)" --data-urlencode "data=$Q" "$url" || true
+            head -c 300 /tmp/o.json; echo
+          done
+      - name: Journaux des fonctions Supabase
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          START=$(date -u -d '-3 hours' +%Y-%m-%dT%H:%M:%SZ)
+          END=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          SQL="select timestamp, event_message from function_logs order by timestamp desc limit 60"
+          curl -sS -G "https://api.supabase.com/v1/projects/nkrkxmieqdkugtpsoufc/analytics/endpoints/logs.all" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --data-urlencode "sql=$SQL" --data-urlencode "iso_timestamp_start=$START" --data-urlencode "iso_timestamp_end=$END" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); [print(r.get("timestamp"), r.get("event_message","")[:400]) for r in (d.get("result") or [])] or print(json.dumps(d)[:2000])'
+          SQL2="select timestamp, m.function_id, r.status_code, req.url from function_edge_logs cross join unnest(metadata) as m cross join unnest(m.response) as r cross join unnest(m.request) as req order by timestamp desc limit 40"
+          curl -sS -G "https://api.supabase.com/v1/projects/nkrkxmieqdkugtpsoufc/analytics/endpoints/logs.all" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --data-urlencode "sql=$SQL2" --data-urlencode "iso_timestamp_start=$START" --data-urlencode "iso_timestamp_end=$END" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); [print(r) for r in (d.get("result") or [])] or print(json.dumps(d)[:2000])'
