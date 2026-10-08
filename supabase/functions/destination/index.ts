@@ -3,13 +3,24 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 import {
+  detourWaypoint,
   MAX_DESTINATION_M,
   orsAutocompleteParams,
   orsDirectionsBody,
+  orsViaBody,
   parseDestinationRequest,
   parseOrsPlaces,
+  ROUTE_DETOUR_FACTOR,
 } from '../_shared/destination.ts';
-import { parseOrsResponse } from '../_shared/loop.ts';
+import {
+  closestRoute,
+  isCloseEnough,
+  LOOP_TOLERANCE,
+  MAX_LOOP_ATTEMPTS,
+  nextRequestedLength,
+  parseOrsResponse,
+  type LoopRoute,
+} from '../_shared/loop.ts';
 
 const ORS = 'https://api.openrouteservice.org';
 const NOT_FOUND = 'Aucun itinéraire à pied trouvé vers ce lieu.';
@@ -56,19 +67,46 @@ Deno.serve(async (req) => {
     return json({ places: parseOrsPlaces(await response.json()) });
   }
 
-  const response = await fetch(`${ORS}/v2/directions/foot-walking/geojson`, {
-    method: 'POST',
-    headers: { Authorization: apiKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify(orsDirectionsBody(request.start, request.end)),
-  });
-  if (!response.ok) {
-    console.error('OpenRouteService directions', response.status, await response.text());
-    return json({ error: NOT_FOUND }, response.status === 404 ? 422 : 502);
-  }
-  const route = parseOrsResponse(await response.json());
-  if (!route) return json({ error: NOT_FOUND }, 422);
-  if (route.distanceM > MAX_DESTINATION_M) {
+  const directions = async (body: unknown): Promise<LoopRoute | null> => {
+    const response = await fetch(`${ORS}/v2/directions/foot-walking/geojson`, {
+      method: 'POST',
+      headers: { Authorization: apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      console.error('OpenRouteService directions', response.status, await response.text());
+      return null;
+    }
+    return parseOrsResponse(await response.json());
+  };
+
+  const { start, end, targetM, seed } = request;
+  const direct = await directions(orsDirectionsBody(start, end));
+  if (!direct) return json({ error: NOT_FOUND }, 422);
+  if (direct.distanceM > MAX_DESTINATION_M) {
     return json({ error: 'Ce lieu est trop loin pour y aller à pied (plus de 25 km).' }, 422);
   }
-  return json(route);
+
+  // Le chemin direct suffit (ou dépasse) les pas à faire : on le garde.
+  if (!targetM || direct.distanceM >= targetM * (1 - LOOP_TOLERANCE)) {
+    return json({ ...direct, lengthened: false });
+  }
+
+  // Sinon on rallonge par un point de passage sur le côté, corrigé jusqu'à 3 fois.
+  const side = seed % 2 === 0 ? 1 : -1;
+  const routes: LoopRoute[] = [];
+  let requested = targetM / ROUTE_DETOUR_FACTOR;
+  for (let attempt = 0; attempt < MAX_LOOP_ATTEMPTS; attempt++) {
+    const route = await directions(orsViaBody(start, detourWaypoint(start, end, requested, side), end));
+    if (!route) break;
+    routes.push(route);
+    if (isCloseEnough(targetM, route.distanceM)) break;
+    requested = nextRequestedLength(targetM, requested, route.distanceM);
+  }
+
+  const best = closestRoute(targetM, routes);
+  if (!best || Math.abs(best.distanceM - targetM) >= Math.abs(direct.distanceM - targetM)) {
+    return json({ ...direct, lengthened: false });
+  }
+  return json({ ...best, lengthened: true });
 });

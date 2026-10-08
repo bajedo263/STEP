@@ -158,12 +158,33 @@ export default function MapScreen() {
                   {destination.place.label}
                 </ThemedText>
                 <RouteStats route={destination.route} strideM={strideM} />
+                {destination.route.lengthened ? (
+                  <ThemedText type="small" themeColor="textSecondary">
+                    Itinéraire rallongé par un détour pour finir votre objectif en chemin.
+                  </ThemedText>
+                ) : null}
                 <Button
                   title="Partir"
                   onPress={() =>
                     go({ mode: 'destination', route: destination.route, label: destination.place.label })
                   }
                 />
+                {destination.route.lengthened ? (
+                  <View style={styles.row}>
+                    <Button
+                      title="Autre détour"
+                      variant="secondary"
+                      style={styles.flex}
+                      onPress={() => destination.choose(start, destination.place, goalReached ? null : targetM)}
+                    />
+                    <Button
+                      title="Chemin direct"
+                      variant="secondary"
+                      style={styles.flex}
+                      onPress={() => destination.choose(start, destination.place, null)}
+                    />
+                  </View>
+                ) : null}
                 <Button
                   title="Changer de destination"
                   variant="secondary"
@@ -187,6 +208,11 @@ export default function MapScreen() {
                   autoCorrect={false}
                   returnKeyType="search"
                 />
+                {goalReached ? null : (
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {`Si le lieu est proche, l’itinéraire fera un détour pour atteindre environ ${formatDistance(targetM)}, ce qu’il vous reste pour l’objectif.`}
+                  </ThemedText>
+                )}
                 {destination.status === 'error' ? <ErrorText message={destination.message} /> : null}
                 {search.status === 'loading' ? <ActivityIndicator /> : null}
                 {search.status === 'error' ? <ErrorText message={search.message} /> : null}
@@ -202,7 +228,7 @@ export default function MapScreen() {
                         accessibilityRole="button"
                         onPress={() => {
                           Keyboard.dismiss();
-                          destination.choose(start, place);
+                          destination.choose(start, place, goalReached ? null : targetM);
                         }}
                         style={({ pressed }) => [
                           styles.place,
@@ -313,6 +339,10 @@ const styles = StyleSheet.create({
   },
   flex: {
     flex: 1,
+  },
+  row: {
+    flexDirection: 'row',
+    gap: Spacing.two,
   },
   place: {
     padding: Spacing.three,

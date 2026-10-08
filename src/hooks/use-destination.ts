@@ -55,20 +55,32 @@ export type DestinationRouteState =
   | { status: 'idle' }
   | { status: 'loading'; place: Place }
   | { status: 'error'; place: Place; message: string }
-  | { status: 'ready'; place: Place; route: LoopRoute };
+  | { status: 'ready'; place: Place; route: DestinationRoute };
 
-/** Itinéraire à pied de la position actuelle vers le lieu choisi. */
+/** Itinéraire renvoyé par le serveur ; `lengthened` s'il a été rallongé par un détour. */
+export type DestinationRoute = LoopRoute & { lengthened: boolean };
+
+/**
+ * Itinéraire à pied de la position actuelle vers le lieu choisi, rallongé par un détour
+ * jusqu'à `targetM` quand le chemin direct est trop court (null : chemin direct).
+ */
 export function useDestinationRoute() {
   const [state, setState] = useState<DestinationRouteState>({ status: 'idle' });
 
-  const choose = useCallback(async (start: LatLng, place: Place) => {
+  const choose = useCallback(async (start: LatLng, place: Place, targetM: number | null) => {
     if (!supabase) {
       setState({ status: 'error', place, message: 'Le serveur n’est pas configuré.' });
       return;
     }
     setState({ status: 'loading', place });
-    const { data, error } = await supabase.functions.invoke<LoopRoute>('destination', {
-      body: { action: 'route', start, end: place.coords },
+    const { data, error } = await supabase.functions.invoke<DestinationRoute>('destination', {
+      body: {
+        action: 'route',
+        start,
+        end: place.coords,
+        targetM,
+        seed: Math.floor(Math.random() * 1_000_000),
+      },
     });
     if (error || !data) {
       setState({ status: 'error', place, message: await errorMessage(error) });

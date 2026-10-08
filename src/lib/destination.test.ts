@@ -3,10 +3,12 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
+  detourWaypoint,
   orsAutocompleteParams,
   orsDirectionsBody,
   parseDestinationRequest,
   parseOrsPlaces,
+  straightDistanceM,
 } from '../../supabase/functions/_shared/destination.ts';
 
 const paris = { latitude: 48.85, longitude: 2.35 };
@@ -22,7 +24,12 @@ test('parseDestinationRequest : recherche', () => {
 });
 
 test('parseDestinationRequest : itinéraire', () => {
-  assert.equal(parseDestinationRequest({ action: 'route', start: paris, end: paris }).ok, true);
+  assert.deepEqual(
+    parseDestinationRequest({ action: 'route', start: paris, end: paris, targetM: 40_000, seed: 3.2 }),
+    { ok: true, value: { action: 'route', start: paris, end: paris, targetM: 25_000, seed: 3 } }
+  );
+  const plain = parseDestinationRequest({ action: 'route', start: paris, end: paris });
+  assert.equal(plain.ok && plain.value.action === 'route' && plain.value.targetM, null);
   assert.equal(parseDestinationRequest({ action: 'route', start: paris }).ok, false);
   assert.equal(parseDestinationRequest({ action: 'delete' }).ok, false);
   assert.equal(parseDestinationRequest(null).ok, false);
@@ -58,4 +65,25 @@ test('orsDirectionsBody', () => {
     [2.35, 48.85],
     [2.34, 48.86],
   ]);
+});
+
+test('detourWaypoint allonge le trajet à la longueur voulue', () => {
+  const end = { latitude: 48.859, longitude: 2.35 }; // ~1 km au nord
+  for (const side of [1, -1] as const) {
+    const via = detourWaypoint(paris, end, 3000, side);
+    const length = straightDistanceM(paris, via) + straightDistanceM(via, end);
+    assert.ok(Math.abs(length - 3000) < 1, String(length));
+  }
+  // Les deux côtés sont symétriques par rapport à A–B.
+  const left = detourWaypoint(paris, end, 3000, 1);
+  const right = detourWaypoint(paris, end, 3000, -1);
+  assert.ok(left.longitude < 2.35 && right.longitude > 2.35);
+});
+
+test('detourWaypoint sans écart possible ou au même endroit', () => {
+  const end = { latitude: 48.859, longitude: 2.35 };
+  const via = detourWaypoint(paris, end, 500, 1); // plus court que le direct
+  assert.ok(straightDistanceM(via, { latitude: 48.8545, longitude: 2.35 }) < 1);
+  const same = detourWaypoint(paris, paris, 2000, 1);
+  assert.ok(Math.abs(straightDistanceM(paris, same) - 1000) < 1);
 });
