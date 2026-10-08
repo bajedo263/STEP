@@ -86,6 +86,14 @@ export function overpassQuery(points: LatLng[], radiusM: number): string {
   return `[out:json][timeout:20];\n(\n${selectors}\n);\nout center tags 300;`;
 }
 
+/** Requête Overpass des lieux remarquables dans un cercle de `radiusM` autour de chaque point. */
+export function overpassQueryNear(points: LatLng[], radiusM: number): string {
+  const statements = points.flatMap((point) =>
+    OVERPASS_SELECTORS.map((selector) => `  ${selector}(around:${Math.round(radiusM)},${coordList([point])});`)
+  );
+  return `[out:json][timeout:20];\n(\n${statements.join('\n')}\n);\nout center tags 300;`;
+}
+
 type OverpassElement = {
   type?: unknown;
   id?: unknown;

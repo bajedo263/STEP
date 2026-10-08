@@ -107,3 +107,37 @@ export function closestRoute<T extends LoopRoute>(targetM: number, routes: T[]):
   }
   return best;
 }
+
+const EARTH_RADIUS_M = 6_371_008.8;
+
+/** Point situé à `distanceM` de `from`, dans la direction `bearingDeg` (0 = nord, 90 = est). */
+export function offsetPoint(from: LatLng, distanceM: number, bearingDeg: number): LatLng {
+  const bearing = (bearingDeg * Math.PI) / 180;
+  const dLat = (distanceM * Math.cos(bearing)) / EARTH_RADIUS_M;
+  const dLng =
+    (distanceM * Math.sin(bearing)) / (EARTH_RADIUS_M * Math.cos((from.latitude * Math.PI) / 180));
+  return {
+    latitude: from.latitude + (dLat * 180) / Math.PI,
+    longitude: from.longitude + (dLng * 180) / Math.PI,
+  };
+}
+
+/** Direction de départ tirée de la graine : l'angle d'or donne des boucles bien différentes. */
+export const seedBearing = (seed: number) => (seed * 137.508) % 360;
+
+/**
+ * Les deux sommets d'une boucle triangulaire départ → A → B → départ, équilatérale,
+ * dont le périmètre à vol d'oiseau vaut `lengthM`.
+ */
+export function triangleWaypoints(start: LatLng, lengthM: number, bearingDeg: number): [LatLng, LatLng] {
+  const side = lengthM / 3;
+  return [offsetPoint(start, side, bearingDeg - 30), offsetPoint(start, side, bearingDeg + 30)];
+}
+
+/** Corps de la requête OpenRouteService `foot-walking/geojson` passant par ces points, dans l'ordre. */
+export function orsPathBody(points: LatLng[]) {
+  return {
+    coordinates: points.map((p) => [p.longitude, p.latitude]),
+    instructions: false,
+  };
+}

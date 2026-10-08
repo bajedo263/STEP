@@ -108,3 +108,10 @@ test('nearbyPoi signale le lieu le plus proche à portée', async () => {
   assert.equal(nearbyPoi(pois, street[0]), null);
   assert.equal(nearbyPoi(pois, null), null);
 });
+
+test('overpassQueryNear cherche autour de chaque point', async () => {
+  const { overpassQueryNear } = await import('../../supabase/functions/_shared/pois.ts');
+  const query = overpassQueryNear([street[0], street[2]], 300);
+  assert.match(query, /\(around:300,48\.880000,2\.330000\);/);
+  assert.match(query, /\(around:300,48\.883600,2\.330000\);/);
+});

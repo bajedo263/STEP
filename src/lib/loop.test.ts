@@ -91,3 +91,16 @@ test('formatDuration', () => {
   assert.equal(formatDuration(45 * 60), '45 min');
   assert.equal(formatDuration(65 * 60), '1 h 05');
 });
+
+test('triangleWaypoints dessine une boucle de la bonne longueur', async () => {
+  const { triangleWaypoints, offsetPoint, seedBearing } = await import('../../supabase/functions/_shared/loop.ts');
+  const { distanceM } = await import('../../supabase/functions/_shared/pois.ts');
+  const start = { latitude: 48.85, longitude: 2.35 };
+  const [a, b] = triangleWaypoints(start, 3000, seedBearing(1));
+  const perimeter = distanceM(start, a) + distanceM(a, b) + distanceM(b, start);
+  assert.ok(Math.abs(perimeter - 3000) < 5, String(perimeter));
+  const north = offsetPoint(start, 1000, 0);
+  assert.ok(Math.abs(distanceM(start, north) - 1000) < 1);
+  assert.ok(north.latitude > start.latitude && Math.abs(north.longitude - start.longitude) < 1e-9);
+  assert.notEqual(seedBearing(1), seedBearing(2));
+});
