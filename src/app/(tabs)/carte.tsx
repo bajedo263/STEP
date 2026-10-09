@@ -2,6 +2,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Keyboard,
   KeyboardAvoidingView,
@@ -45,7 +46,7 @@ import { fetchMissingPlaces } from '@/hooks/use-collection';
 import { useCurrentLocation } from '@/hooks/use-current-location';
 import { useDestinationRoute, usePlaceSearch, type Place } from '@/hooks/use-destination';
 import { useLoopRoute } from '@/hooks/use-loop-route';
-import { setPlannedWalk } from '@/hooks/use-planned-walk';
+import type { PlannedWalk } from '@/hooks/use-planned-walk';
 import { useProfile } from '@/hooks/use-profile';
 import { useRoutePois } from '@/hooks/use-route-pois';
 import { useTheme } from '@/hooks/use-theme';
@@ -73,6 +74,7 @@ import { clusterByRegion, FAN_OUT_DELTA, fanOut } from '@/lib/map-declutter';
 import { type Poi } from '@/lib/pois';
 import { rankLabel, seasonEndLabel, seasonName } from '@/lib/season';
 import { strideLengthMeters } from '@/lib/steps';
+import { startWalk, walkInProgress } from '@/providers/walk-provider';
 
 const formatNumber = (value: number) => Math.round(value).toLocaleString('fr-FR');
 
@@ -249,8 +251,16 @@ export default function MapScreen() {
     await loop.refine(start, next);
     setDroppedHandles(null);
   };
-  const go = (walk: Parameters<typeof setPlannedWalk>[0]) => {
-    setPlannedWalk(walk);
+  const go = (walk: PlannedWalk) => {
+    // Un seul trajet à la fois : celui qui est en cours continue en fond de l'app.
+    if (walkInProgress()) {
+      Alert.alert('Un trajet est déjà en cours', 'Terminez-le avant d’en commencer un autre.', [
+        { text: 'Annuler', style: 'cancel' },
+        { text: 'Reprendre le trajet', onPress: () => router.push('/trajet') },
+      ]);
+      return;
+    }
+    startWalk(walk);
     router.push('/trajet');
   };
   const goToPin = (coords: LatLng) => {

@@ -7,7 +7,7 @@ import {
 } from '../../supabase/functions/_shared/pois.ts';
 import type { LatLng } from './loop.ts';
 
-export { POI_KIND_LABELS, type Poi };
+export { distanceM, POI_KIND_LABELS, type Poi };
 
 /** Lieu renvoyé par le serveur : identifiant en base (null si la base n'est pas prête) et visite. */
 export type RoutePoi = Poi & { dbId: number | null; visited: boolean };
@@ -24,6 +24,22 @@ export function nearbyPoi<T extends Poi>(pois: T[], position: LatLng | null | un
     if (distance <= POI_NEARBY_M && (!best || distance < best.distance)) best = { poi, distance };
   }
   return best?.poi ?? null;
+}
+
+/** En marche libre, sans trajet prévu : les lieux les plus proches, du plus près au plus loin. */
+export function nearestPois<T extends Poi>(
+  pois: T[],
+  position: LatLng | null | undefined,
+  count = 3,
+  maxM = 1_000
+): T[] {
+  if (!position) return [];
+  return pois
+    .map((poi) => ({ poi, distance: distanceM(poi.coords, position) }))
+    .filter(({ distance }) => distance <= maxM)
+    .sort((a, b) => a.distance - b.distance)
+    .slice(0, count)
+    .map(({ poi }) => poi);
 }
 
 /** Clé du quartier d'une position, pour recharger les lieux quand on en change. */

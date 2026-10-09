@@ -5,6 +5,7 @@ import { useColorScheme } from 'react-native';
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { onboardedKey, useLocalFlag } from '@/hooks/use-local-flag';
 import { AuthProvider, useAuth } from '@/providers/auth-provider';
+import { WalkHost } from '@/providers/walk-provider';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -27,22 +28,26 @@ function RootNavigator() {
   if (isLoading) return null;
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Protected guard={session !== null && onboarded}>
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen
-          name="trajet"
-          options={{ presentation: 'fullScreenModal', gestureEnabled: false }}
-        />
-        <Stack.Screen name="profil" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="ami" options={{ presentation: 'modal' }} />
-      </Stack.Protected>
-      <Stack.Protected guard={session !== null && !onboarded}>
-        <Stack.Screen name="bienvenue" />
-      </Stack.Protected>
-      <Stack.Protected guard={session === null}>
-        <Stack.Screen name="connexion" />
-      </Stack.Protected>
-    </Stack>
+    <>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Protected guard={session !== null && onboarded}>
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen
+            name="trajet"
+            options={{ presentation: 'fullScreenModal', gestureEnabled: false }}
+          />
+          <Stack.Screen name="profil" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="ami" options={{ presentation: 'modal' }} />
+        </Stack.Protected>
+        <Stack.Protected guard={session !== null && !onboarded}>
+          <Stack.Screen name="bienvenue" />
+        </Stack.Protected>
+        <Stack.Protected guard={session === null}>
+          <Stack.Screen name="connexion" />
+        </Stack.Protected>
+      </Stack>
+      {/* Le trajet en cours continue pendant qu'on consulte le reste de l'app. */}
+      {session !== null && onboarded ? <WalkHost /> : null}
+    </>
   );
 }

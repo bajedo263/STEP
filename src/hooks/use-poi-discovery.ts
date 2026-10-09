@@ -42,6 +42,8 @@ export function usePoiDiscovery(plannedPois: RoutePoi[], position: LatLng | null
 
   const discoveredIds = new Set(discovered.map((poi) => poi.id));
   return {
+    /** Lieux du trajet et des quartiers traversés. */
+    all,
     here,
     /** Vrai si le lieu vient d'être découvert pendant cette marche. */
     hereIsNew: here !== null && discoveredIds.has(here.id),
