@@ -13,9 +13,10 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
-import MapView, { Marker, Polygon, Polyline, type LatLng, type Region } from 'react-native-maps';
+import MapView, { Marker, Polygon, type LatLng, type Region } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { PoiMarker, RouteLine } from '@/components/map-route';
 import { PoiSheet } from '@/components/poi-sheet';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -28,10 +29,8 @@ import {
   ConquestMineColor,
   ConquestOtherColor,
   MaxContentWidth,
-  PoiColor,
   Radius,
   Spacing,
-  VisitedPoiColor,
 } from '@/constants/theme';
 import { useConquestCells, useMyConquestCount } from '@/hooks/use-conquest';
 import { useCurrentLocation } from '@/hooks/use-current-location';
@@ -178,19 +177,13 @@ export default function MapScreen() {
             ))
           : null}
         {route ? (
-          <Polyline
-            coordinates={route.coordinates}
-            strokeColor={theme.tint}
-            strokeWidth={5}
-            lineJoin="round"
-            lineCap="round"
-          />
+          <RouteLine coordinates={route.coordinates} />
         ) : null}
         {pois.map((poi) => (
-          <Marker
-            key={poi.id}
-            coordinate={poi.coords}
-            pinColor={poi.visited ? VisitedPoiColor : PoiColor}
+          <PoiMarker
+            key={`${poi.id}-${poi.visited}`}
+            poi={poi}
+            visited={poi.visited}
             onPress={() => setSelectedId(poi.id)}
           />
         ))}
