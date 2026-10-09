@@ -31,3 +31,4 @@ jobs:
           console.log('total', total);
           TS
           node --experimental-strip-types /tmp/try.mts
+# relance 1791532170
