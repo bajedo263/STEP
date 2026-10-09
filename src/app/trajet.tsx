@@ -1,9 +1,9 @@
 import { useKeepAwake } from 'expo-keep-awake';
 import { router } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, BackHandler, Linking, Pressable, StyleSheet, View } from 'react-native';
 import MapView, { Marker, Polygon, Polyline } from 'react-native-maps';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PoiSheet, PoiStory } from '@/components/poi-sheet';
 import { ThemedText } from '@/components/themed-text';
@@ -16,6 +16,7 @@ import { useProfile } from '@/hooks/use-profile';
 import { useRoutePois } from '@/hooks/use-route-pois';
 import { useTheme } from '@/hooks/use-theme';
 import { useTodaySteps } from '@/hooks/use-today-steps';
+import { useHeading } from '@/hooks/use-heading';
 import { useElapsedSeconds, useWalkTracker } from '@/hooks/use-walk-tracker';
 import { capturedCells, cellKey, cellPolygon, cellsAlongTrack, conquestUnlocked } from '@/lib/conquest';
 import { formatDistance } from '@/lib/daily-progress';
@@ -146,6 +147,22 @@ function ActiveWalk({
   const shown = [...pois, ...discovery.discovered.filter((d) => !pois.some((p) => p.id === d.id))];
   const start = plannedRoute ? plannedRoute.coordinates[0] : tracker.track.points[0];
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const insets = useSafeAreaInsets();
+  const mapRef = useRef<MapView>(null);
+  // Boussole : la carte pivote avec le téléphone pour montrer droit devant ce qui est en face.
+  const heading = useHeading();
+  const [followHeading, setFollowHeading] = useState(true);
+  const position = tracker.track.points.at(-1) ?? null;
+  const latitude = position?.latitude;
+  const longitude = position?.longitude;
+
+  useEffect(() => {
+    if (!followHeading || latitude === undefined || longitude === undefined) return;
+    mapRef.current?.animateCamera(
+      { center: { latitude, longitude }, heading: heading ?? 0 },
+      { duration: 400 }
+    );
+  }, [followHeading, heading, latitude, longitude]);
   const selected = shown.find((poi) => poi.id === selectedId) ?? null;
   // Cases prises en marchant (le départ ne compte pas, pour ne pas montrer l'adresse).
   const cells = useMemo(
@@ -181,11 +198,15 @@ function ActiveWalk({
     <View style={styles.container}>
       {start ? (
         <MapView
+          ref={mapRef}
           style={StyleSheet.absoluteFill}
           initialRegion={{ ...start, latitudeDelta: 0.01, longitudeDelta: 0.01 }}
           showsUserLocation
-          followsUserLocation
+          followsUserLocation={!followHeading}
+          showsCompass={false}
           showsPointsOfInterests={false}
+          // Déplacer la carte à la main suspend le suivi du cap.
+          onPanDrag={() => setFollowHeading(false)}
           onPress={(event) => {
             if (event.nativeEvent.action !== 'marker-press') setSelectedId(null);
           }}>
@@ -216,6 +237,19 @@ function ActiveWalk({
               strokeWidth={0}
             />
           ))}
+          {position && heading !== null ? (
+            <Marker
+              coordinate={position}
+              anchor={{ x: 0.5, y: 0.5 }}
+              flat
+              rotation={heading}
+              tracksViewChanges={false}
+              zIndex={10}>
+              <View style={styles.headingBox}>
+                <View style={[styles.headingCone, { borderBottomColor: `${theme.tint}AA` }]} />
+              </View>
+            </Marker>
+          ) : null}
           {tracker.track.points.length > 1 ? (
             <Polyline
               coordinates={tracker.track.points}
@@ -231,6 +265,21 @@ function ActiveWalk({
           <ThemedText themeColor="textSecondary">Recherche du signal GPS…</ThemedText>
         </ThemedView>
       )}
+
+      {start ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => setFollowHeading((current) => !current)}
+          style={({ pressed }) => [
+            styles.compassButton,
+            { top: insets.top + Spacing.three, backgroundColor: theme.background },
+            pressed && styles.pressed,
+          ]}>
+          <ThemedText type="smallBold" style={{ color: theme.tint }}>
+            {followHeading ? 'Nord en haut' : 'Suivre mon cap'}
+          </ThemedText>
+        </Pressable>
+      ) : null}
 
       <SafeAreaView edges={['bottom', 'left', 'right']} style={styles.overlay}>
         {discovery.here ? (
@@ -389,6 +438,37 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     width: '100%',
     maxWidth: MaxContentWidth,
+  },
+  pressed: {
+    opacity: 0.6,
+  },
+  compassButton: {
+    position: 'absolute',
+    right: Spacing.three,
+    zIndex: 1,
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    borderRadius: 999,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  headingBox: {
+    width: 64,
+    height: 64,
+    alignItems: 'center',
+  },
+  // Cône de direction : un triangle qui part du point bleu vers l'avant du téléphone.
+  headingCone: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 14,
+    borderRightWidth: 14,
+    borderBottomWidth: 30,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
   },
   overlay: {
     flex: 1,
