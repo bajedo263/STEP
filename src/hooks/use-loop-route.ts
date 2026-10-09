@@ -11,8 +11,11 @@ export type LoopState =
   | { status: 'error'; message: string }
   | { status: 'ready'; route: LoopResult };
 
-/** Boucle renvoyée par le serveur, avec les lieux remarquables par lesquels elle passe. */
-export type LoopResult = LoopRoute & { via: Poi[] };
+/**
+ * Boucle renvoyée par le serveur, avec les lieux remarquables par lesquels elle passe et,
+ * si elle a été imposée, la liste des points de passage demandés.
+ */
+export type LoopResult = LoopRoute & { via: Poi[]; through?: LatLng[] };
 
 const GENERIC_ERROR = 'Le calcul de la boucle n’a pas abouti. Réessayez.';
 
@@ -41,6 +44,8 @@ async function errorMessage(error: unknown): Promise<string> {
 /** Demande au serveur une boucle à pied ; chaque nouvel appel propose un tracé différent. */
 export function useLoopRoute() {
   const [state, setState] = useState<LoopState>({ status: 'idle' });
+  const [refining, setRefining] = useState(false);
+  const [refineError, setRefineError] = useState<string | null>(null);
 
   const generate = useCallback(async (start: LatLng, distanceM: number) => {
     if (!supabase) {
@@ -75,10 +80,30 @@ export function useLoopRoute() {
       setState({ status: 'error', message: await errorMessage(error) });
       return;
     }
-    setState({ status: 'ready', route: { ...data, via: data.via ?? [] } });
+    setState({ status: 'ready', route: { ...data, via: data.via ?? [], through } });
   }, []);
 
-  const clear = useCallback(() => setState({ status: 'idle' }), []);
+  /**
+   * Redessine la boucle affichée pour qu'elle passe par `through`, sans la masquer pendant le
+   * calcul ; en cas d'échec, l'ancienne boucle reste.
+   */
+  const refine = useCallback(async (start: LatLng, through: LatLng[]) => {
+    if (!supabase) return;
+    setRefining(true);
+    setRefineError(null);
+    const { data, error } = await invokeLoop({ start, through, distanceM: 5_000, seed: 0 });
+    setRefining(false);
+    if (error || !data) {
+      setRefineError(await errorMessage(error));
+      return;
+    }
+    setState({ status: 'ready', route: { ...data, via: data.via ?? [], through } });
+  }, []);
 
-  return { ...state, generate, generateThrough, clear };
+  const clear = useCallback(() => {
+    setRefineError(null);
+    setState({ status: 'idle' });
+  }, []);
+
+  return { ...state, generate, generateThrough, refine, refining, refineError, clear };
 }
