@@ -2,7 +2,7 @@ import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 
 import { localDay } from '@/lib/daily-progress';
-import { weekStart, type DailyStepsRow } from '@/lib/stats';
+import { historyStart, type HistoryRow } from '@/lib/stats';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/auth-provider';
 
@@ -29,9 +29,17 @@ export type PoiZoneStats = {
 export type StatsData =
   | { status: 'loading' }
   | { status: 'error' }
-  | { status: 'ready'; days: DailyStepsRow[]; walks: WalkRow[]; poiZones: PoiZoneStats[] };
+  | {
+      status: 'ready';
+      /** Jours enregistrés sur les 12 derniers mois. */
+      days: HistoryRow[];
+      walks: WalkRow[];
+      /** Trajet le plus long jamais enregistré. */
+      longestWalk: WalkRow | null;
+      poiZones: PoiZoneStats[];
+    };
 
-/** Pas des 7 derniers jours et derniers trajets, relus à chaque retour sur l'écran. */
+/** Historique des pas, derniers trajets et records, relus à chaque retour sur l'écran. */
 export function useStats(): StatsData {
   const { session } = useAuth();
   const userId = session?.user.id;
@@ -44,19 +52,27 @@ export function useStats(): StatsData {
       let cancelled = false;
 
       (async () => {
-        const [days, walks, poiZones] = await Promise.all([
+        const [days, walks, longestWalk, poiZones] = await Promise.all([
           client
             .from('daily_steps')
-            .select('day, steps')
+            .select('day, steps, distance_m, calories_kcal')
             .eq('user_id', userId)
-            .gte('day', localDay(weekStart(new Date())))
-            .returns<DailyStepsRow[]>(),
+            .gte('day', localDay(historyStart(new Date())))
+            .returns<HistoryRow[]>(),
           client
             .from('walks')
             .select('id, mode, started_at, ended_at, steps, distance_m, calories_kcal')
             .eq('user_id', userId)
             .order('started_at', { ascending: false })
             .limit(10)
+            .returns<WalkRow[]>(),
+          client
+            .from('walks')
+            .select('id, mode, started_at, ended_at, steps, distance_m, calories_kcal')
+            .eq('user_id', userId)
+            .not('distance_m', 'is', null)
+            .order('distance_m', { ascending: false })
+            .limit(1)
             .returns<WalkRow[]>(),
           client.rpc('poi_zone_stats'),
         ]);
@@ -69,6 +85,7 @@ export function useStats(): StatsData {
           status: 'ready',
           days: days.data ?? [],
           walks: walks.data ?? [],
+          longestWalk: longestWalk.data?.[0] ?? null,
           // Les statistiques de lieux sont un plus : leur absence n'empêche pas le reste.
           poiZones: poiZones.error ? [] : ((poiZones.data as PoiZoneStats[] | null) ?? []),
         });
