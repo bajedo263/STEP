@@ -44,8 +44,8 @@ jobs:
           select owner_id, count(*) from public.conquest_cells group by 1;
           select user_id, taken_by, count(*) as pertes from public.conquest_losses group by 1, 2;
           -- Une partie des cases de Bob a 6 jours (bientôt libérées), une autre 8 jours (déjà libres).
-          update public.conquest_cells set captured_at = now() - interval '6 days' where owner_id = '22222222-2222-2222-2222-222222222222' and x < 265440;
-          update public.conquest_cells set captured_at = now() - interval '8 days' where owner_id = '22222222-2222-2222-2222-222222222222' and x < 265420;
+          update public.conquest_cells set captured_at = now() - interval '6 days' where owner_id = '22222222-2222-2222-2222-222222222222' and x < 265502;
+          update public.conquest_cells set captured_at = now() - interval '8 days' where owner_id = '22222222-2222-2222-2222-222222222222' and x < 265496;
           set role authenticated;
           select set_config('test.uid', '22222222-2222-2222-2222-222222222222', false);
           select kind, count(*) from public.my_territory_alerts() group by 1 order by 1;
