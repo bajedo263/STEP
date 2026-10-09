@@ -14,7 +14,6 @@ import { formatDuration } from '@/lib/loop';
 import {
   bestDay,
   buildWeek,
-  goalStreaks,
   historyTotals,
   monthTotals,
   weekTotals,
@@ -23,6 +22,7 @@ import {
   type WeekDay,
 } from '@/lib/stats';
 import { DEFAULT_DAILY_GOAL } from '@/lib/steps';
+import { protectedStreak } from '@/lib/streak';
 
 const formatNumber = (value: number) => Math.round(value).toLocaleString('fr-FR');
 
@@ -143,13 +143,21 @@ type HistoryProps = { days: HistoryRow[]; todaySteps: number | null };
 /** Série de jours consécutifs à l'objectif, la meilleure et ce qu'il reste pour la garder. */
 function StreakCard({ days, todaySteps, goal }: HistoryProps & { goal: number }) {
   const theme = useTheme();
-  const streak = goalStreaks(days, new Date(), todaySteps, goal);
-  const message =
+  // Même série protégée que sur l'accueil : un gel sauve un jour raté.
+  const streak = protectedStreak(days, new Date(), todaySteps, goal);
+  const message = [
     streak.current === 0
       ? `Atteignez ${formatNumber(goal)} pas aujourd’hui pour lancer une série.`
       : streak.todayDone
         ? 'Objectif du jour atteint, la série continue demain.'
-        : `Atteignez l’objectif aujourd’hui pour passer à ${streak.current + 1} jours.`;
+        : `Atteignez l’objectif aujourd’hui pour passer à ${streak.current + 1} jours.`,
+    `${streak.freezes} gel${streak.freezes > 1 ? 's' : ''} en réserve.`,
+    streak.frozenDays.length > 0
+      ? `${streak.frozenDays.length} jour${streak.frozenDays.length > 1 ? 's' : ''} sauvé${streak.frozenDays.length > 1 ? 's' : ''} par un gel.`
+      : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <ThemedView type="backgroundElement" style={styles.card}>
