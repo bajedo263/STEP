@@ -15,8 +15,9 @@ import { usePoiDiscovery } from '@/hooks/use-poi-discovery';
 import { useProfile } from '@/hooks/use-profile';
 import { useRoutePois } from '@/hooks/use-route-pois';
 import { useTheme } from '@/hooks/use-theme';
+import { useTodaySteps } from '@/hooks/use-today-steps';
 import { useElapsedSeconds, useWalkTracker } from '@/hooks/use-walk-tracker';
-import { capturedCells, cellKey, cellPolygon, cellsAlongTrack } from '@/lib/conquest';
+import { capturedCells, cellKey, cellPolygon, cellsAlongTrack, conquestUnlocked } from '@/lib/conquest';
 import { formatDistance } from '@/lib/daily-progress';
 import { formatDuration } from '@/lib/loop';
 import { mergePois, POI_KIND_LABELS, type RoutePoi } from '@/lib/pois';
@@ -35,6 +36,10 @@ const NO_POIS: RoutePoi[] = [];
 export default function WalkScreen() {
   const [summary, setSummary] = useState<WalkSummary | null>(null);
   const [saveState, setSaveState] = useState<SaveState>('saving');
+  // La Conquête s'active dès 10 000 pas dans la journée, y compris en cours de trajet.
+  const today = useTodaySteps();
+  const conquering = conquestUnlocked(today.status === 'ready' ? today.steps : null);
+  const [conquered, setConquered] = useState(false);
   const { session } = useAuth();
   const profile = useProfile();
   const planned = usePlannedWalk();
@@ -49,7 +54,7 @@ export default function WalkScreen() {
 
   const strideM = strideLengthMeters(profile?.height_cm ?? 170, profile?.sex ?? 'unspecified');
 
-  const save = async (walk: WalkSummary) => {
+  const save = async (walk: WalkSummary, conquers: boolean) => {
     if (walk.distanceM < MIN_WALK_M) {
       setSaveState('too-short');
       return;
@@ -60,7 +65,13 @@ export default function WalkScreen() {
       return;
     }
     setSaveState('saving');
-    const { error } = await supabase.from('walks').insert(walkRow(userId, walk));
+    const row = walkRow(userId, walk, conquers);
+    let { error } = await supabase.from('walks').insert(row);
+    if (error?.code === 'PGRST204') {
+      // Base pas encore migrée (colonne conquers absente) : on enregistre sans.
+      const { conquers: _ignored, ...legacyRow } = row;
+      ({ error } = await supabase.from('walks').insert(legacyRow));
+    }
     setSaveState(error ? 'error' : 'saved');
   };
 
@@ -76,7 +87,8 @@ export default function WalkScreen() {
       endedAt: new Date(),
     });
     setSummary(walk);
-    save(walk);
+    setConquered(conquering);
+    save(walk, conquering);
   };
 
   if (summary) {
@@ -85,8 +97,8 @@ export default function WalkScreen() {
         summary={summary}
         saveState={saveState}
         discovered={discovery.discovered}
-        cellCount={capturedCells(tracker.track.points).length}
-        onRetry={() => save(summary)}
+        cellCount={conquered ? capturedCells(tracker.track.points).length : 0}
+        onRetry={() => save(summary, conquered)}
       />
     );
   }
@@ -98,6 +110,7 @@ export default function WalkScreen() {
       plannedPois={plannedPois}
       discovery={discovery}
       estimatedSteps={tracker.steps ?? tracker.track.distanceM / strideM}
+      conquering={conquering}
       onFinish={() =>
         Alert.alert('Terminer le trajet ?', undefined, [
           { text: 'Continuer', style: 'cancel' },
@@ -114,6 +127,7 @@ function ActiveWalk({
   plannedPois: pois,
   discovery,
   estimatedSteps,
+  conquering,
   onFinish,
 }: {
   tracker: ReturnType<typeof useWalkTracker>;
@@ -121,6 +135,7 @@ function ActiveWalk({
   plannedPois: RoutePoi[];
   discovery: ReturnType<typeof usePoiDiscovery>;
   estimatedSteps: number;
+  conquering: boolean;
   onFinish: () => void;
 }) {
   useKeepAwake();
@@ -133,7 +148,10 @@ function ActiveWalk({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = shown.find((poi) => poi.id === selectedId) ?? null;
   // Cases prises en marchant (le départ ne compte pas, pour ne pas montrer l'adresse).
-  const cells = useMemo(() => cellsAlongTrack(tracker.track.points), [tracker.track.points]);
+  const cells = useMemo(
+    () => (conquering ? cellsAlongTrack(tracker.track.points) : []),
+    [conquering, tracker.track.points]
+  );
 
   // Bouton retour d'Android : on propose de terminer plutôt que de perdre le trajet.
   const failed = tracker.status === 'denied' || tracker.status === 'error';

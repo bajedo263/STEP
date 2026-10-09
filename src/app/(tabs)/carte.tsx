@@ -1,16 +1,19 @@
 import { router } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Keyboard,
   KeyboardAvoidingView,
+  LayoutAnimation,
   Linking,
+  PanResponder,
   Platform,
   Pressable,
   StyleSheet,
   View,
 } from 'react-native';
-import MapView, { Marker, Polygon, Polyline, type Region } from 'react-native-maps';
+import MapView, { Marker, Polygon, Polyline, type LatLng, type Region } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PoiSheet } from '@/components/poi-sheet';
@@ -31,28 +34,41 @@ import {
 } from '@/constants/theme';
 import { useConquestCells, useMyConquestCount } from '@/hooks/use-conquest';
 import { useCurrentLocation } from '@/hooks/use-current-location';
-import { useDestinationRoute, usePlaceSearch } from '@/hooks/use-destination';
+import { useDestinationRoute, usePlaceSearch, type Place } from '@/hooks/use-destination';
 import { useLoopRoute } from '@/hooks/use-loop-route';
 import { setPlannedWalk } from '@/hooks/use-planned-walk';
 import { useProfile } from '@/hooks/use-profile';
 import { useRoutePois } from '@/hooks/use-route-pois';
 import { useTheme } from '@/hooks/use-theme';
 import { useTodaySteps } from '@/hooks/use-today-steps';
-import { cellKey, cellPolygon, cellRangeOf } from '@/lib/conquest';
+import {
+  CONQUEST_UNLOCK_STEPS,
+  cellKey,
+  cellPolygon,
+  cellRangeOf,
+  conquestUnlocked,
+} from '@/lib/conquest';
 import { dailyProgress, formatDistance } from '@/lib/daily-progress';
-import { formatDuration, loopTargetDistance, regionForCoordinates, type LoopRoute } from '@/lib/loop';
+import {
+  formatDuration,
+  loopTargetDistance,
+  regionForCoordinates,
+  type LoopRoute,
+} from '@/lib/loop';
 import { type Poi } from '@/lib/pois';
 import { strideLengthMeters } from '@/lib/steps';
 
 const formatNumber = (value: number) => Math.round(value).toLocaleString('fr-FR');
 
-type MapMode = 'loop' | 'destination' | 'conquest';
+type MapMode = 'loop' | 'destination';
 
 const MODE_OPTIONS: { value: MapMode; label: string }[] = [
   { value: 'loop', label: 'Boucle' },
   { value: 'destination', label: 'Destination' },
-  { value: 'conquest', label: 'Conquête' },
 ];
+
+/** Glissé vertical à partir duquel le panneau se replie ou se déplie. */
+const SWIPE_THRESHOLD = 40;
 
 export default function MapScreen() {
   const theme = useTheme();
@@ -86,9 +102,13 @@ export default function MapScreen() {
 
   const loopRoute = loop.status === 'ready' ? loop.route : null;
   const destinationRoute = destination.status === 'ready' ? destination.route : null;
-  const route = mode === 'loop' ? loopRoute : mode === 'destination' ? destinationRoute : null;
+  const route = mode === 'loop' ? loopRoute : destinationRoute;
   const [region, setRegion] = useState<Region | null>(null);
-  const cells = useConquestCells(mode === 'conquest' && region ? cellRangeOf(region) : null);
+  // La Conquête n'est pas un mode : elle s'active seule à 10 000 pas dans la journée.
+  const conquestActive = conquestUnlocked(today.status === 'ready' ? today.steps : null);
+  const cells = useConquestCells(conquestActive && region ? cellRangeOf(region) : null);
+  const [pin, setPin] = useState<LatLng | null>(null);
+  const panel = useCollapsiblePanel();
   const pois = useRoutePois(route?.coordinates ?? null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = pois.find((poi) => poi.id === selectedId) ?? null;
@@ -108,6 +128,25 @@ export default function MapScreen() {
     setPlannedWalk(walk);
     router.push('/trajet');
   };
+  const goToPin = (coords: LatLng) => {
+    const place: Place = {
+      id: `pin/${coords.latitude.toFixed(5)},${coords.longitude.toFixed(5)}`,
+      label: 'Point choisi sur la carte',
+      coords,
+    };
+    setPin(null);
+    setMode('destination');
+    destination.choose(start, place, goalReached ? null : targetM);
+  };
+  const collapsedLabel = pin
+    ? 'Point choisi sur la carte'
+    : mode === 'loop'
+      ? route
+        ? `Boucle de ${formatDistance(route.distanceM)}`
+        : 'Boucle'
+      : destination.status === 'idle'
+        ? 'Destination'
+        : destination.place.label;
 
   return (
     <View style={styles.container}>
@@ -121,8 +160,13 @@ export default function MapScreen() {
         onPress={(event) => {
           if (event.nativeEvent.action !== 'marker-press') setSelectedId(null);
         }}
+        onLongPress={(event) => {
+          setPin(event.nativeEvent.coordinate);
+          setSelectedId(null);
+          panel.expand();
+        }}
         onRegionChangeComplete={setRegion}>
-        {mode === 'conquest'
+        {conquestActive
           ? cells.map((cell) => (
               <Polygon
                 key={cellKey(cell)}
@@ -150,10 +194,19 @@ export default function MapScreen() {
           />
         ))}
         {mode === 'loop' && loopRoute ? (
-          <Marker coordinate={loopRoute.coordinates[0]} title="Départ et arrivée" pinColor={theme.tint} />
+          <Marker
+            coordinate={loopRoute.coordinates[0]}
+            title="Départ et arrivée"
+            pinColor={theme.tint}
+          />
         ) : null}
+        {pin ? <Marker coordinate={pin} title="Point choisi" pinColor={theme.tint} /> : null}
         {mode === 'destination' && destination.status !== 'idle' ? (
-          <Marker coordinate={destination.place.coords} title={destination.place.label} pinColor={theme.tint} />
+          <Marker
+            coordinate={destination.place.coords}
+            title={destination.place.label}
+            pinColor={theme.tint}
+          />
         ) : null}
       </MapView>
 
@@ -165,149 +218,197 @@ export default function MapScreen() {
           style={[
             styles.overlayInner,
             // Sur iPhone, la barre d'onglets flotte au-dessus de la carte : on remonte le panneau.
-            Platform.OS === 'ios' && { paddingBottom: insets.bottom + BottomTabInset + Spacing.two },
+            Platform.OS === 'ios' && {
+              paddingBottom: insets.bottom + BottomTabInset + Spacing.two,
+            },
           ]}>
-          <ThemedView style={[styles.card, { borderColor: theme.backgroundSelected }]}>
-            <SegmentedChoice options={MODE_OPTIONS} value={mode} onChange={setMode} />
+          <Animated.View
+            {...panel.panHandlers}
+            style={[styles.cardWrapper, { transform: [{ translateY: panel.translateY }] }]}>
+            <ThemedView style={[styles.card, { borderColor: theme.backgroundSelected }]}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={panel.collapsed ? 'Déplier le panneau' : 'Replier le panneau'}
+                hitSlop={Spacing.three}
+                onPress={panel.toggle}
+                style={styles.grabberArea}>
+                <View style={[styles.grabber, { backgroundColor: theme.backgroundSelected }]} />
+              </Pressable>
 
-            {mode === 'conquest' ? (
-              <ConquestCard
-                zoomedOut={region !== null && cellRangeOf(region) === null}
-                onStart={() => go({ mode: 'free' })}
-              />
-            ) : mode === 'loop' ? (
-              route ? (
+              {panel.collapsed ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={panel.expand}
+                  style={styles.collapsedRow}>
+                  <ThemedText type="smallBold" numberOfLines={1} style={styles.flex}>
+                    {collapsedLabel}
+                  </ThemedText>
+                  {conquestActive ? (
+                    <View style={[styles.swatch, { backgroundColor: ConquestMineColor }]} />
+                  ) : null}
+                </Pressable>
+              ) : pin ? (
                 <>
-                  <RouteStats route={route} strideM={strideM} />
-                  <PoiSummary pois={pois} via={loopRoute?.via ?? []} />
-                  <Button title="Partir" onPress={() => go({ mode: 'loop', route, pois })} />
-                  <Button
-                    title="Autre boucle"
-                    variant="secondary"
-                    onPress={() => loop.generate(start, targetM)}
-                  />
+                  <ThemedText type="smallBold">Point choisi sur la carte</ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    Passer en mode Destination pour y aller à pied ?
+                  </ThemedText>
+                  <Button title="Itinéraire jusqu’ici" onPress={() => goToPin(pin)} />
+                  <Button title="Annuler" variant="secondary" onPress={() => setPin(null)} />
                 </>
               ) : (
                 <>
-                  <ThemedText themeColor="textSecondary">
-                    {goalReached
-                      ? `Objectif atteint ! Une boucle bonus de ${formatDistance(targetM)} ?`
-                      : `Une boucle d’environ ${formatDistance(targetM)} depuis votre position pour finir votre objectif.`}
-                  </ThemedText>
-                  {loop.status === 'error' ? <ErrorText message={loop.message} /> : null}
-                  <Button
-                    title="Proposer une boucle"
-                    loading={loop.status === 'loading'}
-                    onPress={() => loop.generate(start, targetM)}
+                  <SegmentedChoice options={MODE_OPTIONS} value={mode} onChange={setMode} />
+                  <ConquestStatus
+                    active={conquestActive}
+                    steps={today.status === 'ready' ? today.steps : null}
+                    zoomedOut={region !== null && cellRangeOf(region) === null}
                   />
-                  <Button
-                    title="Marcher librement"
-                    variant="secondary"
-                    onPress={() => go({ mode: 'free' })}
-                  />
-                </>
-              )
-            ) : destination.status === 'ready' ? (
-              <>
-                <ThemedText type="smallBold" numberOfLines={2}>
-                  {destination.place.label}
-                </ThemedText>
-                <RouteStats route={destination.route} strideM={strideM} />
-                {destination.route.lengthened && !destination.route.via ? (
-                  <ThemedText type="small" themeColor="textSecondary">
-                    Itinéraire rallongé par un détour pour finir votre objectif en chemin.
-                  </ThemedText>
-                ) : null}
-                <PoiSummary
-                  pois={pois}
-                  via={destination.route.via ? [destination.route.via] : []}
-                />
-                <Button
-                  title="Partir"
-                  onPress={() =>
-                    go({
-                      mode: 'destination',
-                      route: destination.route,
-                      label: destination.place.label,
-                      pois,
-                    })
-                  }
-                />
-                {destination.route.lengthened ? (
-                  <View style={styles.row}>
-                    <Button
-                      title="Autre détour"
-                      variant="secondary"
-                      style={styles.flex}
-                      onPress={() => destination.choose(start, destination.place, goalReached ? null : targetM)}
-                    />
-                    <Button
-                      title="Chemin direct"
-                      variant="secondary"
-                      style={styles.flex}
-                      onPress={() => destination.choose(start, destination.place, null)}
-                    />
-                  </View>
-                ) : null}
-                <Button
-                  title="Changer de destination"
-                  variant="secondary"
-                  onPress={destination.clear}
-                />
-              </>
-            ) : destination.status === 'loading' ? (
-              <View style={styles.loadingRow}>
-                <ActivityIndicator />
-                <ThemedText themeColor="textSecondary" numberOfLines={1} style={styles.flex}>
-                  Itinéraire vers {destination.place.label}…
-                </ThemedText>
-              </View>
-            ) : (
-              <>
-                <TextField
-                  label="Où allez-vous ?"
-                  placeholder="Une adresse, un lieu, un parc…"
-                  value={query}
-                  onChangeText={setQuery}
-                  autoCorrect={false}
-                  returnKeyType="search"
-                />
-                {goalReached ? null : (
-                  <ThemedText type="small" themeColor="textSecondary">
-                    {`Si le lieu est proche, l’itinéraire fera un détour pour atteindre environ ${formatDistance(targetM)}, ce qu’il vous reste pour l’objectif.`}
-                  </ThemedText>
-                )}
-                {destination.status === 'error' ? <ErrorText message={destination.message} /> : null}
-                {search.status === 'loading' ? <ActivityIndicator /> : null}
-                {search.status === 'error' ? <ErrorText message={search.message} /> : null}
-                {search.status === 'ready' && search.places.length === 0 ? (
-                  <ThemedText type="small" themeColor="textSecondary">
-                    Aucun lieu trouvé.
-                  </ThemedText>
-                ) : null}
-                {search.status === 'ready'
-                  ? search.places.slice(0, 5).map((place) => (
-                      <Pressable
-                        key={place.id}
-                        accessibilityRole="button"
-                        onPress={() => {
-                          Keyboard.dismiss();
-                          destination.choose(start, place, goalReached ? null : targetM);
-                        }}
-                        style={({ pressed }) => [
-                          styles.place,
-                          { backgroundColor: theme.backgroundElement },
-                          pressed && styles.pressed,
-                        ]}>
-                        <ThemedText type="small" numberOfLines={2}>
-                          {place.label}
+
+                  {mode === 'loop' ? (
+                    route ? (
+                      <>
+                        <RouteStats route={route} strideM={strideM} />
+                        <PoiSummary pois={pois} via={loopRoute?.via ?? []} />
+                        <Button title="Partir" onPress={() => go({ mode: 'loop', route, pois })} />
+                        <Button
+                          title="Autre boucle"
+                          variant="secondary"
+                          onPress={() => loop.generate(start, targetM)}
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <ThemedText themeColor="textSecondary">
+                          {goalReached
+                            ? `Objectif atteint ! Une boucle bonus de ${formatDistance(targetM)} ?`
+                            : `Une boucle d’environ ${formatDistance(targetM)} depuis votre position pour finir votre objectif.`}
                         </ThemedText>
-                      </Pressable>
-                    ))
-                  : null}
-              </>
-            )}
-          </ThemedView>
+                        {loop.status === 'error' ? <ErrorText message={loop.message} /> : null}
+                        <Button
+                          title="Proposer une boucle"
+                          loading={loop.status === 'loading'}
+                          onPress={() => loop.generate(start, targetM)}
+                        />
+                        <Button
+                          title="Marcher librement"
+                          variant="secondary"
+                          onPress={() => go({ mode: 'free' })}
+                        />
+                      </>
+                    )
+                  ) : destination.status === 'ready' ? (
+                    <>
+                      <ThemedText type="smallBold" numberOfLines={2}>
+                        {destination.place.label}
+                      </ThemedText>
+                      <RouteStats route={destination.route} strideM={strideM} />
+                      {destination.route.lengthened && !destination.route.via ? (
+                        <ThemedText type="small" themeColor="textSecondary">
+                          Itinéraire rallongé par un détour pour finir votre objectif en chemin.
+                        </ThemedText>
+                      ) : null}
+                      <PoiSummary
+                        pois={pois}
+                        via={destination.route.via ? [destination.route.via] : []}
+                      />
+                      <Button
+                        title="Partir"
+                        onPress={() =>
+                          go({
+                            mode: 'destination',
+                            route: destination.route,
+                            label: destination.place.label,
+                            pois,
+                          })
+                        }
+                      />
+                      {destination.route.lengthened ? (
+                        <View style={styles.row}>
+                          <Button
+                            title="Autre détour"
+                            variant="secondary"
+                            style={styles.flex}
+                            onPress={() =>
+                              destination.choose(
+                                start,
+                                destination.place,
+                                goalReached ? null : targetM
+                              )
+                            }
+                          />
+                          <Button
+                            title="Chemin direct"
+                            variant="secondary"
+                            style={styles.flex}
+                            onPress={() => destination.choose(start, destination.place, null)}
+                          />
+                        </View>
+                      ) : null}
+                      <Button
+                        title="Changer de destination"
+                        variant="secondary"
+                        onPress={destination.clear}
+                      />
+                    </>
+                  ) : destination.status === 'loading' ? (
+                    <View style={styles.loadingRow}>
+                      <ActivityIndicator />
+                      <ThemedText themeColor="textSecondary" numberOfLines={1} style={styles.flex}>
+                        Itinéraire vers {destination.place.label}…
+                      </ThemedText>
+                    </View>
+                  ) : (
+                    <>
+                      <TextField
+                        label="Où allez-vous ?"
+                        placeholder="Une adresse, un lieu, un parc…"
+                        value={query}
+                        onChangeText={setQuery}
+                        autoCorrect={false}
+                        returnKeyType="search"
+                      />
+                      {goalReached ? null : (
+                        <ThemedText type="small" themeColor="textSecondary">
+                          {`Si le lieu est proche, l’itinéraire fera un détour pour atteindre environ ${formatDistance(targetM)}, ce qu’il vous reste pour l’objectif.`}
+                        </ThemedText>
+                      )}
+                      {destination.status === 'error' ? (
+                        <ErrorText message={destination.message} />
+                      ) : null}
+                      {search.status === 'loading' ? <ActivityIndicator /> : null}
+                      {search.status === 'error' ? <ErrorText message={search.message} /> : null}
+                      {search.status === 'ready' && search.places.length === 0 ? (
+                        <ThemedText type="small" themeColor="textSecondary">
+                          Aucun lieu trouvé.
+                        </ThemedText>
+                      ) : null}
+                      {search.status === 'ready'
+                        ? search.places.slice(0, 5).map((place) => (
+                            <Pressable
+                              key={place.id}
+                              accessibilityRole="button"
+                              onPress={() => {
+                                Keyboard.dismiss();
+                                destination.choose(start, place, goalReached ? null : targetM);
+                              }}
+                              style={({ pressed }) => [
+                                styles.place,
+                                { backgroundColor: theme.backgroundElement },
+                                pressed && styles.pressed,
+                              ]}>
+                              <ThemedText type="small" numberOfLines={2}>
+                                {place.label}
+                              </ThemedText>
+                            </Pressable>
+                          ))
+                        : null}
+                    </>
+                  )}
+                </>
+              )}
+            </ThemedView>
+          </Animated.View>
         </SafeAreaView>
       </KeyboardAvoidingView>
 
@@ -318,30 +419,93 @@ export default function MapScreen() {
   );
 }
 
-/** Mode Conquête : ses cases, et comment en prendre d'autres. */
-function ConquestCard({ zoomedOut, onStart }: { zoomedOut: boolean; onStart: () => void }) {
+/**
+ * Panneau du bas repliable : glisser vers le bas le réduit pour mieux voir la carte,
+ * glisser vers le haut (ou toucher la poignée) le rouvre.
+ */
+function useCollapsiblePanel() {
+  const [collapsed, setCollapsed] = useState(false);
+  const [translateY] = useState(() => new Animated.Value(0));
+
+  const change = useCallback(
+    (next: boolean) => {
+      if (next === collapsed) return;
+      if (next) Keyboard.dismiss();
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setCollapsed(next);
+    },
+    [collapsed]
+  );
+
+  // Recréé seulement quand le panneau change d'état, jamais pendant un glissé.
+  const panHandlers = useMemo(() => {
+    const settle = () => Animated.spring(translateY, { toValue: 0, useNativeDriver: true }).start();
+    return PanResponder.create({
+      // On ne prend la main que sur un geste nettement vertical : les boutons restent utilisables.
+      onMoveShouldSetPanResponderCapture: (_, { dx, dy }) =>
+        Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx) * 1.5,
+      onPanResponderMove: (_, { dy }) => {
+        // Le panneau suit le doigt vers le bas quand il est ouvert, un peu vers le haut sinon.
+        translateY.setValue(
+          collapsed ? Math.max(-SWIPE_THRESHOLD, Math.min(0, dy)) : Math.max(0, dy)
+        );
+      },
+      onPanResponderRelease: (_, { dy, vy }) => {
+        if (dy > SWIPE_THRESHOLD || vy > 0.8) change(true);
+        else if (dy < -SWIPE_THRESHOLD / 2 || vy < -0.8) change(false);
+        settle();
+      },
+      onPanResponderTerminate: settle,
+    }).panHandlers;
+  }, [collapsed, change, translateY]);
+
+  return {
+    collapsed,
+    translateY,
+    panHandlers,
+    expand: () => change(false),
+    toggle: () => change(!collapsed),
+  };
+}
+
+/** Conquête : active à 10 000 pas, sinon ce qu'il reste à faire pour la débloquer. */
+function ConquestStatus({
+  active,
+  steps,
+  zoomedOut,
+}: {
+  active: boolean;
+  steps: number | null;
+  zoomedOut: boolean;
+}) {
   const count = useMyConquestCount();
+  if (!active) {
+    return (
+      <ThemedText type="small" themeColor="textSecondary">
+        {steps === null
+          ? `Conquête : se débloque à ${formatNumber(CONQUEST_UNLOCK_STEPS)} pas dans la journée.`
+          : `Conquête : encore ${formatNumber(CONQUEST_UNLOCK_STEPS - steps)} pas pour colorer la carte à votre nom.`}
+      </ThemedText>
+    );
+  }
   return (
-    <>
+    <View style={styles.conquest}>
       <View style={styles.legend}>
         <View style={[styles.swatch, { backgroundColor: ConquestMineColor }]} />
         <ThemedText type="small" style={styles.flex}>
-          {count === null
-            ? 'Vos cases'
-            : count === 0
-              ? 'Aucune case à vous pour l’instant'
-              : `${formatNumber(count)} case${count > 1 ? 's' : ''} à vous`}
+          {count === null || count === 0
+            ? 'Conquête active'
+            : `Conquête active : ${formatNumber(count)} case${count > 1 ? 's' : ''} à vous`}
         </ThemedText>
         <View style={[styles.swatch, { backgroundColor: ConquestOtherColor }]} />
-        <ThemedText type="small">Autres marcheurs</ThemedText>
+        <ThemedText type="small">Autres</ThemedText>
       </View>
       <ThemedText type="small" themeColor="textSecondary">
         {zoomedOut
           ? 'Rapprochez la carte pour voir les cases.'
-          : 'Chaque trajet enregistré colore les cases traversées à votre nom pendant 7 jours. Repassez sur celles des autres pour les reprendre. Le début et la fin du trajet ne comptent pas, pour ne pas montrer votre adresse.'}
+          : 'Vos trajets du jour colorent les cases traversées pendant 7 jours, sauf le début et la fin.'}
       </ThemedText>
-      <Button title="Partir conquérir" onPress={onStart} />
-    </>
+    </View>
   );
 }
 
@@ -464,6 +628,29 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.6,
+  },
+  cardWrapper: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+  },
+  grabberArea: {
+    alignSelf: 'center',
+    paddingVertical: Spacing.one,
+    marginTop: -Spacing.three,
+    marginBottom: -Spacing.two,
+  },
+  grabber: {
+    width: 40,
+    height: 5,
+    borderRadius: 3,
+  },
+  collapsedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  conquest: {
+    gap: Spacing.one,
   },
   card: {
     alignSelf: 'stretch',
