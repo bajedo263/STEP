@@ -23,6 +23,7 @@ import { useProfile } from '@/hooks/use-profile';
 import { useStepHistory } from '@/hooks/use-step-history';
 import { useTodaySteps } from '@/hooks/use-today-steps';
 import { useTheme } from '@/hooks/use-theme';
+import { useTrophies } from '@/hooks/use-trophies';
 import {
   profileToForm,
   validateProfileForm,
@@ -30,6 +31,7 @@ import {
   type ProfileErrors,
   type ProfileForm,
 } from '@/lib/profile';
+import { TROPHY_COLORS, type Trophy } from '@/lib/season-rewards';
 import type { Sex } from '@/lib/steps';
 import { protectedStreak } from '@/lib/streak';
 import { supabase } from '@/lib/supabase';
@@ -52,6 +54,7 @@ export default function ProfileScreen() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ text: string; isError: boolean } | null>(null);
   const adaptive = useAdaptiveSince() !== null;
+  const trophies = useTrophies();
 
   useEffect(() => {
     if (!supabase || !userId) return;
@@ -122,7 +125,11 @@ export default function ProfileScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
             <View style={styles.header}>
-              <Avatar name={form.username || session?.user.email || '?'} size={72} />
+              <Avatar
+                name={form.username || session?.user.email || '?'}
+                size={72}
+                ring={trophies?.frame ? TROPHY_COLORS[trophies.frame] : null}
+              />
               <View style={styles.flex}>
                 <ThemedText type="subtitle" numberOfLines={1}>
                   {form.username || 'Marcheur'}
@@ -134,6 +141,7 @@ export default function ProfileScreen() {
             </View>
 
             <Highlights />
+            {trophies ? <TrophiesCard trophies={trophies.trophies} /> : null}
 
             <ThemedText type="smallBold" style={styles.section}>
               Réglages
@@ -267,6 +275,33 @@ function ReminderSettings() {
   );
 }
 
+/** Trophées de fin de saison de Conquête et de ligue. */
+function TrophiesCard({ trophies }: { trophies: Trophy[] }) {
+  return (
+    <ThemedView type="backgroundElement" style={styles.trophies}>
+      <ThemedText type="smallBold">Trophées</ThemedText>
+      {trophies.length === 0 ? (
+        <ThemedText type="small" themeColor="textSecondary">
+          Finissez une saison de Conquête avec des cases, ou montez en ligue Argent : vos trophées
+          apparaîtront ici. Un podium encadre votre avatar d’or, d’argent ou de bronze.
+        </ThemedText>
+      ) : (
+        trophies.map((trophy) => (
+          <View key={trophy.id} style={styles.header}>
+            <ThemedText type="subtitle">{trophy.emoji}</ThemedText>
+            <View style={styles.flex}>
+              <ThemedText type="smallBold">{trophy.title}</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                {trophy.description}
+              </ThemedText>
+            </View>
+          </View>
+        ))
+      )}
+    </ThemedView>
+  );
+}
+
 /** Ce dont on peut être fier : badges, meilleure série, pas du jour. */
 function Highlights() {
   const profile = useProfile();
@@ -312,6 +347,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.three,
+  },
+  trophies: {
+    gap: Spacing.two,
+    padding: Spacing.three,
+    borderRadius: Radius.tile,
   },
   highlights: {
     flexDirection: 'row',

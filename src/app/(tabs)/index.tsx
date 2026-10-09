@@ -29,9 +29,11 @@ import { useStepHistory } from '@/hooks/use-step-history';
 import { useSyncDailySteps } from '@/hooks/use-sync-daily-steps';
 import { useTheme } from '@/hooks/use-theme';
 import { useTodaySteps } from '@/hooks/use-today-steps';
+import { useTrophies } from '@/hooks/use-trophies';
 import { useWeeklyReview, type WeeklyExtras } from '@/hooks/use-weekly-review';
 import { adaptiveLabel, suggestAdaptive } from '@/lib/adaptive-goal';
 import { nextBadges } from '@/lib/badges';
+import { TROPHY_COLORS } from '@/lib/season-rewards';
 import { cheersLabel } from '@/lib/duels';
 import type { Challenge } from '@/lib/challenge';
 import { CONQUEST_UNLOCK_STEPS, conquestUnlocked, territoryAlertLabel } from '@/lib/conquest';
@@ -81,6 +83,7 @@ export default function HomeScreen() {
   const challenge = useDailyChallenge(steps, goal);
   const territory = useTerritoryAlerts();
   const cheers = useCheers();
+  const trophies = useTrophies();
   const cheersText = cheersLabel(cheers.names);
   const badges = useBadges(steps, rule);
   const nextBadge = useMemo(() => (badges ? (nextBadges(badges)[0] ?? null) : null), [badges]);
@@ -128,7 +131,11 @@ export default function HomeScreen() {
               accessibilityLabel="Profil et réglages"
               hitSlop={Spacing.two}
               onPress={() => router.push('/profil')}>
-              <Avatar name={profile?.username || session?.user.email || '?'} size={36} />
+              <Avatar
+                name={profile?.username || session?.user.email || '?'}
+                size={36}
+                ring={trophies?.frame ? TROPHY_COLORS[trophies.frame] : null}
+              />
             </Pressable>
           </View>
 
