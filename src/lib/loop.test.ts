@@ -9,6 +9,7 @@ import {
   orsRoundTripBody,
   parseLoopRequest,
   parseOrsResponse,
+  parseThroughPoints,
 } from '../../supabase/functions/_shared/loop.ts';
 import { formatDuration, loopTargetDistance, regionForCoordinates } from './loop.ts';
 
@@ -103,4 +104,26 @@ test('triangleWaypoints dessine une boucle de la bonne longueur', async () => {
   assert.ok(Math.abs(distanceM(start, north) - 1000) < 1);
   assert.ok(north.latitude > start.latitude && Math.abs(north.longitude - start.longitude) < 1e-9);
   assert.notEqual(seedBearing(1), seedBearing(2));
+});
+
+test('parseThroughPoints garde les points valides et proches du départ', () => {
+  const start = { latitude: 48.85, longitude: 2.35 };
+  assert.equal(parseThroughPoints({}, start), null);
+  assert.equal(parseThroughPoints({ through: [] }, start), null);
+  const points = parseThroughPoints(
+    {
+      through: [
+        { latitude: 48.851, longitude: 2.351 },
+        { latitude: 'x', longitude: 2 },
+        { latitude: 48.95, longitude: 2.35 }, // ~11 km
+        { latitude: 48.852, longitude: 2.352 },
+        { latitude: 48.853, longitude: 2.353 },
+        { latitude: 48.854, longitude: 2.354 },
+        { latitude: 48.855, longitude: 2.355 },
+      ],
+    },
+    start
+  );
+  assert.equal(points?.length, 4);
+  assert.deepEqual(points?.[0], { latitude: 48.851, longitude: 2.351 });
 });
