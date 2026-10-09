@@ -25,6 +25,7 @@ import {
 } from '@/constants/theme';
 import { useConquestSeason, useMyConquestCount } from '@/hooks/use-conquest';
 import { useFriends } from '@/hooks/use-friends';
+import { useLeague } from '@/hooks/use-league';
 import { useProfile } from '@/hooks/use-profile';
 import { useTheme } from '@/hooks/use-theme';
 import { useTodaySteps } from '@/hooks/use-today-steps';
@@ -42,6 +43,14 @@ import {
   seasonRanking,
   type SeasonRow,
 } from '@/lib/season';
+import {
+  leagueChangeLabel,
+  leagueStatusLabel,
+  leagueZone,
+  stepsToOvertake,
+  tierName,
+  type LeagueRow,
+} from '@/lib/league';
 import { useAuth } from '@/providers/auth-provider';
 
 const formatNumber = (value: number) => Math.round(value).toLocaleString('fr-FR');
@@ -52,6 +61,7 @@ export default function FriendsScreen() {
   const today = useTodaySteps();
   const myCells = useMyConquestCount();
   const season = useConquestSeason();
+  const league = useLeague();
   const friends = useFriends();
   const [username, setUsername] = useState('');
   const [adding, setAdding] = useState(false);
@@ -184,6 +194,8 @@ export default function FriendsScreen() {
                 ) : null}
               </ThemedView>
             ) : null}
+
+            {league ? <LeagueCard rows={league} /> : null}
 
             {season && friends.status === 'ready' ? (
               <SeasonCard
@@ -323,6 +335,61 @@ function SeasonCard({ season, ranking }: { season: SeasonRow; ranking: ReturnTyp
           {`${seasonName(new Date(season.last_season_start))} : vous avez fini ${ordinal(season.last_rank)} sur ${lastPlayers}, avec ${formatNumber(season.last_cells)} case${season.last_cells > 1 ? 's' : ''}.`}
         </ThemedText>
       ) : null}
+    </ThemedView>
+  );
+}
+
+/** Ligue de la semaine : le groupe classé aux pas, zones de montée et de descente. */
+function LeagueCard({ rows }: { rows: LeagueRow[] }) {
+  const theme = useTheme();
+  const me = rows.find((row) => row.is_me);
+  if (!me) return null;
+  const change = leagueChangeLabel(me);
+  const overtake = stepsToOvertake(rows);
+  // Les 10 premiers, et sa propre place si elle est plus loin.
+  const shown = rows.filter((row) => row.rank <= 10 || row.is_me);
+  return (
+    <ThemedView type="backgroundElement" style={styles.card}>
+      <View>
+        <ThemedText type="smallBold">{tierName(me.tier)}</ThemedText>
+        <ThemedText type="small" themeColor="textSecondary">
+          Classement aux pas de la semaine, jusqu’à dimanche soir.
+        </ThemedText>
+      </View>
+      {change ? <ThemedText type="smallBold">{change}</ThemedText> : null}
+      <ThemedText type="small">{`Vous : ${me.rank}${me.rank === 1 ? 'er' : 'e'} sur ${me.players}. ${leagueStatusLabel(me)}`}</ThemedText>
+      {overtake ? (
+        <ThemedText type="small" themeColor="textSecondary">
+          {`${formatNumber(overtake)} pas pour gagner une place.`}
+        </ThemedText>
+      ) : null}
+      {rows.length > 1
+        ? shown.map((row) => {
+            const zone = leagueZone(row);
+            return (
+              <View
+                key={row.user_id}
+                style={[styles.rankingRow, row.is_me && { backgroundColor: theme.backgroundSelected }]}>
+                <ThemedText
+                  type="smallBold"
+                  style={[
+                    styles.rank,
+                    zone === 'promote' && { color: theme.success },
+                    zone === 'demote' && { color: theme.danger },
+                  ]}>
+                  {row.rank}
+                </ThemedText>
+                <ThemedText
+                  numberOfLines={1}
+                  type={row.is_me ? 'smallBold' : 'small'}
+                  style={styles.flex}>
+                  {`${row.username ?? 'Marcheur'}${row.is_me ? ' (vous)' : ''}`}
+                </ThemedText>
+                <ThemedText type="smallBold">{`${formatNumber(row.steps)} pas`}</ThemedText>
+              </View>
+            );
+          })
+        : null}
     </ThemedView>
   );
 }
