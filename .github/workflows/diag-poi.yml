@@ -6,13 +6,20 @@ jobs:
   diag:
     runs-on: ubuntu-latest
     steps:
-      - name: Journaux des fonctions Supabase
+      - name: État des lieux en base (lecture seule)
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
           q() { python3 -c 'import json,sys; print(json.dumps({"query": sys.argv[1]}))' "$1" | curl -sS -X POST "https://api.supabase.com/v1/projects/nkrkxmieqdkugtpsoufc/database/query" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data-binary @- ; echo; }
-          q "select table_name, column_name, data_type from information_schema.columns where table_schema='public' and table_name in ('pois','poi_visits') order by table_name, ordinal_position"
-          q "select count(*) from public.pois"
-          q "select to_regclass('supabase_migrations.schema_migrations') as t"
-          q "select version, name from supabase_migrations.schema_migrations"
-          q "select count(*) as walks from public.walks"
+          q "select to_regclass('public.poi_zones') as zones_table"
+          q "select count(*) zones, sum(poi_count) pois, min(fetched_at), max(fetched_at) from public.poi_zones"
+          q "select x, y, poi_count, fetched_at from public.poi_zones order by fetched_at desc limit 40"
+          q "select count(*) total, count(zone_x) with_zone from public.pois"
+          q "select count(*) from public.poi_visits"
+          q "select id, mode, started_at, distance_m from public.walks order by started_at desc limit 5"
+      - name: Temps de réponse Overpass (quartier Paris 7e)
+        run: |
+          Q='[out:json][timeout:25];(nwr["historic"](48.848,2.30,48.862,2.32);nwr["tourism"~"museum|attraction|artwork|viewpoint"](48.848,2.30,48.862,2.32););out center tags 3000;'
+          for u in https://overpass-api.de/api/interpreter https://z.overpass-api.de/api/interpreter https://lz4.overpass-api.de/api/interpreter https://maps.mail.ru/osm/tools/overpass/api/interpreter; do
+            curl -sS -o /tmp/o.json -w "$u %{http_code} %{time_total}s %{size_download}B\n" -m 30 --data-urlencode "data=$Q" "$u" || echo "$u échec"
+          done
