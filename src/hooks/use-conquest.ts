@@ -2,6 +2,7 @@ import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 
 import type { Cell, ConquestCell, cellRangeOf } from '@/lib/conquest';
+import type { SeasonRow } from '@/lib/season';
 import { supabase } from '@/lib/supabase';
 
 type CellRange = NonNullable<ReturnType<typeof cellRangeOf>>;
@@ -78,4 +79,26 @@ export function useTerritoryAlerts(): TerritoryAlerts | null {
     }, [])
   );
   return alerts;
+}
+
+/**
+ * Saison de Conquête en cours, mon rang et la saison passée, relus à chaque retour sur
+ * l'écran ; null tant qu'ils ne sont pas connus ou si la migration Saisons n'est pas appliquée.
+ */
+export function useConquestSeason(): SeasonRow | null {
+  const [season, setSeason] = useState<SeasonRow | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      if (!supabase) return;
+      let cancelled = false;
+      supabase.rpc('my_conquest_season').then(({ data, error }) => {
+        const row = (data as SeasonRow[] | null)?.[0];
+        if (!cancelled && !error && row) setSeason(row);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }, [])
+  );
+  return season;
 }

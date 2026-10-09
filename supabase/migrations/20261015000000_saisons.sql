@@ -83,9 +83,12 @@ begin
     return;
   end if;
 
+  -- Ne comptent que les cases encore valables au dernier jour de la saison.
   select count(distinct c.owner_id) into v_players
   from public.conquest_cells c
-  where c.captured_at >= v_start and c.captured_at < v_end;
+  where c.captured_at >= v_start
+    and c.captured_at < v_end
+    and c.captured_at > v_end - interval '7 days';
 
   insert into public.conquest_seasons (season_start, players) values (v_start, v_players);
 
