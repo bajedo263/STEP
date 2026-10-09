@@ -198,14 +198,14 @@ function distanceToSegmentM(p: LatLng, a: LatLng, b: LatLng): number {
  * Garde les lieux à moins de `corridorM` du tracé, dans l'ordre où on les croise,
  * en limitant leur nombre aux plus intéressants.
  */
-export function poisAlongPath(
-  pois: Poi[],
+export function poisAlongPath<T extends Poi>(
+  pois: T[],
   path: LatLng[],
   corridorM = ROUTE_CORRIDOR_M,
   max = MAX_ROUTE_POIS
-): Poi[] {
+): T[] {
   if (path.length === 0) return [];
-  const located: { poi: Poi; along: number }[] = [];
+  const located: { poi: T; along: number }[] = [];
   for (const poi of pois) {
     let best = Infinity;
     let along = 0;
@@ -241,4 +241,70 @@ export function bestPoiNear(pois: Poi[], target: LatLng, radiusM: number): Poi |
     }
   }
   return best?.poi ?? null;
+}
+
+// Quartiers : tuiles cartographiques au zoom 15 (environ 800 m de côté à Paris).
+// Le nombre de lieux d'un quartier est fixé une fois pour toutes quand on le charge.
+export const ZONE_ZOOM = 15;
+
+export type Zone = { x: number; y: number };
+
+export function zoneOf(point: LatLng): Zone {
+  const n = 2 ** ZONE_ZOOM;
+  const lat = (point.latitude * Math.PI) / 180;
+  return {
+    x: Math.floor(((point.longitude + 180) / 360) * n),
+    y: Math.floor(((1 - Math.log(Math.tan(lat) + 1 / Math.cos(lat)) / Math.PI) / 2) * n),
+  };
+}
+
+export type Bbox = { south: number; west: number; north: number; east: number };
+
+export function zoneBbox({ x, y }: Zone): Bbox {
+  const n = 2 ** ZONE_ZOOM;
+  const lng = (tx: number) => (tx / n) * 360 - 180;
+  const lat = (ty: number) => (Math.atan(Math.sinh(Math.PI * (1 - (2 * ty) / n))) * 180) / Math.PI;
+  return { south: lat(y + 1), west: lng(x), north: lat(y), east: lng(x + 1) };
+}
+
+export const zoneKey = ({ x, y }: Zone) => `${x}/${y}`;
+
+/** Quartiers traversés par un tracé (et ceux qui touchent son couloir). */
+export function zonesAlongPath(path: LatLng[]): Zone[] {
+  const zones = new Map<string, Zone>();
+  for (const point of samplePath(path, 50, 5_000)) {
+    for (const dLat of [-0.0003, 0, 0.0003]) {
+      for (const dLng of [-0.0005, 0, 0.0005]) {
+        const zone = zoneOf({ latitude: point.latitude + dLat, longitude: point.longitude + dLng });
+        zones.set(zoneKey(zone), zone);
+      }
+    }
+  }
+  return [...zones.values()];
+}
+
+/** Le quartier du point et ses 8 voisins. */
+export function zonesAround(point: LatLng): Zone[] {
+  const { x, y } = zoneOf(point);
+  const zones: Zone[] = [];
+  for (const dx of [-1, 0, 1]) for (const dy of [-1, 0, 1]) zones.push({ x: x + dx, y: y + dy });
+  return zones;
+}
+
+/** Requête Overpass de tous les lieux remarquables d'un rectangle (pour remplir un quartier). */
+export function overpassQueryBbox({ south, west, north, east }: Bbox): string {
+  const box = `(${south.toFixed(6)},${west.toFixed(6)},${north.toFixed(6)},${east.toFixed(6)})`;
+  const selectors = OVERPASS_SELECTORS.map((selector) => `  ${selector}${box};`).join('\n');
+  return `[out:json][timeout:25];\n(\n${selectors}\n);\nout center tags 3000;`;
+}
+
+/** Rectangle englobant des quartiers. */
+export function zonesBbox(zones: Zone[]): Bbox {
+  const boxes = zones.map(zoneBbox);
+  return {
+    south: Math.min(...boxes.map((b) => b.south)),
+    west: Math.min(...boxes.map((b) => b.west)),
+    north: Math.max(...boxes.map((b) => b.north)),
+    east: Math.max(...boxes.map((b) => b.east)),
+  };
 }

@@ -1,12 +1,12 @@
 import { useSyncExternalStore } from 'react';
 
 import type { LoopRoute } from '@/lib/loop';
-import type { Poi } from '@/lib/pois';
+import type { RoutePoi } from '@/lib/pois';
 
 /** Trajet préparé sur la carte, transmis à l'écran de suivi. */
 export type PlannedWalk =
-  | { mode: 'loop'; route: LoopRoute; pois: Poi[] }
-  | { mode: 'destination'; route: LoopRoute; label: string; pois: Poi[] }
+  | { mode: 'loop'; route: LoopRoute; pois: RoutePoi[] }
+  | { mode: 'destination'; route: LoopRoute; label: string; pois: RoutePoi[] }
   | { mode: 'free' };
 
 let planned: PlannedWalk = { mode: 'free' };

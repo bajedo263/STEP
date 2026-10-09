@@ -8,14 +8,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
-import { MaxContentWidth, PoiColor, Spacing } from '@/constants/theme';
+import { MaxContentWidth, PoiColor, Spacing, VisitedPoiColor } from '@/constants/theme';
 import { usePlannedWalk } from '@/hooks/use-planned-walk';
+import { usePoiDiscovery } from '@/hooks/use-poi-discovery';
 import { useProfile } from '@/hooks/use-profile';
 import { useTheme } from '@/hooks/use-theme';
 import { useElapsedSeconds, useWalkTracker } from '@/hooks/use-walk-tracker';
 import { formatDistance } from '@/lib/daily-progress';
 import { formatDuration } from '@/lib/loop';
-import { nearbyPoi, POI_KIND_LABELS, type Poi } from '@/lib/pois';
+import { POI_KIND_LABELS, type RoutePoi } from '@/lib/pois';
 import { strideLengthMeters } from '@/lib/steps';
 import { supabase } from '@/lib/supabase';
 import { formatElapsed } from '@/lib/track';
@@ -26,6 +27,8 @@ const formatNumber = (value: number) => Math.round(value).toLocaleString('fr-FR'
 
 type SaveState = 'saving' | 'saved' | 'error' | 'too-short';
 
+const NO_POIS: RoutePoi[] = [];
+
 export default function WalkScreen() {
   const [summary, setSummary] = useState<WalkSummary | null>(null);
   const [saveState, setSaveState] = useState<SaveState>('saving');
@@ -33,6 +36,10 @@ export default function WalkScreen() {
   const profile = useProfile();
   const planned = usePlannedWalk();
   const tracker = useWalkTracker();
+  const discovery = usePoiDiscovery(
+    planned.mode === 'free' ? NO_POIS : planned.pois,
+    summary ? null : tracker.track.points.at(-1)
+  );
 
   const strideM = strideLengthMeters(profile?.height_cm ?? 170, profile?.sex ?? 'unspecified');
 
@@ -67,13 +74,21 @@ export default function WalkScreen() {
   };
 
   if (summary) {
-    return <WalkDone summary={summary} saveState={saveState} onRetry={() => save(summary)} />;
+    return (
+      <WalkDone
+        summary={summary}
+        saveState={saveState}
+        discovered={discovery.discovered}
+        onRetry={() => save(summary)}
+      />
+    );
   }
 
   return (
     <ActiveWalk
       tracker={tracker}
       planned={planned}
+      discovery={discovery}
       estimatedSteps={tracker.steps ?? tracker.track.distanceM / strideM}
       onFinish={() =>
         Alert.alert('Terminer le trajet ?', undefined, [
@@ -88,11 +103,13 @@ export default function WalkScreen() {
 function ActiveWalk({
   tracker,
   planned,
+  discovery,
   estimatedSteps,
   onFinish,
 }: {
   tracker: ReturnType<typeof useWalkTracker>;
   planned: ReturnType<typeof usePlannedWalk>;
+  discovery: ReturnType<typeof usePoiDiscovery>;
   estimatedSteps: number;
   onFinish: () => void;
 }) {
@@ -100,8 +117,9 @@ function ActiveWalk({
   const theme = useTheme();
   const elapsed = useElapsedSeconds(tracker.startedAt, true);
   const plannedRoute = planned.mode === 'free' ? null : planned.route;
-  const pois = planned.mode === 'free' ? [] : planned.pois;
-  const here = nearbyPoi(pois, tracker.track.points.at(-1));
+  const pois = planned.mode === 'free' ? NO_POIS : planned.pois;
+  // Lieux du trajet prévu, plus ceux découverts en chemin hors du trajet.
+  const shown = [...pois, ...discovery.discovered.filter((d) => !pois.some((p) => p.id === d.id))];
   const start = plannedRoute ? plannedRoute.coordinates[0] : tracker.track.points[0];
 
   // Bouton retour d'Android : on propose de terminer plutôt que de perdre le trajet.
@@ -148,13 +166,13 @@ function ActiveWalk({
           {planned.mode === 'destination' ? (
             <Marker coordinate={planned.route.coordinates.at(-1)!} title={planned.label} pinColor={theme.tint} />
           ) : null}
-          {pois.map((poi) => (
+          {shown.map((poi) => (
             <Marker
               key={poi.id}
               coordinate={poi.coords}
               title={poi.title}
               description={poi.description ?? POI_KIND_LABELS[poi.kind]}
-              pinColor={PoiColor}
+              pinColor={discovery.isVisited(poi) ? VisitedPoiColor : PoiColor}
             />
           ))}
           {tracker.track.points.length > 1 ? (
@@ -174,7 +192,14 @@ function ActiveWalk({
       )}
 
       <SafeAreaView edges={['bottom', 'left', 'right']} style={styles.overlay}>
-        {here ? <PoiBanner poi={here} /> : null}
+        {discovery.here ? (
+          <PoiBanner
+            poi={discovery.here}
+            status={
+              discovery.hereIsNew ? 'new' : discovery.isVisited(discovery.here) ? 'visited' : 'here'
+            }
+          />
+        ) : null}
         <ThemedView style={styles.card}>
           <ThemedText type="title" style={styles.centered}>
             {formatElapsed(elapsed)}
@@ -200,12 +225,18 @@ function ActiveWalk({
 }
 
 /** Le lieu devant lequel on passe : c'est pour lui que le trajet passe par là. */
-function PoiBanner({ poi }: { poi: Poi }) {
+function PoiBanner({ poi, status }: { poi: RoutePoi; status: 'new' | 'visited' | 'here' }) {
   const theme = useTheme();
+  const color = status === 'here' ? PoiColor : VisitedPoiColor;
+  const heading = {
+    new: 'Nouveau lieu découvert !',
+    visited: 'Déjà découvert',
+    here: 'À voir ici',
+  }[status];
   return (
-    <ThemedView style={[styles.card, styles.banner, { borderColor: PoiColor }]}>
-      <ThemedText type="small" style={{ color: PoiColor }}>
-        {`À voir ici · ${POI_KIND_LABELS[poi.kind]}`}
+    <ThemedView style={[styles.card, styles.banner, { borderColor: color }]}>
+      <ThemedText type="small" style={{ color }}>
+        {`${heading} · ${POI_KIND_LABELS[poi.kind]}`}
       </ThemedText>
       <ThemedText type="smallBold">{poi.title}</ThemedText>
       {poi.description ? <ThemedText type="small">{poi.description}</ThemedText> : null}
@@ -223,10 +254,12 @@ function PoiBanner({ poi }: { poi: Poi }) {
 function WalkDone({
   summary,
   saveState,
+  discovered,
   onRetry,
 }: {
   summary: WalkSummary;
   saveState: SaveState;
+  discovered: RoutePoi[];
   onRetry: () => void;
 }) {
   const theme = useTheme();
@@ -250,6 +283,13 @@ function WalkDone({
           <Stat value={formatDuration(seconds)} label="de marche" />
           <Stat value={`${formatNumber(summary.calories)} kcal`} label="dépensées" />
         </View>
+        {discovered.length > 0 ? (
+          <ThemedText style={styles.centered}>
+            {discovered.length === 1
+              ? `1 lieu découvert : ${discovered[0].title}`
+              : `${discovered.length} lieux découverts : ${discovered.map((poi) => poi.title).join(', ')}`}
+          </ThemedText>
+        ) : null}
         <ThemedText
           type="small"
           style={[styles.centered, saveState === 'error' && { color: theme.danger }]}

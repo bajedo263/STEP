@@ -16,10 +16,20 @@ export type WalkRow = {
   calories_kcal: number | null;
 };
 
+/** Lieux vus sur le total d'un quartier (tuile) où l'utilisateur a marché. */
+export type PoiZoneStats = {
+  zone_x: number;
+  zone_y: number;
+  total: number;
+  visited: number;
+  /** Nom du lieu le plus remarquable du quartier, pour le reconnaître. */
+  label: string | null;
+};
+
 export type StatsData =
   | { status: 'loading' }
   | { status: 'error' }
-  | { status: 'ready'; days: DailyStepsRow[]; walks: WalkRow[] };
+  | { status: 'ready'; days: DailyStepsRow[]; walks: WalkRow[]; poiZones: PoiZoneStats[] };
 
 /** Pas des 7 derniers jours et derniers trajets, relus à chaque retour sur l'écran. */
 export function useStats(): StatsData {
@@ -34,7 +44,7 @@ export function useStats(): StatsData {
       let cancelled = false;
 
       (async () => {
-        const [days, walks] = await Promise.all([
+        const [days, walks, poiZones] = await Promise.all([
           client
             .from('daily_steps')
             .select('day, steps')
@@ -48,13 +58,20 @@ export function useStats(): StatsData {
             .order('started_at', { ascending: false })
             .limit(10)
             .returns<WalkRow[]>(),
+          client.rpc('poi_zone_stats'),
         ]);
         if (cancelled) return;
         if (days.error || walks.error) {
           setState((current) => (current.status === 'ready' ? current : { status: 'error' }));
           return;
         }
-        setState({ status: 'ready', days: days.data ?? [], walks: walks.data ?? [] });
+        setState({
+          status: 'ready',
+          days: days.data ?? [],
+          walks: walks.data ?? [],
+          // Les statistiques de lieux sont un plus : leur absence n'empêche pas le reste.
+          poiZones: poiZones.error ? [] : ((poiZones.data as PoiZoneStats[] | null) ?? []),
+        });
       })().catch(() => {
         if (!cancelled) setState((current) => (current.status === 'ready' ? current : { status: 'error' }));
       });

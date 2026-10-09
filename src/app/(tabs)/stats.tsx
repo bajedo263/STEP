@@ -4,9 +4,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { BottomTabInset, MaxContentWidth, Spacing, VisitedPoiColor } from '@/constants/theme';
 import { useProfile } from '@/hooks/use-profile';
-import { useStats, type WalkRow } from '@/hooks/use-stats';
+import { useStats, type PoiZoneStats, type WalkRow } from '@/hooks/use-stats';
 import { useTheme } from '@/hooks/use-theme';
 import { useTodaySteps } from '@/hooks/use-today-steps';
 import { formatDistance } from '@/lib/daily-progress';
@@ -52,6 +52,7 @@ export default function StatsScreen() {
           {stats.status === 'ready' && week ? (
             <>
               <WeekSummary week={week} goal={goal} />
+              <PoiProgress zones={stats.poiZones} />
               <ThemedText type="smallBold">Derniers trajets</ThemedText>
               {stats.walks.length === 0 ? (
                 <ThemedText themeColor="textSecondary">
@@ -120,6 +121,57 @@ function WeekSummary({ week, goal }: { week: WeekDay[]; goal: number }) {
         <Stat value={`${totals.daysAtGoal} / 7`} label="jours à l’objectif" />
         <Stat value={formatNumber(totals.steps)} label="pas au total" />
       </View>
+    </ThemedView>
+  );
+}
+
+/** Lieux découverts sur le total disponible, au global et par quartier. */
+function PoiProgress({ zones }: { zones: PoiZoneStats[] }) {
+  const theme = useTheme();
+  const visited = zones.reduce((sum, zone) => sum + zone.visited, 0);
+  const total = zones.reduce((sum, zone) => sum + zone.total, 0);
+
+  return (
+    <ThemedView type="backgroundElement" style={styles.card}>
+      <ThemedText type="smallBold">Lieux découverts</ThemedText>
+      {zones.length === 0 ? (
+        <ThemedText type="small" themeColor="textSecondary">
+          Marchez près des repères orange de la carte : chaque lieu devant lequel vous passez est
+          ajouté à votre collection.
+        </ThemedText>
+      ) : (
+        <>
+          <ThemedText>
+            <ThemedText type="subtitle">{formatNumber(visited)}</ThemedText>
+            <ThemedText themeColor="textSecondary">
+              {` sur ${formatNumber(total)} dans les quartiers où vous avez marché`}
+            </ThemedText>
+          </ThemedText>
+          {zones.slice(0, 5).map((zone) => (
+            <View key={`${zone.zone_x}/${zone.zone_y}`} style={styles.zone}>
+              <View style={styles.zoneHeader}>
+                <ThemedText type="small" numberOfLines={1} style={styles.flex}>
+                  {zone.label ? `Autour de : ${zone.label}` : 'Quartier'}
+                </ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  {`${zone.visited} / ${zone.total}`}
+                </ThemedText>
+              </View>
+              <View style={[styles.progressTrack, { backgroundColor: theme.backgroundSelected }]}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    {
+                      width: `${Math.min(100, (zone.visited / zone.total) * 100)}%`,
+                      backgroundColor: VisitedPoiColor,
+                    },
+                  ]}
+                />
+              </View>
+            </View>
+          ))}
+        </>
+      )}
     </ThemedView>
   );
 }
@@ -232,6 +284,25 @@ const styles = StyleSheet.create({
   stat: {
     flex: 1,
     alignItems: 'center',
+  },
+  zone: {
+    gap: Spacing.one,
+  },
+  zoneHeader: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+  },
+  flex: {
+    flex: 1,
+  },
+  progressTrack: {
+    height: 8,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 4,
   },
   walk: {
     gap: Spacing.one,
