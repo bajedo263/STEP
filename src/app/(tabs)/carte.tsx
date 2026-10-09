@@ -16,7 +16,7 @@ import {
 import MapView, { Marker, Polygon, type LatLng, type Region } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { PoiMarker, RouteLine } from '@/components/map-route';
+import { PoiClusterMarker, PoiMarker, RouteLine } from '@/components/map-route';
 import { PoiSheet } from '@/components/poi-sheet';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -63,6 +63,7 @@ import {
   regionForCoordinates,
   type LoopRoute,
 } from '@/lib/loop';
+import { clusterByRegion } from '@/lib/map-declutter';
 import { type Poi } from '@/lib/pois';
 import { strideLengthMeters } from '@/lib/steps';
 
@@ -153,6 +154,9 @@ export default function MapScreen() {
     defend(here);
   }, [defendRequest, here, alerts, defend]);
 
+  // Au dézoom, les lieux voisins se regroupent en une pastille numérotée.
+  const poiClusters = useMemo(() => clusterByRegion(pois, region), [pois, region]);
+
   // Recadre la carte sur le tracé affiché.
   useEffect(() => {
     const region = route ? regionForCoordinates(route.coordinates) : null;
@@ -212,7 +216,10 @@ export default function MapScreen() {
                 key={cellKey(cell)}
                 coordinates={cellPolygon(cell)}
                 fillColor={`${cell.mine ? ConquestMineColor : cell.friend ? ConquestFriendColor : ConquestOtherColor}55`}
-                strokeWidth={0}
+                // Les cases rivales ont un contour pointillé : lisibles sans distinguer les couleurs.
+                strokeColor={cell.mine || cell.friend ? undefined : ConquestOtherColor}
+                strokeWidth={cell.mine || cell.friend ? 0 : 1}
+                lineDashPattern={cell.mine || cell.friend ? undefined : [3, 3]}
               />
             ))
           : null}
@@ -229,14 +236,26 @@ export default function MapScreen() {
         {route ? (
           <RouteLine coordinates={route.coordinates} />
         ) : null}
-        {pois.map((poi) => (
-          <PoiMarker
-            key={`${poi.id}-${poi.visited}`}
-            poi={poi}
-            visited={poi.visited}
-            onPress={() => setSelectedId(poi.id)}
-          />
-        ))}
+        {poiClusters.map((cluster) =>
+          cluster.items.length === 1 ? (
+            <PoiMarker
+              key={`${cluster.items[0].id}-${cluster.items[0].visited}`}
+              poi={cluster.items[0]}
+              visited={cluster.items[0].visited}
+              onPress={() => setSelectedId(cluster.items[0].id)}
+            />
+          ) : (
+            <PoiClusterMarker
+              key={`groupe-${cluster.key}-${cluster.items.length}`}
+              coords={cluster.coords}
+              count={cluster.items.length}
+              onPress={() => {
+                const zoomed = regionForCoordinates(cluster.items.map((item) => item.coords), 2);
+                if (zoomed) mapRef.current?.animateToRegion(zoomed, 400);
+              }}
+            />
+          )
+        )}
         {mode === 'loop' && loopRoute ? (
           <Marker
             coordinate={loopRoute.coordinates[0]}

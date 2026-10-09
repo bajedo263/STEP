@@ -28,6 +28,11 @@ function subscribe(listener: () => void) {
   return () => listeners.delete(listener);
 }
 
+/** Lecture ponctuelle d'un drapeau local. */
+export function localFlag(key: string): string | null {
+  return memory.get(key) ?? read(key);
+}
+
 /** Valeur d'un drapeau local, mise à jour dès qu'un écran la change. */
 export function useLocalFlag(key: string | null): string | null {
   return useSyncExternalStore(subscribe, () => (key ? (memory.get(key) ?? read(key)) : null));

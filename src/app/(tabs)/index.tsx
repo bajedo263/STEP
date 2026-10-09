@@ -4,12 +4,13 @@ import { ActivityIndicator, Platform, ScrollView, StyleSheet, View } from 'react
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { NextBadge } from '@/components/badges-card';
+import { Icon } from '@/components/icon';
 import { Celebration } from '@/components/celebration';
 import { ProgressRing } from '@/components/progress-ring';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
-import { BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { BottomTabInset, ConquestFriendColor, MaxContentWidth, PoiColor, Radius, Spacing } from '@/constants/theme';
 import { useBadges } from '@/hooks/use-badges';
 import { useTerritoryAlerts, type TerritoryAlerts } from '@/hooks/use-conquest';
 import { useDailyChallenge } from '@/hooks/use-daily-challenge';
@@ -154,7 +155,10 @@ function StreakBanner({ streak }: { streak: ProtectedStreak }) {
   return (
     <ThemedView type="backgroundElement" style={styles.card}>
       <View style={styles.row}>
-        <ThemedText type="subtitle">{`🔥 ${streak.current}`}</ThemedText>
+        <View style={styles.iconValue}>
+          <Icon ios="flame.fill" fallback="🔥" color={PoiColor} size={26} />
+          <ThemedText type="subtitle">{streak.current}</ThemedText>
+        </View>
         <View style={styles.flex}>
           <ThemedText type="smallBold">
             {streak.current > 1 ? 'jours d’affilée à l’objectif' : 'jour à l’objectif'}
@@ -168,7 +172,10 @@ function StreakBanner({ streak }: { streak: ProtectedStreak }) {
           </ThemedText>
         </View>
         <View style={styles.freezes}>
-          <ThemedText type="smallBold">{`❄️ ${streak.freezes}`}</ThemedText>
+          <View style={styles.iconValue}>
+            <Icon ios="snowflake" fallback="❄️" color={ConquestFriendColor} size={16} />
+            <ThemedText type="smallBold">{streak.freezes}</ThemedText>
+          </View>
           <ThemedText type="small" themeColor="textSecondary">
             {streak.freezes > 1 ? 'gels' : 'gel'}
           </ThemedText>
@@ -176,7 +183,7 @@ function StreakBanner({ streak }: { streak: ProtectedStreak }) {
       </View>
       {milestone ? (
         <ThemedText type="smallBold" style={styles.centered}>
-          {`🎉 ${milestone} jours d’affilée, bravo !`}
+          {`${milestone} jours d’affilée, bravo !`}
         </ThemedText>
       ) : null}
     </ThemedView>
@@ -312,6 +319,11 @@ const styles = StyleSheet.create({
   },
   freezes: {
     alignItems: 'center',
+  },
+  iconValue: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
   },
   progressTrack: {
     height: 8,

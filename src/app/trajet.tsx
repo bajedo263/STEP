@@ -18,11 +18,13 @@ import { useRoutePois } from '@/hooks/use-route-pois';
 import { useTheme } from '@/hooks/use-theme';
 import { useTodaySteps } from '@/hooks/use-today-steps';
 import { useHeading } from '@/hooks/use-heading';
+import { localFlag, setLocalFlag } from '@/hooks/use-local-flag';
 import { useElapsedSeconds, useWalkTracker } from '@/hooks/use-walk-tracker';
 import { feedback } from '@/lib/feedback';
 import { capturedCells, cellKey, cellPolygon, cellsAlongTrack, conquestUnlocked } from '@/lib/conquest';
 import { formatDistance } from '@/lib/daily-progress';
 import { formatDuration, regionForCoordinates } from '@/lib/loop';
+import { upcomingPois } from '@/lib/map-declutter';
 import { mergePois, POI_KIND_LABELS, type RoutePoi } from '@/lib/pois';
 import { strideLengthMeters } from '@/lib/steps';
 import { supabase } from '@/lib/supabase';
@@ -35,6 +37,7 @@ const formatNumber = (value: number) => Math.round(value).toLocaleString('fr-FR'
 type SaveState = 'saving' | 'saved' | 'error' | 'too-short';
 
 const NO_POIS: RoutePoi[] = [];
+const AWAKE_HINT_KEY = 'step.awake-hint-seen';
 
 export default function WalkScreen() {
   const [summary, setSummary] = useState<WalkSummary | null>(null);
@@ -146,8 +149,21 @@ function ActiveWalk({
   const theme = useTheme();
   const elapsed = useElapsedSeconds(tracker.startedAt, true);
   const plannedRoute = planned.mode === 'free' ? null : planned.route;
-  // Lieux du trajet prévu, plus ceux découverts en chemin hors du trajet.
-  const shown = [...pois, ...discovery.discovered.filter((d) => !pois.some((p) => p.id === d.id))];
+  // Le rappel « écran allumé » ne s'affiche qu'au premier trajet sur ce téléphone.
+  const [showAwakeHint] = useState(() => localFlag(AWAKE_HINT_KEY) === null);
+  useEffect(() => setLocalFlag(AWAKE_HINT_KEY, '1'), []);
+  // Pour ne pas couvrir la carte : les 3 prochains lieux du trajet, plus ceux déjà découverts.
+  const lastPoint = tracker.track.points.at(-1);
+  const next = upcomingPois(
+    pois.filter((poi) => !discovery.isVisited(poi)).map((poi) => ({ ...poi, visited: false })),
+    planned.mode === 'free' ? [] : planned.route.coordinates,
+    lastPoint
+  );
+  const shown = [
+    ...next,
+    ...pois.filter((poi) => discovery.isVisited(poi) && !next.some((n) => n.id === poi.id)),
+    ...discovery.discovered.filter((d) => !pois.some((p) => p.id === d.id)),
+  ];
   const start = plannedRoute ? plannedRoute.coordinates[0] : tracker.track.points[0];
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
@@ -311,22 +327,31 @@ function ActiveWalk({
           />
         ) : null}
         <ThemedView style={styles.card}>
+          {/* Ce qu'on cherche d'un coup d'œil : ce qu'il reste à marcher, puis le prochain lieu. */}
           <ThemedText type="title" style={styles.centered}>
-            {formatElapsed(elapsed)}
+            {plannedRoute
+              ? formatDistance(Math.max(0, plannedRoute.distanceM - tracker.track.distanceM))
+              : formatDistance(tracker.track.distanceM)}
+          </ThemedText>
+          <ThemedText type="small" themeColor="textSecondary" style={styles.centered}>
+            {plannedRoute
+              ? next[0]
+                ? `restants · prochain lieu : ${next[0].title}`
+                : 'restants'
+              : 'parcourus'}
           </ThemedText>
           <View style={styles.stats}>
-            <Stat value={formatDistance(tracker.track.distanceM)} label="parcourus" />
+            <Stat value={formatElapsed(elapsed)} label="de marche" />
             <Stat value={formatNumber(estimatedSteps)} label="pas" />
             {plannedRoute ? (
-              <Stat
-                value={formatDistance(Math.max(0, plannedRoute.distanceM - tracker.track.distanceM))}
-                label="restants"
-              />
+              <Stat value={formatDistance(tracker.track.distanceM)} label="parcourus" />
             ) : null}
           </View>
-          <ThemedText type="small" themeColor="textSecondary" style={styles.centered}>
-            Gardez STEP ouvert pendant la marche : l’écran reste allumé.
-          </ThemedText>
+          {showAwakeHint ? (
+            <ThemedText type="small" themeColor="textSecondary" style={styles.centered}>
+              Gardez STEP ouvert pendant la marche : l’écran reste allumé.
+            </ThemedText>
+          ) : null}
           <Button title="Terminer" onPress={onFinish} />
         </ThemedView>
       </SafeAreaView>
