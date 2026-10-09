@@ -32,11 +32,6 @@ export default function AppTabs() {
         <NativeTabs.Trigger.Label>Amis</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="person.2" md="group" />
       </NativeTabs.Trigger>
-
-      <NativeTabs.Trigger name="profil">
-        <NativeTabs.Trigger.Label>Profil</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="person.crop.circle" md="person" />
-      </NativeTabs.Trigger>
     </NativeTabs>
   );
 }

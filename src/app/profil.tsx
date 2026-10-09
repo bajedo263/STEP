@@ -1,5 +1,12 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -7,7 +14,12 @@ import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { SegmentedChoice } from '@/components/ui/segmented-choice';
 import { TextField } from '@/components/ui/text-field';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { Avatar } from '@/components/avatar';
+import { MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { useBadges } from '@/hooks/use-badges';
+import { useProfile } from '@/hooks/use-profile';
+import { useStepHistory } from '@/hooks/use-step-history';
+import { useTodaySteps } from '@/hooks/use-today-steps';
 import { useTheme } from '@/hooks/use-theme';
 import {
   profileToForm,
@@ -16,7 +28,8 @@ import {
   type ProfileErrors,
   type ProfileForm,
 } from '@/lib/profile';
-import type { Sex } from '@/lib/steps';
+import { DEFAULT_DAILY_GOAL, type Sex } from '@/lib/steps';
+import { protectedStreak } from '@/lib/streak';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/auth-provider';
 
@@ -94,14 +107,31 @@ export default function ProfileScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      {/* Sur iPhone, la feuille modale laisse déjà la place de la barre d'état. */}
+      <SafeAreaView
+        style={styles.safeArea}
+        edges={Platform.OS === 'ios' ? ['left', 'right'] : ['top', 'left', 'right']}>
         <KeyboardAvoidingView
           style={styles.flex}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-            <ThemedText type="subtitle">Profil</ThemedText>
-            <ThemedText themeColor="textSecondary">{session?.user.email}</ThemedText>
+            <View style={styles.header}>
+              <Avatar name={form.username || session?.user.email || '?'} size={72} />
+              <View style={styles.flex}>
+                <ThemedText type="subtitle" numberOfLines={1}>
+                  {form.username || 'Marcheur'}
+                </ThemedText>
+                <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                  {session?.user.email}
+                </ThemedText>
+              </View>
+            </View>
 
+            <Highlights />
+
+            <ThemedText type="smallBold" style={styles.section}>
+              Réglages
+            </ThemedText>
             {loading ? (
               <ActivityIndicator style={styles.loader} />
             ) : (
@@ -143,6 +173,10 @@ export default function ProfileScreen() {
                   value={form.sex}
                   onChange={(value) => update('sex', value)}
                 />
+                <ThemedText type="small" themeColor="textSecondary">
+                  Taille, poids et sexe servent seulement à estimer la longueur de vos pas et les
+                  calories. Ils ne sont jamais montrés à vos amis.
+                </ThemedText>
 
                 {message ? (
                   <ThemedText type="small" style={message.isError ? { color: theme.danger } : undefined}>
@@ -162,7 +196,64 @@ export default function ProfileScreen() {
   );
 }
 
+/** Ce dont on peut être fier : badges, meilleure série, pas du jour. */
+function Highlights() {
+  const profile = useProfile();
+  const today = useTodaySteps();
+  const steps = today.status === 'ready' ? today.steps : null;
+  const goal = profile?.daily_goal ?? DEFAULT_DAILY_GOAL;
+  const badges = useBadges(steps, goal);
+  const history = useStepHistory();
+  const streak = useMemo(
+    () => (history ? protectedStreak(history, new Date(), steps, goal) : null),
+    [history, steps, goal]
+  );
+  const unlocked = badges?.filter((badge) => badge.unlocked) ?? [];
+
+  return (
+    <ThemedView type="backgroundElement" style={styles.highlights}>
+      <Highlight
+        value={badges ? `${unlocked.length} / ${badges.length}` : '…'}
+        label="badges"
+      />
+      <Highlight value={streak ? String(streak.best) : '…'} label="meilleure série" />
+      <Highlight
+        value={steps === null ? '…' : Math.round(steps).toLocaleString('fr-FR')}
+        label="pas aujourd’hui"
+      />
+    </ThemedView>
+  );
+}
+
+function Highlight({ value, label }: { value: string; label: string }) {
+  return (
+    <View style={styles.highlight} accessible accessibilityLabel={`${value} ${label}`}>
+      <ThemedText type="stat">{value}</ThemedText>
+      <ThemedText type="small" themeColor="textSecondary">
+        {label}
+      </ThemedText>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+  },
+  highlights: {
+    flexDirection: 'row',
+    paddingVertical: Spacing.three,
+    borderRadius: Radius.tile,
+  },
+  highlight: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  section: {
+    marginTop: Spacing.two,
+  },
   container: {
     flex: 1,
     flexDirection: 'row',
@@ -179,7 +270,7 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     padding: Spacing.four,
     paddingTop: Platform.select({ web: Spacing.six + Spacing.four, default: Spacing.four }),
-    paddingBottom: BottomTabInset + Spacing.four,
+    paddingBottom: Spacing.six,
   },
   loader: {
     marginVertical: Spacing.five,

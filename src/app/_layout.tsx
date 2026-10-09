@@ -34,6 +34,7 @@ function RootNavigator() {
           name="trajet"
           options={{ presentation: 'fullScreenModal', gestureEnabled: false }}
         />
+        <Stack.Screen name="profil" options={{ presentation: 'modal' }} />
       </Stack.Protected>
       <Stack.Protected guard={session !== null && !onboarded}>
         <Stack.Screen name="bienvenue" />

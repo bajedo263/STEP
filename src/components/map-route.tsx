@@ -1,4 +1,4 @@
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { Marker, Polyline, type LatLng } from 'react-native-maps';
 
 import { PoiColor, VisitedPoiColor } from '@/constants/theme';
@@ -50,9 +50,42 @@ export function PoiMarker({ poi, visited, onPress }: { poi: Poi; visited: boolea
       anchor={{ x: 0.5, y: 0.5 }}
       tracksViewChanges={false}
       onPress={onPress}>
-      <View style={styles.hitArea}>
+      <View
+        style={styles.hitArea}
+        accessible
+        accessibilityRole="button"
+        accessibilityLabel={`${poi.title}${visited ? ', déjà découvert' : ''}`}>
         <View style={[styles.dot, { backgroundColor: visited ? VisitedPoiColor : PoiColor }]}>
           {visited ? <View style={styles.check} /> : <View style={styles.center} />}
+        </View>
+      </View>
+    </Marker>
+  );
+}
+
+/** Plusieurs lieux trop proches pour l'échelle affichée : une pastille avec leur nombre. */
+export function PoiClusterMarker({
+  coords,
+  count,
+  onPress,
+}: {
+  coords: LatLng;
+  count: number;
+  onPress: () => void;
+}) {
+  return (
+    <Marker
+      coordinate={coords}
+      anchor={{ x: 0.5, y: 0.5 }}
+      tracksViewChanges={false}
+      onPress={onPress}>
+      <View
+        style={styles.hitArea}
+        accessible
+        accessibilityRole="button"
+        accessibilityLabel={`${count} lieux, toucher pour rapprocher`}>
+        <View style={[styles.cluster, { backgroundColor: PoiColor }]}>
+          <Text style={styles.clusterText}>{count}</Text>
         </View>
       </View>
     </Marker>
@@ -79,6 +112,26 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     shadowOffset: { width: 0, height: 1 },
     elevation: 3,
+  },
+  cluster: {
+    minWidth: 28,
+    height: 28,
+    paddingHorizontal: 6,
+    borderRadius: 14,
+    borderWidth: 2.5,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 3,
+  },
+  clusterText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: 800,
   },
   center: {
     width: 6,
