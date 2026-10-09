@@ -11,9 +11,10 @@ import {
   Platform,
   Pressable,
   StyleSheet,
+  useWindowDimensions,
   View,
 } from 'react-native';
-import MapView, { Marker, Polygon, type LatLng, type Region } from 'react-native-maps';
+import MapView, { Marker, Polygon, Polyline, type LatLng, type Region } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PoiClusterMarker, PoiMarker, RouteLine } from '@/components/map-route';
@@ -29,6 +30,7 @@ import {
   ConquestMineColor,
   ConquestOtherColor,
   MaxContentWidth,
+  PoiColor,
   Radius,
   Spacing,
 } from '@/constants/theme';
@@ -67,7 +69,7 @@ import {
   regionForCoordinates,
   type LoopRoute,
 } from '@/lib/loop';
-import { clusterByRegion } from '@/lib/map-declutter';
+import { clusterByRegion, FAN_OUT_DELTA, fanOut } from '@/lib/map-declutter';
 import { type Poi } from '@/lib/pois';
 import { rankLabel, seasonEndLabel, seasonName } from '@/lib/season';
 import { strideLengthMeters } from '@/lib/steps';
@@ -92,6 +94,7 @@ export default function MapScreen() {
   const today = useTodaySteps();
   const profile = useProfile();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
   const mapRef = useRef<MapView>(null);
   const [mode, setMode] = useState<MapMode>('loop');
   const [query, setQuery] = useState('');
@@ -303,26 +306,54 @@ export default function MapScreen() {
         {route ? (
           <RouteLine coordinates={route.coordinates} />
         ) : null}
-        {poiClusters.map((cluster) =>
-          cluster.items.length === 1 ? (
-            <PoiMarker
-              key={`${cluster.items[0].id}-${cluster.items[0].visited}`}
-              poi={cluster.items[0]}
-              visited={cluster.items[0].visited}
-              onPress={() => setSelectedId(cluster.items[0].id)}
-            />
-          ) : (
+        {poiClusters.flatMap((cluster) => {
+          if (cluster.items.length === 1) {
+            const poi = cluster.items[0];
+            return (
+              <PoiMarker
+                key={`${poi.id}-${poi.visited}`}
+                poi={poi}
+                visited={poi.visited}
+                onPress={() => setSelectedId(poi.id)}
+              />
+            );
+          }
+          // Vue rapprochée : le groupe s'ouvre en éventail, relié à son point réel par de fins rayons.
+          if (region && region.longitudeDelta <= FAN_OUT_DELTA) {
+            return fanOut(cluster.items, cluster.coords, region, windowWidth).flatMap(({ item, coords }) => [
+              <Polyline
+                key={`rayon-${item.id}`}
+                coordinates={[cluster.coords, coords]}
+                strokeColor={`${PoiColor}AA`}
+                strokeWidth={1.5}
+              />,
+              <PoiMarker
+                key={`${item.id}-${item.visited}`}
+                poi={{ ...item, coords }}
+                visited={item.visited}
+                onPress={() => setSelectedId(item.id)}
+              />,
+            ]);
+          }
+          return (
             <PoiClusterMarker
               key={`groupe-${cluster.key}-${cluster.items.length}`}
               coords={cluster.coords}
               count={cluster.items.length}
               onPress={() => {
+                // Assez près pour séparer les lieux, ou pour ouvrir l'éventail s'ils se superposent.
                 const zoomed = regionForCoordinates(cluster.items.map((item) => item.coords), 2);
-                if (zoomed) mapRef.current?.animateToRegion(zoomed, 400);
+                if (!zoomed) return;
+                mapRef.current?.animateToRegion(
+                  zoomed.longitudeDelta > FAN_OUT_DELTA
+                    ? zoomed
+                    : { ...cluster.coords, latitudeDelta: FAN_OUT_DELTA * 0.6, longitudeDelta: FAN_OUT_DELTA * 0.6 },
+                  400
+                );
               }}
             />
-          )
-        )}
+          );
+        })}
         {mode === 'loop' && loopRoute && handles
           ? handles.map((handle, index) => (
               <Marker
