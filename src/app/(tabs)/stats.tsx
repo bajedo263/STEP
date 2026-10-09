@@ -11,7 +11,17 @@ import { useTheme } from '@/hooks/use-theme';
 import { useTodaySteps } from '@/hooks/use-today-steps';
 import { formatDistance } from '@/lib/daily-progress';
 import { formatDuration } from '@/lib/loop';
-import { buildWeek, weekTotals, type WeekDay } from '@/lib/stats';
+import {
+  bestDay,
+  buildWeek,
+  goalStreaks,
+  historyTotals,
+  monthTotals,
+  weekTotals,
+  type HistoryRow,
+  type PeriodTotals,
+  type WeekDay,
+} from '@/lib/stats';
 import { DEFAULT_DAILY_GOAL } from '@/lib/steps';
 
 const formatNumber = (value: number) => Math.round(value).toLocaleString('fr-FR');
@@ -51,7 +61,10 @@ export default function StatsScreen() {
 
           {stats.status === 'ready' && week ? (
             <>
+              <StreakCard days={stats.days} todaySteps={todaySteps} goal={goal} />
               <WeekSummary week={week} goal={goal} />
+              <MonthCard days={stats.days} todaySteps={todaySteps} goal={goal} />
+              <RecordsCard days={stats.days} todaySteps={todaySteps} longestWalk={stats.longestWalk} />
               <PoiProgress zones={stats.poiZones} />
               <ThemedText type="smallBold">Derniers trajets</ThemedText>
               {stats.walks.length === 0 ? (
@@ -122,6 +135,136 @@ function WeekSummary({ week, goal }: { week: WeekDay[]; goal: number }) {
         <Stat value={formatNumber(totals.steps)} label="pas au total" />
       </View>
     </ThemedView>
+  );
+}
+
+type HistoryProps = { days: HistoryRow[]; todaySteps: number | null };
+
+/** Série de jours consécutifs à l'objectif, la meilleure et ce qu'il reste pour la garder. */
+function StreakCard({ days, todaySteps, goal }: HistoryProps & { goal: number }) {
+  const theme = useTheme();
+  const streak = goalStreaks(days, new Date(), todaySteps, goal);
+  const message =
+    streak.current === 0
+      ? `Atteignez ${formatNumber(goal)} pas aujourd’hui pour lancer une série.`
+      : streak.todayDone
+        ? 'Objectif du jour atteint, la série continue demain.'
+        : `Atteignez l’objectif aujourd’hui pour passer à ${streak.current + 1} jours.`;
+
+  return (
+    <ThemedView type="backgroundElement" style={styles.card}>
+      <View style={styles.streakHeader}>
+        <View style={styles.flex}>
+          <ThemedText type="smallBold">Série en cours</ThemedText>
+          <ThemedText>
+            <ThemedText
+              type="subtitle"
+              style={{ color: streak.current > 0 ? theme.success : theme.text }}>
+              {streak.current}
+            </ThemedText>
+            <ThemedText themeColor="textSecondary">
+              {streak.current > 1 ? ' jours d’affilée' : ' jour'}
+            </ThemedText>
+          </ThemedText>
+        </View>
+        <View style={styles.streakBest}>
+          <ThemedText type="stat">{streak.best}</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            meilleure série
+          </ThemedText>
+        </View>
+      </View>
+      <ThemedText type="small" themeColor="textSecondary">
+        {message}
+      </ThemedText>
+    </ThemedView>
+  );
+}
+
+/** Mois en cours : totaux et comparaison au mois précédent à la même date. */
+function MonthCard({ days, todaySteps, goal }: HistoryProps & { goal: number }) {
+  const today = new Date();
+  const { current, previous } = monthTotals(days, today, todaySteps, goal);
+  const month = today.toLocaleDateString('fr-FR', { month: 'long' });
+
+  return (
+    <ThemedView type="backgroundElement" style={styles.card}>
+      <ThemedText type="smallBold">{`En ${month}`}</ThemedText>
+      <View style={styles.stats}>
+        <Stat value={formatNumber(current.steps)} label="pas" />
+        <Stat value={formatDistance(current.distanceM)} label="parcourus" />
+        <Stat value={`${formatNumber(current.calories)}`} label="kcal" />
+      </View>
+      <ThemedText type="small" themeColor="textSecondary">
+        {`${current.daysAtGoal} jour${current.daysAtGoal > 1 ? 's' : ''} à l’objectif sur ${current.days}. `}
+        {comparison(current, previous)}
+      </ThemedText>
+    </ThemedView>
+  );
+}
+
+function comparison(current: PeriodTotals, previous: PeriodTotals): string {
+  if (previous.steps === 0) return '';
+  const change = Math.round(((current.steps - previous.steps) / previous.steps) * 100);
+  if (change === 0) return 'Autant de pas que le mois dernier à la même date.';
+  return `${change > 0 ? '+' : ''}${change} % de pas par rapport au mois dernier à la même date.`;
+}
+
+/** Records personnels et cumul sur les 12 derniers mois. */
+function RecordsCard({
+  days,
+  todaySteps,
+  longestWalk,
+}: HistoryProps & { longestWalk: WalkRow | null }) {
+  const best = bestDay(days, new Date(), todaySteps);
+  const totals = historyTotals(days);
+  const formatDay = (day: string) => {
+    const [year, month, date] = day.split('-').map(Number);
+    return new Date(year, month - 1, date).toLocaleDateString('fr-FR', {
+      day: 'numeric',
+      month: 'long',
+    });
+  };
+
+  return (
+    <ThemedView type="backgroundElement" style={styles.card}>
+      <ThemedText type="smallBold">Records</ThemedText>
+      <RecordRow
+        label="Meilleure journée"
+        value={best ? `${formatNumber(best.steps)} pas` : '–'}
+        detail={best ? formatDay(best.day) : null}
+      />
+      <RecordRow
+        label="Plus long trajet"
+        value={longestWalk?.distance_m ? formatDistance(longestWalk.distance_m) : '–'}
+        detail={
+          longestWalk
+            ? `${MODE_LABELS[longestWalk.mode]}, ${new Date(longestWalk.started_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}`
+            : null
+        }
+      />
+      <RecordRow
+        label="Distance sur 12 mois"
+        value={formatDistance(totals.distanceM)}
+        detail={`${formatNumber(totals.steps)} pas, ${formatNumber(totals.calories)} kcal`}
+      />
+    </ThemedView>
+  );
+}
+
+function RecordRow({ label, value, detail }: { label: string; value: string; detail: string | null }) {
+  return (
+    <View style={styles.record}>
+      <View style={styles.flex}>
+        <ThemedText type="small">{label}</ThemedText>
+        {detail ? (
+          <ThemedText type="small" themeColor="textSecondary">
+            {detail}
+          </ThemedText>
+        ) : null}
+      </View>
+      <ThemedText type="smallBold">{value}</ThemedText>
+    </View>
   );
 }
 
@@ -303,6 +446,19 @@ const styles = StyleSheet.create({
   progressFill: {
     height: '100%',
     borderRadius: 4,
+  },
+  streakHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+  },
+  streakBest: {
+    alignItems: 'center',
+  },
+  record: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
   },
   walk: {
     gap: Spacing.one,
