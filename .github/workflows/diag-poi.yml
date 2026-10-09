@@ -6,12 +6,31 @@ jobs:
   diag:
     runs-on: ubuntu-latest
     steps:
-      - name: Services de secours
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/itineraire-secours
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Boucle, itinéraire et recherche avec ORS en panne
+        env:
+          ORS_API_KEY: ${{ secrets.ORS_API_KEY }}
         run: |
-          set +e
-          curl -sS -m 20 -o /dev/null -w "ORS %{http_code}\n" https://api.openrouteservice.org/
-          U='https://routing.openstreetmap.de/routed-foot/route/v1/foot/2.2985,48.8490;2.3155,48.8553;2.3100,48.8420;2.2985,48.8490?overview=full&geometries=geojson'
-          curl -sS -m 30 -o /tmp/o.json -w "OSRM pied %{http_code} %{time_total}s %{size_download}B\n" -A "STEP/1.0 (https://github.com/bajedo263/step)" "$U"
-          python3 -c 'import json;d=json.load(open("/tmp/o.json"));r=d["routes"][0];print(d["code"],r["distance"],r["duration"],len(r["geometry"]["coordinates"]),list(r.keys()))'
-          curl -sS -m 20 -o /tmp/p.json -w "Photon %{http_code} %{time_total}s\n" -A "STEP/1.0 (https://github.com/bajedo263/step)" 'https://photon.komoot.io/api/?q=tour%20eiffel&lat=48.849&lon=2.2985&lang=fr&limit=3'
-          head -c 600 /tmp/p.json; echo
+          cat > /tmp/try.ts <<'TS'
+          import { orsRoundTrip, routeThrough, searchPlaces } from './supabase/functions/_shared/routing.ts';
+          import { triangleWaypoints, seedBearing } from './supabase/functions/_shared/loop.ts';
+          const key = Deno.env.get('ORS_API_KEY')!;
+          const start = { latitude: 48.8490, longitude: 2.2985 };
+          let t = Date.now();
+          const rt = await orsRoundTrip(start, 7500, 42, key);
+          console.log('ORS boucle', rt ? rt.distanceM : null, Date.now() - t, 'ms');
+          t = Date.now();
+          const tri = await routeThrough([start, ...triangleWaypoints(start, 7500 / 1.25, seedBearing(42)), start], key);
+          console.log('triangle', tri?.distanceM, tri?.durationS, tri?.coordinates.length, Date.now() - t, 'ms');
+          t = Date.now();
+          const ab = await routeThrough([start, { latitude: 48.8584, longitude: 2.2945 }], key);
+          console.log('A→B', ab?.distanceM, Date.now() - t, 'ms');
+          const places = await searchPlaces('tour eiffel', start, key);
+          console.log('recherche', places?.slice(0, 3).map((p) => p.label));
+          TS
+          cp /tmp/try.ts ./try.ts && deno run --allow-net --allow-env ./try.ts
