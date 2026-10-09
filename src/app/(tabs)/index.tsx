@@ -3,11 +3,13 @@ import { useMemo } from 'react';
 import { ActivityIndicator, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { NextBadge } from '@/components/badges-card';
 import { ProgressRing } from '@/components/progress-ring';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { useBadges } from '@/hooks/use-badges';
 import { useTerritoryAlerts, type TerritoryAlerts } from '@/hooks/use-conquest';
 import { useDailyChallenge } from '@/hooks/use-daily-challenge';
 import { useProfile } from '@/hooks/use-profile';
@@ -15,6 +17,7 @@ import { useStepHistory } from '@/hooks/use-step-history';
 import { useSyncDailySteps } from '@/hooks/use-sync-daily-steps';
 import { useTheme } from '@/hooks/use-theme';
 import { useTodaySteps } from '@/hooks/use-today-steps';
+import { nextBadges } from '@/lib/badges';
 import type { Challenge } from '@/lib/challenge';
 import { CONQUEST_UNLOCK_STEPS, conquestUnlocked, territoryAlertLabel } from '@/lib/conquest';
 import { dailyProgress, formatDistance } from '@/lib/daily-progress';
@@ -56,6 +59,8 @@ export default function HomeScreen() {
   );
   const challenge = useDailyChallenge(steps, goal);
   const territory = useTerritoryAlerts();
+  const badges = useBadges(steps, goal);
+  const nextBadge = useMemo(() => (badges ? (nextBadges(badges)[0] ?? null) : null), [badges]);
 
   return (
     <ThemedView style={styles.container}>
@@ -94,6 +99,7 @@ export default function HomeScreen() {
 
               {streak ? <StreakBanner streak={streak} /> : null}
               {challenge ? <ChallengeCard challenge={challenge} /> : null}
+              {nextBadge ? <NextBadge badge={nextBadge} /> : null}
               {territory && territory.lost.length + territory.expiring.length > 0 ? (
                 <TerritoryCard alerts={territory} />
               ) : null}

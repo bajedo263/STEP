@@ -1,5 +1,5 @@
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   challengeKindFor,
@@ -60,13 +60,37 @@ export function useDailyChallenge(todaySteps: number | null, goal: number): Chal
     }, [userId])
   );
 
-  if (!userId) return null;
-  const kind = challengeKindFor(userId, localDay(new Date()));
-  return evaluateChallenge(kind, {
-    steps: todaySteps ?? 0,
-    goal,
-    walks: loaded?.walks ?? [],
-    newPlaces: loaded?.newPlaces ?? 0,
-    cells: loaded?.cells ?? 0,
-  });
+  const day = localDay(new Date());
+  const challenge = userId
+    ? evaluateChallenge(challengeKindFor(userId, day), {
+        steps: todaySteps ?? 0,
+        goal,
+        walks: loaded?.walks ?? [],
+        newPlaces: loaded?.newPlaces ?? 0,
+        cells: loaded?.cells ?? 0,
+      })
+    : null;
+
+  // Un défi réussi est enregistré une fois (il compte pour les badges), même si l'app est rouverte.
+  const recorded = useRef<string | null>(null);
+  const done = challenge?.done ?? false;
+  const kind = challenge?.kind;
+  useEffect(() => {
+    if (!done || !kind || !userId || !supabase || recorded.current === day) return;
+    recorded.current = day;
+    supabase
+      .from('challenge_completions')
+      .upsert({ user_id: userId, day, kind }, { onConflict: 'user_id,day', ignoreDuplicates: true })
+      .then(
+        ({ error }) => {
+          // Sans la migration Badges, on réessaiera à la prochaine ouverture.
+          if (error) recorded.current = null;
+        },
+        () => {
+          recorded.current = null;
+        }
+      );
+  }, [done, kind, userId, day]);
+
+  return challenge;
 }
