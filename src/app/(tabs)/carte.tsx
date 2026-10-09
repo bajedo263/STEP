@@ -59,6 +59,7 @@ import {
   type Cell,
 } from '@/lib/conquest';
 import { missingPlacesPoints } from '@/lib/collection';
+import { loopHandles, moveHandle } from '@/lib/loop-handles';
 import { dailyProgress, formatDistance } from '@/lib/daily-progress';
 import {
   formatDuration,
@@ -114,6 +115,14 @@ export default function MapScreen() {
   const strideM = strideLengthMeters(profile?.height_cm ?? 170, profile?.sex ?? 'unspecified');
 
   const loopRoute = loop.status === 'ready' ? loop.route : null;
+  // Poignées pour redessiner la boucle ; celles qu'on vient de lâcher restent en place pendant le calcul.
+  const [droppedHandles, setDroppedHandles] = useState<LatLng[] | null>(null);
+  const handles = useMemo(
+    () =>
+      droppedHandles ??
+      (loopRoute ? (loopRoute.through ?? loopHandles(loopRoute.coordinates)) : null),
+    [droppedHandles, loopRoute]
+  );
   const destinationRoute = destination.status === 'ready' ? destination.route : null;
   const route = mode === 'loop' ? loopRoute : destinationRoute;
   const [region, setRegion] = useState<Region | null>(null);
@@ -314,6 +323,28 @@ export default function MapScreen() {
             />
           )
         )}
+        {mode === 'loop' && loopRoute && handles
+          ? handles.map((handle, index) => (
+              <Marker
+                key={`poignee-${index}-${handle.latitude}-${handle.longitude}`}
+                coordinate={handle}
+                anchor={{ x: 0.5, y: 0.5 }}
+                draggable={!loop.refining}
+                tracksViewChanges={false}
+                onDragEnd={async (event) => {
+                  const next = moveHandle(handles, index, event.nativeEvent.coordinate);
+                  setDroppedHandles(next);
+                  await loop.refine(start, next);
+                  setDroppedHandles(null);
+                }}>
+                <View
+                  style={[styles.handle, { borderColor: theme.tint }]}
+                  accessible
+                  accessibilityLabel="Point de passage, à faire glisser vers une autre rue"
+                />
+              </Marker>
+            ))
+          : null}
         {mode === 'loop' && loopRoute ? (
           <Marker
             coordinate={loopRoute.coordinates[0]}
@@ -404,6 +435,12 @@ export default function MapScreen() {
                     route ? (
                       <>
                         <RouteStats route={route} strideM={strideM} />
+                        <ThemedText type="small" themeColor="textSecondary">
+                          {loop.refining
+                            ? 'Recalcul de la boucle par ce point…'
+                            : 'Faites glisser les points ronds du tracé vers les rues où vous voulez passer.'}
+                        </ThemedText>
+                        {loop.refineError ? <ErrorText message={loop.refineError} /> : null}
                         <PoiSummary pois={pois} via={loopRoute?.via ?? []} />
                         <Button title="Partir" onPress={() => go({ mode: 'loop', route, pois })} />
                         <Button
@@ -799,6 +836,13 @@ function LocationUnavailable({ location }: { location: ReturnType<typeof useCurr
 }
 
 const styles = StyleSheet.create({
+  handle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 4,
+    backgroundColor: '#FFFFFF',
+  },
   container: {
     flex: 1,
   },
