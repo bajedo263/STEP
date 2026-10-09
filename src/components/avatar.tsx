@@ -3,10 +3,27 @@ import { StyleSheet, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { useTheme } from '@/hooks/use-theme';
 
-/** Pastille ronde à l'initiale du pseudo, en attendant les photos de profil. */
-export function Avatar({ name, size = 40 }: { name: string; size?: number }) {
+/**
+ * Pastille ronde à l'initiale du pseudo, en attendant les photos de profil. `ring` ajoute un
+ * cadre de couleur, gagné en fin de saison.
+ */
+export function Avatar({ name, size = 40, ring }: { name: string; size?: number; ring?: string | null }) {
   const theme = useTheme();
   const initial = name.trim().charAt(0).toUpperCase() || '?';
+  const border = Math.max(2, Math.round(size / 14));
+  if (ring) {
+    return (
+      <View
+        style={{
+          padding: border,
+          borderRadius: size / 2 + border * 2,
+          borderWidth: border,
+          borderColor: ring,
+        }}>
+        <Avatar name={name} size={size - border * 4} />
+      </View>
+    );
+  }
   return (
     <View
       style={[
