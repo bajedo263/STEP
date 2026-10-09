@@ -2,20 +2,21 @@ import { useKeepAwake } from 'expo-keep-awake';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, BackHandler, Linking, Pressable, StyleSheet, View } from 'react-native';
-import MapView, { Marker, Polyline } from 'react-native-maps';
+import MapView, { Marker, Polygon, Polyline } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PoiSheet, PoiStory } from '@/components/poi-sheet';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
-import { MaxContentWidth, PoiColor, Spacing, VisitedPoiColor } from '@/constants/theme';
+import { ConquestMineColor, MaxContentWidth, PoiColor, Spacing, VisitedPoiColor } from '@/constants/theme';
 import { usePlannedWalk } from '@/hooks/use-planned-walk';
 import { usePoiDiscovery } from '@/hooks/use-poi-discovery';
 import { useProfile } from '@/hooks/use-profile';
 import { useRoutePois } from '@/hooks/use-route-pois';
 import { useTheme } from '@/hooks/use-theme';
 import { useElapsedSeconds, useWalkTracker } from '@/hooks/use-walk-tracker';
+import { capturedCells, cellKey, cellPolygon, cellsAlongTrack } from '@/lib/conquest';
 import { formatDistance } from '@/lib/daily-progress';
 import { formatDuration } from '@/lib/loop';
 import { mergePois, POI_KIND_LABELS, type RoutePoi } from '@/lib/pois';
@@ -84,6 +85,7 @@ export default function WalkScreen() {
         summary={summary}
         saveState={saveState}
         discovered={discovery.discovered}
+        cellCount={capturedCells(tracker.track.points).length}
         onRetry={() => save(summary)}
       />
     );
@@ -130,6 +132,8 @@ function ActiveWalk({
   const start = plannedRoute ? plannedRoute.coordinates[0] : tracker.track.points[0];
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = shown.find((poi) => poi.id === selectedId) ?? null;
+  // Cases prises en marchant (le départ ne compte pas, pour ne pas montrer l'adresse).
+  const cells = useMemo(() => cellsAlongTrack(tracker.track.points), [tracker.track.points]);
 
   // Bouton retour d'Android : on propose de terminer plutôt que de perdre le trajet.
   const failed = tracker.status === 'denied' || tracker.status === 'error';
@@ -184,6 +188,14 @@ function ActiveWalk({
               coordinate={poi.coords}
               pinColor={discovery.isVisited(poi) ? VisitedPoiColor : PoiColor}
               onPress={() => setSelectedId(poi.id)}
+            />
+          ))}
+          {cells.map((cell) => (
+            <Polygon
+              key={cellKey(cell)}
+              coordinates={cellPolygon(cell)}
+              fillColor={`${ConquestMineColor}40`}
+              strokeWidth={0}
             />
           ))}
           {tracker.track.points.length > 1 ? (
@@ -274,11 +286,13 @@ function WalkDone({
   summary,
   saveState,
   discovered,
+  cellCount,
   onRetry,
 }: {
   summary: WalkSummary;
   saveState: SaveState;
   discovered: RoutePoi[];
+  cellCount: number;
   onRetry: () => void;
 }) {
   const theme = useTheme();
@@ -307,6 +321,11 @@ function WalkDone({
             {discovered.length === 1
               ? `1 lieu découvert : ${discovered[0].title}`
               : `${discovered.length} lieux découverts : ${discovered.map((poi) => poi.title).join(', ')}`}
+          </ThemedText>
+        ) : null}
+        {saveState === 'saved' && cellCount > 0 ? (
+          <ThemedText style={styles.centered}>
+            {`${formatNumber(cellCount)} case${cellCount > 1 ? 's' : ''} conquise${cellCount > 1 ? 's' : ''} jusqu’à minuit`}
           </ThemedText>
         ) : null}
         <ThemedText

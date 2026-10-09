@@ -10,7 +10,7 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
-import MapView, { Marker, Polyline } from 'react-native-maps';
+import MapView, { Marker, Polygon, Polyline, type Region } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PoiSheet } from '@/components/poi-sheet';
@@ -19,7 +19,16 @@ import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { SegmentedChoice } from '@/components/ui/segmented-choice';
 import { TextField } from '@/components/ui/text-field';
-import { BottomTabInset, MaxContentWidth, PoiColor, Spacing, VisitedPoiColor } from '@/constants/theme';
+import {
+  BottomTabInset,
+  ConquestMineColor,
+  ConquestOtherColor,
+  MaxContentWidth,
+  PoiColor,
+  Spacing,
+  VisitedPoiColor,
+} from '@/constants/theme';
+import { useConquestCells, useMyConquestCount } from '@/hooks/use-conquest';
 import { useCurrentLocation } from '@/hooks/use-current-location';
 import { useDestinationRoute, usePlaceSearch } from '@/hooks/use-destination';
 import { useLoopRoute } from '@/hooks/use-loop-route';
@@ -28,6 +37,7 @@ import { useProfile } from '@/hooks/use-profile';
 import { useRoutePois } from '@/hooks/use-route-pois';
 import { useTheme } from '@/hooks/use-theme';
 import { useTodaySteps } from '@/hooks/use-today-steps';
+import { cellKey, cellPolygon, cellRangeOf } from '@/lib/conquest';
 import { dailyProgress, formatDistance } from '@/lib/daily-progress';
 import { formatDuration, loopTargetDistance, regionForCoordinates, type LoopRoute } from '@/lib/loop';
 import { type Poi } from '@/lib/pois';
@@ -35,11 +45,12 @@ import { strideLengthMeters } from '@/lib/steps';
 
 const formatNumber = (value: number) => Math.round(value).toLocaleString('fr-FR');
 
-type MapMode = 'loop' | 'destination';
+type MapMode = 'loop' | 'destination' | 'conquest';
 
 const MODE_OPTIONS: { value: MapMode; label: string }[] = [
   { value: 'loop', label: 'Boucle' },
   { value: 'destination', label: 'Destination' },
+  { value: 'conquest', label: 'Conquête' },
 ];
 
 export default function MapScreen() {
@@ -73,7 +84,9 @@ export default function MapScreen() {
 
   const loopRoute = loop.status === 'ready' ? loop.route : null;
   const destinationRoute = destination.status === 'ready' ? destination.route : null;
-  const route = mode === 'loop' ? loopRoute : destinationRoute;
+  const route = mode === 'loop' ? loopRoute : mode === 'destination' ? destinationRoute : null;
+  const [region, setRegion] = useState<Region | null>(null);
+  const cells = useConquestCells(mode === 'conquest' && region ? cellRangeOf(region) : null);
   const pois = useRoutePois(route?.coordinates ?? null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = pois.find((poi) => poi.id === selectedId) ?? null;
@@ -105,7 +118,18 @@ export default function MapScreen() {
         showsPointsOfInterests={false}
         onPress={(event) => {
           if (event.nativeEvent.action !== 'marker-press') setSelectedId(null);
-        }}>
+        }}
+        onRegionChangeComplete={setRegion}>
+        {mode === 'conquest'
+          ? cells.map((cell) => (
+              <Polygon
+                key={cellKey(cell)}
+                coordinates={cellPolygon(cell)}
+                fillColor={`${cell.mine ? ConquestMineColor : ConquestOtherColor}55`}
+                strokeWidth={0}
+              />
+            ))
+          : null}
         {route ? (
           <Polyline
             coordinates={route.coordinates}
@@ -138,7 +162,12 @@ export default function MapScreen() {
           <ThemedView style={styles.card}>
             <SegmentedChoice options={MODE_OPTIONS} value={mode} onChange={setMode} />
 
-            {mode === 'loop' ? (
+            {mode === 'conquest' ? (
+              <ConquestCard
+                zoomedOut={region !== null && cellRangeOf(region) === null}
+                onStart={() => go({ mode: 'free' })}
+              />
+            ) : mode === 'loop' ? (
               route ? (
                 <>
                   <RouteStats route={route} strideM={strideM} />
@@ -281,6 +310,33 @@ export default function MapScreen() {
   );
 }
 
+/** Mode Conquête : ses cases du jour, et comment en prendre d'autres. */
+function ConquestCard({ zoomedOut, onStart }: { zoomedOut: boolean; onStart: () => void }) {
+  const count = useMyConquestCount();
+  return (
+    <>
+      <View style={styles.legend}>
+        <View style={[styles.swatch, { backgroundColor: ConquestMineColor }]} />
+        <ThemedText type="small" style={styles.flex}>
+          {count === null
+            ? 'Vos cases du jour'
+            : count === 0
+              ? 'Aucune case à vous aujourd’hui'
+              : `${formatNumber(count)} case${count > 1 ? 's' : ''} à vous aujourd’hui`}
+        </ThemedText>
+        <View style={[styles.swatch, { backgroundColor: ConquestOtherColor }]} />
+        <ThemedText type="small">Autres marcheurs</ThemedText>
+      </View>
+      <ThemedText type="small" themeColor="textSecondary">
+        {zoomedOut
+          ? 'Rapprochez la carte pour voir les cases.'
+          : 'Chaque trajet enregistré colore les cases traversées à votre nom jusqu’à minuit. Repassez sur celles des autres pour les reprendre. Le début et la fin du trajet ne comptent pas, pour ne pas montrer votre adresse.'}
+      </ThemedText>
+      <Button title="Partir conquérir" onPress={onStart} />
+    </>
+  );
+}
+
 function RouteStats({ route, strideM }: { route: LoopRoute; strideM: number }) {
   return (
     <View style={styles.stats}>
@@ -412,6 +468,16 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
     elevation: 6,
+  },
+  legend: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  swatch: {
+    width: 14,
+    height: 14,
+    borderRadius: 3,
   },
   stats: {
     flexDirection: 'row',

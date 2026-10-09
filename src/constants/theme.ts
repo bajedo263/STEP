@@ -73,3 +73,6 @@ export const MaxContentWidth = 800;
 export const PoiColor = '#F08C00';
 /** Lieux déjà découverts. */
 export const VisitedPoiColor = '#2F9E44';
+/** Conquête : cases à soi et cases prises par d'autres marcheurs aujourd'hui. */
+export const ConquestMineColor = '#1C7ED6';
+export const ConquestOtherColor = '#E03131';

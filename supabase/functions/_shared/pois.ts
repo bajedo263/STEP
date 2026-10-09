@@ -248,8 +248,8 @@ export const ZONE_ZOOM = 15;
 
 export type Zone = { x: number; y: number };
 
-export function zoneOf(point: LatLng): Zone {
-  const n = 2 ** ZONE_ZOOM;
+export function zoneOf(point: LatLng, zoom = ZONE_ZOOM): Zone {
+  const n = 2 ** zoom;
   const lat = (point.latitude * Math.PI) / 180;
   return {
     x: Math.floor(((point.longitude + 180) / 360) * n),
@@ -259,8 +259,8 @@ export function zoneOf(point: LatLng): Zone {
 
 export type Bbox = { south: number; west: number; north: number; east: number };
 
-export function zoneBbox({ x, y }: Zone): Bbox {
-  const n = 2 ** ZONE_ZOOM;
+export function zoneBbox({ x, y }: Zone, zoom = ZONE_ZOOM): Bbox {
+  const n = 2 ** zoom;
   const lng = (tx: number) => (tx / n) * 360 - 180;
   const lat = (ty: number) => (Math.atan(Math.sinh(Math.PI * (1 - (2 * ty) / n))) * 180) / Math.PI;
   return { south: lat(y + 1), west: lng(x), north: lat(y), east: lng(x + 1) };
