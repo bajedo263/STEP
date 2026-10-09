@@ -47,3 +47,6 @@ export const celebratedKey = (userId: string) => `step.goal-celebrated.${userId}
 
 /** Proposition d'objectif adaptatif déjà vue (acceptée ou écartée). */
 export const adaptiveSuggestedKey = (userId: string) => `step.adaptive-suggested.${userId}`;
+
+/** Semaine (lundi AAAA-MM-JJ) dont le bilan a déjà été lu. */
+export const weeklySeenKey = (userId: string) => `step.weekly-seen.${userId}`;
