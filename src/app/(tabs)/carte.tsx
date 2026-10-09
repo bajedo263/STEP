@@ -39,6 +39,7 @@ import {
   useTerritoryAlerts,
   type TerritoryAlerts,
 } from '@/hooks/use-conquest';
+import { fetchMissingPlaces } from '@/hooks/use-collection';
 import { useCurrentLocation } from '@/hooks/use-current-location';
 import { useDestinationRoute, usePlaceSearch, type Place } from '@/hooks/use-destination';
 import { useLoopRoute } from '@/hooks/use-loop-route';
@@ -57,6 +58,7 @@ import {
   territoryAlertLabel,
   type Cell,
 } from '@/lib/conquest';
+import { missingPlacesPoints } from '@/lib/collection';
 import { dailyProgress, formatDistance } from '@/lib/daily-progress';
 import {
   formatDuration,
@@ -147,9 +149,14 @@ export default function MapScreen() {
   );
 
   // Depuis l'accueil, « Défendre » ouvre la carte avec une boucle de défense, une seule fois.
-  const { defend: defendRequest, boucle: loopRequest } = useLocalSearchParams<{
+  const {
+    defend: defendRequest,
+    boucle: loopRequest,
+    quartier: zoneRequest,
+  } = useLocalSearchParams<{
     defend?: string;
     boucle?: string;
+    quartier?: string;
   }>();
   const handledDefend = useRef<string | undefined>(undefined);
   const here = location.status === 'ready' ? location.coords : null;
@@ -168,6 +175,42 @@ export default function MapScreen() {
     setPin(null);
     loop.generate(here, targetM);
   }, [loopRequest, here, loop, targetM]);
+
+  // Depuis la collection, une boucle vers les lieux pas encore découverts d'un quartier.
+  const [collectionNote, setCollectionNote] = useState<string | null>(null);
+  const handledZone = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!zoneRequest || !here || handledZone.current === zoneRequest) return;
+    handledZone.current = zoneRequest;
+    const [x, y] = zoneRequest.split('/').map(Number);
+    if (!Number.isInteger(x) || !Number.isInteger(y)) return;
+    setTimeout(() => {
+      setMode('loop');
+      setPin(null);
+      setCollectionNote('Recherche des lieux qui vous manquent…');
+    }, 0);
+    fetchMissingPlaces(x, y).then((missing) => {
+      if (!missing) {
+        setCollectionNote('Impossible de charger les lieux du quartier. Réessayez.');
+        return;
+      }
+      const points = missingPlacesPoints(missing, here);
+      if (points.length === 0) {
+        setCollectionNote(
+          missing.length === 0
+            ? 'Tous les lieux de ce quartier sont déjà découverts.'
+            : 'Les lieux qui vous manquent sont à plus de 2,5 km d’ici.'
+        );
+        return;
+      }
+      setCollectionNote(
+        points.length === missing.length
+          ? `Boucle par ${points.length > 1 ? `les ${points.length} lieux` : 'le dernier lieu'} qui vous manque${points.length > 1 ? 'nt' : ''} dans ce quartier.`
+          : `Boucle par ${points.length} des ${missing.length} lieux qui vous manquent, les plus proches.`
+      );
+      loop.generateThrough(here, points);
+    });
+  }, [zoneRequest, here, loop]);
 
   // Au dézoom, les lieux voisins se regroupent en une pastille numérotée.
   const poiClusters = useMemo(() => clusterByRegion(pois, region), [pois, region]);
@@ -352,6 +395,11 @@ export default function MapScreen() {
                     />
                   ) : null}
 
+                  {mode === 'loop' && collectionNote ? (
+                    <ThemedText type="small" themeColor="textSecondary">
+                      {collectionNote}
+                    </ThemedText>
+                  ) : null}
                   {mode === 'loop' ? (
                     route ? (
                       <>
@@ -363,6 +411,7 @@ export default function MapScreen() {
                           variant="secondary"
                           onPress={() => {
                             setDefenseNote(null);
+                            setCollectionNote(null);
                             loop.generate(start, targetM);
                           }}
                         />
@@ -380,7 +429,10 @@ export default function MapScreen() {
                         <Button
                           title="Proposer une boucle"
                           loading={loop.status === 'loading'}
-                          onPress={() => loop.generate(start, targetM)}
+                          onPress={() => {
+                            setCollectionNote(null);
+                            loop.generate(start, targetM);
+                          }}
                         />
                         <Button
                           title="Marcher librement"

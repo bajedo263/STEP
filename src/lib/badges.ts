@@ -10,9 +10,21 @@ export type BadgeStats = {
   /** Cases à soi en ce moment. */
   cells: number;
   friends: number;
+  /** Quartiers dont on a découvert au moins la moitié des lieux. */
+  zonesExplored: number;
+  /** Quartiers dont on a découvert tous les lieux. */
+  zonesComplete: number;
 };
 
-export type BadgeFamily = 'streak' | 'challenges' | 'places' | 'distance' | 'cells' | 'friends';
+export type BadgeFamily =
+  | 'streak'
+  | 'challenges'
+  | 'places'
+  | 'zones-explored'
+  | 'zones-complete'
+  | 'distance'
+  | 'cells'
+  | 'friends';
 
 export type Badge = {
   id: string;
@@ -66,6 +78,26 @@ const FAMILIES: FamilyDefinition[] = [
       title: ['Curieux', 'Explorateur', 'Guide de quartier'][index],
       description:
         target > 1 ? `${target} lieux remarquables découverts` : '1 lieu remarquable découvert',
+    })),
+  },
+  {
+    family: 'zones-explored',
+    emoji: '🧭',
+    value: (stats) => stats.zonesExplored,
+    tiers: [1, 5].map((target, index) => ({
+      target,
+      title: ['Arpenteur', 'Cartographe'][index],
+      description: `La moitié des lieux ${target > 1 ? `de ${target} quartiers` : 'd’un quartier'} découverte`,
+    })),
+  },
+  {
+    family: 'zones-complete',
+    emoji: '🏅',
+    value: (stats) => stats.zonesComplete,
+    tiers: [1, 3].map((target, index) => ({
+      target,
+      title: ['Quartier complet', 'Enfant du pays'][index],
+      description: `Tous les lieux ${target > 1 ? `de ${target} quartiers` : 'd’un quartier'} découverts`,
     })),
   },
   {
