@@ -21,12 +21,14 @@ import {
   celebratedKey,
   setLocalFlag,
   useLocalFlag,
+  weeklySeenKey,
 } from '@/hooks/use-local-flag';
 import { useProfile } from '@/hooks/use-profile';
 import { useStepHistory } from '@/hooks/use-step-history';
 import { useSyncDailySteps } from '@/hooks/use-sync-daily-steps';
 import { useTheme } from '@/hooks/use-theme';
 import { useTodaySteps } from '@/hooks/use-today-steps';
+import { useWeeklyReview, type WeeklyExtras } from '@/hooks/use-weekly-review';
 import { adaptiveLabel, suggestAdaptive } from '@/lib/adaptive-goal';
 import { nextBadges } from '@/lib/badges';
 import type { Challenge } from '@/lib/challenge';
@@ -34,6 +36,12 @@ import { CONQUEST_UNLOCK_STEPS, conquestUnlocked, territoryAlertLabel } from '@/
 import { dailyProgress, formatDistance, localDay } from '@/lib/daily-progress';
 import { useAuth } from '@/providers/auth-provider';
 import { milestoneToday, protectedStreak, type ProtectedStreak } from '@/lib/streak';
+import {
+  weekCheer,
+  weekRangeLabel,
+  weekTrendLabel,
+  type WeeklyReview,
+} from '@/lib/weekly-review';
 
 const formatNumber = (value: number) => Math.round(value).toLocaleString('fr-FR');
 
@@ -92,6 +100,12 @@ export default function HomeScreen() {
       suggestAdaptive(history, new Date(), goal)
   );
   const dismissSuggestion = () => suggestionKey && setLocalFlag(suggestionKey, '1');
+
+  // Bilan de la semaine passée, affiché jusqu'à ce qu'il soit fermé.
+  const weekly = useWeeklyReview(history, rule);
+  const weeklyKey = session ? weeklySeenKey(session.user.id) : null;
+  const weeklySeen = useLocalFlag(weeklyKey);
+  const showWeekly = Boolean(weekly && weeklyKey && weeklySeen !== weekly.review.week);
 
   return (
     <ThemedView style={styles.container}>
@@ -152,6 +166,13 @@ export default function HomeScreen() {
                 <Stat value={`${Math.round(progress.ratio * 100)} %`} label="de l’objectif" />
               </ThemedView>
 
+              {showWeekly && weekly ? (
+                <WeeklyReviewCard
+                  review={weekly.review}
+                  extras={weekly.extras}
+                  onClose={() => weeklyKey && setLocalFlag(weeklyKey, weekly.review.week)}
+                />
+              ) : null}
               {showSuggestion ? <AdaptiveSuggestion onDismiss={dismissSuggestion} /> : null}
               {territoryAlert ? <TerritoryCard alerts={territory} /> : null}
               {streak ? <StreakBanner streak={streak} /> : null}
@@ -220,6 +241,44 @@ function StreakBanner({ streak }: { streak: ProtectedStreak }) {
           {`${milestone} jours d’affilée, bravo !`}
         </ThemedText>
       ) : null}
+    </ThemedView>
+  );
+}
+
+/** Bilan de la semaine passée : pas, jours à l'objectif, trajets et lieux, comparés à la semaine d'avant. */
+function WeeklyReviewCard({
+  review,
+  extras,
+  onClose,
+}: {
+  review: WeeklyReview;
+  extras: WeeklyExtras | null;
+  onClose: () => void;
+}) {
+  const trend = weekTrendLabel(review);
+  const best = review.bestDay
+    ? new Date(`${review.bestDay.day}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long' })
+    : null;
+  return (
+    <ThemedView type="backgroundElement" style={styles.card}>
+      <ThemedText type="smallBold">{`Votre semaine ${weekRangeLabel(review.week)}`}</ThemedText>
+      <ThemedText>
+        <ThemedText type="subtitle">{formatNumber(review.steps)}</ThemedText>
+        <ThemedText themeColor="textSecondary">{` pas, soit ${formatNumber(review.average)} par jour`}</ThemedText>
+      </ThemedText>
+      {trend ? <ThemedText type="small">{trend}</ThemedText> : null}
+      <View style={styles.row}>
+        <Stat value={`${review.daysAtGoal} / 7`} label="jours à l’objectif" />
+        <Stat value={extras ? String(extras.walks) : '…'} label="trajets" />
+        <Stat value={extras ? String(extras.places) : '…'} label="lieux découverts" />
+      </View>
+      {best && review.bestDay ? (
+        <ThemedText type="small" themeColor="textSecondary">
+          {`Meilleur jour : ${best}, ${formatNumber(review.bestDay.steps)} pas.`}
+        </ThemedText>
+      ) : null}
+      <ThemedText type="small">{weekCheer(review)}</ThemedText>
+      <Button title="C’est noté" variant="secondary" onPress={onClose} />
     </ThemedView>
   );
 }

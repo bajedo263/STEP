@@ -11,6 +11,7 @@ import { useTodaySteps } from '@/hooks/use-today-steps';
 import { DEFAULT_REMINDER_HOUR, planReminders, reminderKey } from '@/lib/reminders';
 import { strideLengthMeters } from '@/lib/steps';
 import { protectedStreak } from '@/lib/streak';
+import { weeklyReviewReminder } from '@/lib/weekly-review';
 
 /** Réglage des rappels sur ce téléphone : une heure (« 18 ») ou « off ». */
 export const REMINDER_HOUR_KEY = 'step.reminder-hour';
@@ -71,8 +72,9 @@ export function useDailyReminders() {
   const reminders = useMemo(() => {
     if (steps === null || !history) return null;
     const streak = protectedStreak(history, new Date(), steps, rule);
-    return planReminders({
-      now: new Date(),
+    const now = new Date();
+    const daily = planReminders({
+      now,
       hour,
       // Arrondi à 500 pas : on ne reprogramme pas à chaque pas.
       todaySteps: Math.floor(steps / 500) * 500,
@@ -81,6 +83,8 @@ export function useDailyReminders() {
       strideM: strideLengthMeters(profile?.height_cm ?? 170, profile?.sex ?? 'unspecified'),
       reliable: today.status === 'ready' && !today.partial,
     });
+    // Le bilan de la semaine s'annonce le lundi matin, sauf si les rappels sont coupés.
+    return hour === null ? daily : [...daily, weeklyReviewReminder(now)];
   }, [steps, history, goal, rule, hour, profile, today]);
   const key = reminders ? reminderKey(reminders) : null;
 
