@@ -11,6 +11,8 @@ export type WalkTracker = {
   /** Pas comptés par le podomètre depuis le départ, ou null s'il n'est pas disponible. */
   steps: number | null;
   startedAt: Date;
+  /** Dernière position GPS brute (non lissée, non posée sur l'itinéraire), pour le point bleu. */
+  position: LatLng | null;
 };
 
 /**
@@ -23,6 +25,7 @@ export function useWalkTracker(path: LatLng[] | null = null) {
   const [status, setStatus] = useState<WalkTracker['status']>('starting');
   const [track, setTrack] = useState<Track>(emptyTrack);
   const [steps, setSteps] = useState<number | null>(null);
+  const [position, setPosition] = useState<LatLng | null>(null);
   const subscriptions = useRef<{ remove: () => void }[]>([]);
   const pathRef = useRef(path);
   useEffect(() => {
@@ -56,7 +59,8 @@ export function useWalkTracker(path: LatLng[] | null = null) {
             distanceInterval: 5,
             timeInterval: 3000,
           },
-          ({ coords, timestamp }) =>
+          ({ coords, timestamp }) => {
+            setPosition({ latitude: coords.latitude, longitude: coords.longitude });
             setTrack((current) =>
               addPoint(
                 current,
@@ -68,7 +72,8 @@ export function useWalkTracker(path: LatLng[] | null = null) {
                 },
                 pathRef.current
               )
-            )
+            );
+          }
         )
       );
       if (!cancelled) setStatus('tracking');
@@ -87,7 +92,7 @@ export function useWalkTracker(path: LatLng[] | null = null) {
     };
   }, [stop]);
 
-  return { status, track, steps, startedAt, stop };
+  return { status, track, steps, startedAt, position, stop };
 }
 
 /** Secondes écoulées depuis `since`, rafraîchies chaque seconde. */
