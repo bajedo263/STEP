@@ -36,6 +36,43 @@ export function clusterByRegion<T extends Located>(
   }));
 }
 
+/** En deçà de cette largeur de vue (en degrés, ~500 m), les groupes s'ouvrent en éventail. */
+export const FAN_OUT_DELTA = 0.006;
+
+const METERS_PER_DEGREE = 111_320;
+
+/**
+ * Lieux superposés (même adresse, même bâtiment) : aucun zoom ne les sépare. Une fois la carte
+ * assez rapprochée, on les dispose en cercle autour de leur point commun, espacés d'au moins
+ * `gapPoints` à l'écran pour rester touchables. Rend la position affichée de chaque lieu.
+ */
+export function fanOut<T extends Located>(
+  items: T[],
+  center: LatLng,
+  region: Region,
+  widthPoints: number,
+  gapPoints = 34
+): { item: T; coords: LatLng }[] {
+  if (items.length < 2) return items.map((item) => ({ item, coords: item.coords }));
+  const cosLat = Math.cos((center.latitude * Math.PI) / 180);
+  const metersPerPoint = (region.longitudeDelta * METERS_PER_DEGREE * cosLat) / widthPoints;
+  const radiusPoints = Math.max(gapPoints, (items.length * gapPoints) / (2 * Math.PI));
+  const radius = radiusPoints * metersPerPoint;
+  return items.map((item, index) => {
+    // Premier lieu en haut, puis dans le sens des aiguilles d'une montre.
+    const angle = (2 * Math.PI * index) / items.length;
+    const north = radius * Math.cos(angle);
+    const east = radius * Math.sin(angle);
+    return {
+      item,
+      coords: {
+        latitude: center.latitude + north / METERS_PER_DEGREE,
+        longitude: center.longitude + east / (METERS_PER_DEGREE * cosLat),
+      },
+    };
+  });
+}
+
 function single<T extends Located>(item: T, index: number): PoiCluster<T> {
   return { key: `seul-${index}`, coords: item.coords, items: [item] };
 }
