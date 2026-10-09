@@ -22,6 +22,9 @@ jobs:
         run: |
           P="psql -h localhost -U postgres -v ON_ERROR_STOP=1 -q"
           $P <<'SQL'
+          drop extension if exists postgis_tiger_geocoder cascade;
+          drop extension if exists postgis_topology cascade;
+          drop extension if exists postgis cascade;
           create schema extensions;
           create schema auth;
           create role authenticated; create role anon;
