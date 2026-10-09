@@ -128,9 +128,6 @@ export default function MapScreen() {
       (loopRoute ? (loopRoute.through ?? loopHandles(loopRoute.coordinates)) : null),
     [droppedHandles, loopRoute]
   );
-  // Le glisser natif d'un marqueur est capricieux (appui long, conflit avec l'appui long de la
-  // carte) : on peut aussi toucher une poignée, puis l'endroit où la boucle doit passer.
-  const [movingHandle, setMovingHandle] = useState<number | null>(null);
   const destinationRoute = destination.status === 'ready' ? destination.route : null;
   const route = mode === 'loop' ? loopRoute : destinationRoute;
   const [region, setRegion] = useState<Region | null>(null);
@@ -244,7 +241,6 @@ export default function MapScreen() {
 
   const start = location.coords;
   const moveHandleTo = async (index: number, point: LatLng) => {
-    setMovingHandle(null);
     if (!handles) return;
     const next = moveHandle(handles, index, point);
     setDroppedHandles(next);
@@ -294,17 +290,9 @@ export default function MapScreen() {
         showsPointsOfInterests={false}
         onPress={(event) => {
           if (event.nativeEvent.action === 'marker-press') return;
-          if (movingHandle !== null && handles && !loop.refining) {
-            void moveHandleTo(movingHandle, event.nativeEvent.coordinate);
-            return;
-          }
           setSelectedId(null);
         }}
         onLongPress={(event) => {
-          if (movingHandle !== null && handles) {
-            if (!loop.refining) void moveHandleTo(movingHandle, event.nativeEvent.coordinate);
-            return;
-          }
           setPin(event.nativeEvent.coordinate);
           setSelectedId(null);
           panel.expand();
@@ -385,32 +373,25 @@ export default function MapScreen() {
           );
         })}
         {mode === 'loop' && loopRoute && handles
-          ? handles.map((handle, index) =>
-              index === movingHandle ? null : (
-                <Marker
-                  key={`poignee-${index}-${handle.latitude}-${handle.longitude}`}
-                  coordinate={handle}
-                  anchor={{ x: 0.5, y: 0.5 }}
-                  draggable={!loop.refining}
-                  tracksViewChanges={false}
-                  onPress={() => {
-                    if (loop.refining) return;
-                    // Viseur : la carte se centre sur le point, qu'on déplace en faisant glisser la carte.
-                    setMovingHandle(index);
-                    panel.collapse();
-                    mapRef.current?.animateCamera({ center: handle }, { duration: 300 });
-                  }}
-                  onDragEnd={(event) => {
-                    void moveHandleTo(index, event.nativeEvent.coordinate);
-                  }}>
-                  <View
-                    style={[styles.handle, { borderColor: theme.tint }]}
-                    accessible
-                    accessibilityLabel="Point de passage : touchez-le pour le déplacer"
-                  />
-                </Marker>
-              )
-            )
+          ? handles.map((handle, index) => (
+              <Marker
+                key={`poignee-${index}-${handle.latitude}-${handle.longitude}`}
+                coordinate={handle}
+                anchor={{ x: 0.5, y: 0.5 }}
+                draggable={!loop.refining}
+                tracksViewChanges={false}
+                onDragEnd={(event) => {
+                  void moveHandleTo(index, event.nativeEvent.coordinate);
+                }}>
+                {/* Zone tactile bien plus large que le rond, pour l'attraper au doigt. */}
+                <View
+                  style={styles.handleHitArea}
+                  accessible
+                  accessibilityLabel="Point de passage : appuyez longuement puis faites-le glisser vers une autre rue">
+                  <View style={[styles.handle, { borderColor: theme.tint }]} />
+                </View>
+              </Marker>
+            ))
           : null}
         {mode === 'loop' && loopRoute ? (
           <Marker
@@ -428,39 +409,6 @@ export default function MapScreen() {
           />
         ) : null}
       </MapView>
-
-      {movingHandle !== null && handles ? (
-        <>
-          {/* Le viseur reste au centre ; on fait glisser la carte en dessous. */}
-          <View pointerEvents="none" style={styles.crosshairLayer}>
-            <View style={[styles.handle, styles.handleMoving, { backgroundColor: theme.tint }]} />
-          </View>
-          <View
-            pointerEvents="box-none"
-            style={[styles.crosshairBar, { top: insets.top + Spacing.three }]}>
-            <ThemedView style={styles.crosshairCard}>
-              <ThemedText type="small" style={styles.centeredText}>
-                Faites glisser la carte pour placer le point sur la rue voulue.
-              </ThemedText>
-              <View style={styles.crosshairButtons}>
-                <Button title="Annuler" variant="secondary" onPress={() => setMovingHandle(null)} />
-                <Button
-                  title="Passer par ici"
-                  disabled={!region || loop.refining}
-                  onPress={() => {
-                    if (!region) return;
-                    void moveHandleTo(movingHandle, {
-                      latitude: region.latitude,
-                      longitude: region.longitude,
-                    });
-                    panel.expand();
-                  }}
-                />
-              </View>
-            </ThemedView>
-          </View>
-        </>
-      ) : null}
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -538,7 +486,7 @@ export default function MapScreen() {
                         <ThemedText type="small" themeColor="textSecondary">
                           {loop.refining
                             ? 'Recalcul de la boucle par ce point…'
-                            : 'Touchez un point rond du tracé pour le déplacer vers une autre rue.'}
+                            : 'Appuyez longuement sur un point rond du tracé, puis faites-le glisser vers la rue où vous voulez passer.'}
                         </ThemedText>
                         {loop.refineError ? <ErrorText message={loop.refineError} /> : null}
                         <PoiSummary pois={pois} via={loopRoute?.via ?? []} />
@@ -745,7 +693,6 @@ function useCollapsiblePanel() {
     translateY,
     panHandlers,
     expand: () => change(false),
-    collapse: () => change(true),
     toggle: () => change(!collapsed),
   };
 }
@@ -944,42 +891,13 @@ const styles = StyleSheet.create({
     borderWidth: 4,
     backgroundColor: '#FFFFFF',
   },
-  crosshairLayer: {
-    ...StyleSheet.absoluteFill,
+  handleHitArea: {
+    width: 64,
+    height: 64,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  crosshairBar: {
-    position: 'absolute',
-    left: Spacing.three,
-    right: Spacing.three,
-    alignItems: 'center',
-  },
-  crosshairCard: {
-    width: '100%',
-    maxWidth: MaxContentWidth,
-    gap: Spacing.two,
-    padding: Spacing.three,
-    borderRadius: Spacing.four,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
-  },
-  crosshairButtons: {
-    flexDirection: 'row',
-    gap: Spacing.two,
-    justifyContent: 'center',
-  },
-  centeredText: {
-    textAlign: 'center',
-  },
-  handleMoving: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderColor: '#FFFFFF',
+    // Fond presque invisible : une vue entièrement transparente peut ne pas capter le doigt.
+    backgroundColor: 'rgba(255, 255, 255, 0.01)',
   },
   container: {
     flex: 1,
