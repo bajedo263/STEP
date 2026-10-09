@@ -44,3 +44,6 @@ export const onboardedKey = (userId: string) => `step.onboarded.${userId}`;
 
 /** Jour où l'objectif a déjà été fêté, pour ne le fêter qu'une fois. */
 export const celebratedKey = (userId: string) => `step.goal-celebrated.${userId}`;
+
+/** Proposition d'objectif adaptatif déjà vue (acceptée ou écartée). */
+export const adaptiveSuggestedKey = (userId: string) => `step.adaptive-suggested.${userId}`;

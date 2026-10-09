@@ -38,3 +38,14 @@ export function targetDistanceMeters(
 export function walkingCalories(weightKg: number, durationMinutes: number): number {
   return WALKING_MET * weightKg * (durationMinutes / 60);
 }
+
+/**
+ * Objectif fixe, ou objectif propre à chaque jour (AAAA-MM-JJ) quand il évolue, comme
+ * l'objectif adaptatif : un jour passé se juge à l'objectif qu'il avait ce jour-là.
+ */
+export type GoalRule = number | ((day: string) => number);
+
+/** Objectif d'un jour donné. */
+export function goalOn(rule: GoalRule, day: string): number {
+  return typeof rule === 'number' ? rule : rule(day);
+}

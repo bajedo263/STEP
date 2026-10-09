@@ -7,6 +7,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing, VisitedPoiColor } from '@/constants/theme';
 import { useBadges } from '@/hooks/use-badges';
+import { useDailyGoal } from '@/hooks/use-daily-goal';
 import { useProfile } from '@/hooks/use-profile';
 import { useStats, type PoiZoneStats, type WalkRow } from '@/hooks/use-stats';
 import { useTheme } from '@/hooks/use-theme';
@@ -23,7 +24,7 @@ import {
   type PeriodTotals,
   type WeekDay,
 } from '@/lib/stats';
-import { DEFAULT_DAILY_GOAL } from '@/lib/steps';
+import { goalOn, type GoalRule } from '@/lib/steps';
 import { protectedStreak } from '@/lib/streak';
 
 const formatNumber = (value: number) => Math.round(value).toLocaleString('fr-FR');
@@ -38,9 +39,13 @@ export default function StatsScreen() {
   const stats = useStats();
   const profile = useProfile();
   const today = useTodaySteps();
-  const goal = profile?.daily_goal ?? DEFAULT_DAILY_GOAL;
   const todaySteps = today.status === 'ready' ? today.steps : null;
-  const badges = useBadges(todaySteps, goal);
+  const { goal, rule } = useDailyGoal(
+    profile,
+    stats.status === 'ready' ? stats.days : null,
+    todaySteps
+  );
+  const badges = useBadges(todaySteps, rule);
 
   const week = useMemo(
     () => (stats.status === 'ready' ? buildWeek(stats.days, new Date(), todaySteps) : null),
@@ -64,9 +69,9 @@ export default function StatsScreen() {
 
           {stats.status === 'ready' && week ? (
             <>
-              <StreakCard days={stats.days} todaySteps={todaySteps} goal={goal} />
-              <WeekSummary week={week} goal={goal} />
-              <MonthCard days={stats.days} todaySteps={todaySteps} goal={goal} />
+              <StreakCard days={stats.days} todaySteps={todaySteps} goal={goal} rule={rule} />
+              <WeekSummary week={week} goal={goal} rule={rule} />
+              <MonthCard days={stats.days} todaySteps={todaySteps} goal={rule} />
               <RecordsCard days={stats.days} todaySteps={todaySteps} longestWalk={stats.longestWalk} />
               <PoiProgress zones={stats.poiZones} />
               {badges ? <BadgesCard badges={badges} /> : null}
@@ -92,9 +97,9 @@ export default function StatsScreen() {
   );
 }
 
-function WeekSummary({ week, goal }: { week: WeekDay[]; goal: number }) {
+function WeekSummary({ week, goal, rule }: { week: WeekDay[]; goal: number; rule: GoalRule }) {
   const theme = useTheme();
-  const totals = weekTotals(week, goal);
+  const totals = weekTotals(week, rule);
   const max = Math.max(goal, ...week.map((day) => day.steps));
 
   return (
@@ -115,7 +120,8 @@ function WeekSummary({ week, goal }: { week: WeekDay[]; goal: number }) {
                 styles.bar,
                 {
                   height: `${Math.max(2, (day.steps / max) * 100)}%`,
-                  backgroundColor: day.steps >= goal ? theme.success : theme.backgroundSelected,
+                  backgroundColor:
+                    day.steps >= goalOn(rule, day.day) ? theme.success : theme.backgroundSelected,
                 },
               ]}
             />
@@ -145,10 +151,15 @@ function WeekSummary({ week, goal }: { week: WeekDay[]; goal: number }) {
 type HistoryProps = { days: HistoryRow[]; todaySteps: number | null };
 
 /** Série de jours consécutifs à l'objectif, la meilleure et ce qu'il reste pour la garder. */
-function StreakCard({ days, todaySteps, goal }: HistoryProps & { goal: number }) {
+function StreakCard({
+  days,
+  todaySteps,
+  goal,
+  rule,
+}: HistoryProps & { goal: number; rule: GoalRule }) {
   const theme = useTheme();
   // Même série protégée que sur l'accueil : un gel sauve un jour raté.
-  const streak = protectedStreak(days, new Date(), todaySteps, goal);
+  const streak = protectedStreak(days, new Date(), todaySteps, rule);
   const message = [
     streak.current === 0
       ? `Atteignez ${formatNumber(goal)} pas aujourd’hui pour lancer une série.`
@@ -194,7 +205,7 @@ function StreakCard({ days, todaySteps, goal }: HistoryProps & { goal: number })
 }
 
 /** Mois en cours : totaux et comparaison au mois précédent à la même date. */
-function MonthCard({ days, todaySteps, goal }: HistoryProps & { goal: number }) {
+function MonthCard({ days, todaySteps, goal }: HistoryProps & { goal: GoalRule }) {
   const today = new Date();
   const { current, previous } = monthTotals(days, today, todaySteps, goal);
   const month = today.toLocaleDateString('fr-FR', { month: 'long' });

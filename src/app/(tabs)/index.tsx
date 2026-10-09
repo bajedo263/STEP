@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -15,17 +15,23 @@ import { BottomTabInset, ConquestFriendColor, MaxContentWidth, PoiColor, Radius,
 import { useBadges } from '@/hooks/use-badges';
 import { useTerritoryAlerts, type TerritoryAlerts } from '@/hooks/use-conquest';
 import { useDailyChallenge } from '@/hooks/use-daily-challenge';
-import { celebratedKey, setLocalFlag, useLocalFlag } from '@/hooks/use-local-flag';
+import { setAdaptiveGoal, useDailyGoal } from '@/hooks/use-daily-goal';
+import {
+  adaptiveSuggestedKey,
+  celebratedKey,
+  setLocalFlag,
+  useLocalFlag,
+} from '@/hooks/use-local-flag';
 import { useProfile } from '@/hooks/use-profile';
 import { useStepHistory } from '@/hooks/use-step-history';
 import { useSyncDailySteps } from '@/hooks/use-sync-daily-steps';
 import { useTheme } from '@/hooks/use-theme';
 import { useTodaySteps } from '@/hooks/use-today-steps';
+import { adaptiveLabel, suggestAdaptive } from '@/lib/adaptive-goal';
 import { nextBadges } from '@/lib/badges';
 import type { Challenge } from '@/lib/challenge';
 import { CONQUEST_UNLOCK_STEPS, conquestUnlocked, territoryAlertLabel } from '@/lib/conquest';
 import { dailyProgress, formatDistance, localDay } from '@/lib/daily-progress';
-import { DEFAULT_DAILY_GOAL } from '@/lib/steps';
 import { useAuth } from '@/providers/auth-provider';
 import { milestoneToday, protectedStreak, type ProtectedStreak } from '@/lib/streak';
 
@@ -36,18 +42,20 @@ export default function HomeScreen() {
   const profile = useProfile();
 
   const steps = today.status === 'ready' ? today.steps : null;
+  const history = useStepHistory();
+  const { goal, rule, plan, adaptive } = useDailyGoal(profile, history, steps);
   const progress = useMemo(
     () =>
       steps === null
         ? null
         : dailyProgress({
             steps,
-            goal: profile?.daily_goal,
+            goal,
             heightCm: profile?.height_cm,
             weightKg: profile?.weight_kg,
             sex: profile?.sex,
           }),
-    [steps, profile]
+    [steps, goal, profile]
   );
 
   // Sur Android, le compte repart de zéro à chaque ouverture : on ne l'enregistre pas
@@ -56,15 +64,13 @@ export default function HomeScreen() {
   const isPartial = today.status === 'ready' && today.partial;
   useSyncDailySteps(isPartial || !profile ? null : progress);
 
-  const goal = profile?.daily_goal ?? DEFAULT_DAILY_GOAL;
-  const history = useStepHistory();
   const streak = useMemo(
-    () => (history ? protectedStreak(history, new Date(), steps, goal) : null),
-    [history, steps, goal]
+    () => (history ? protectedStreak(history, new Date(), steps, rule) : null),
+    [history, steps, rule]
   );
   const challenge = useDailyChallenge(steps, goal);
   const territory = useTerritoryAlerts();
-  const badges = useBadges(steps, goal);
+  const badges = useBadges(steps, rule);
   const nextBadge = useMemo(() => (badges ? (nextBadges(badges)[0] ?? null) : null), [badges]);
 
   // L'objectif atteint se fête une fois par jour, au premier passage sur l'accueil.
@@ -74,6 +80,18 @@ export default function HomeScreen() {
   const todayKey = localDay(new Date());
   const celebrate = Boolean(progress?.goalReached && flagKey && celebratedDay !== todayKey);
   const territoryAlert = territory && territory.lost.length + territory.expiring.length > 0;
+
+  // Objectif fixe presque jamais atteint : on propose l'objectif adaptatif, une seule fois.
+  const suggestionKey = session ? adaptiveSuggestedKey(session.user.id) : null;
+  const suggestionDismissed = useLocalFlag(suggestionKey);
+  const showSuggestion = Boolean(
+    !adaptive &&
+      history &&
+      suggestionKey &&
+      !suggestionDismissed &&
+      suggestAdaptive(history, new Date(), goal)
+  );
+  const dismissSuggestion = () => suggestionKey && setLocalFlag(suggestionKey, '1');
 
   return (
     <ThemedView style={styles.container}>
@@ -112,6 +130,11 @@ export default function HomeScreen() {
                     ? `Objectif atteint ! La Conquête s’active à ${formatNumber(CONQUEST_UNLOCK_STEPS)} pas.`
                     : `Encore ${formatNumber(progress.remainingSteps)} pas pour l’objectif.`}
               </ThemedText>
+              {plan ? (
+                <ThemedText type="small" themeColor="textSecondary" style={styles.centered}>
+                  {adaptiveLabel(plan)}
+                </ThemedText>
+              ) : null}
 
               {/* L'action principale reste visible sans faire défiler. */}
               <Button
@@ -129,6 +152,7 @@ export default function HomeScreen() {
                 <Stat value={`${Math.round(progress.ratio * 100)} %`} label="de l’objectif" />
               </ThemedView>
 
+              {showSuggestion ? <AdaptiveSuggestion onDismiss={dismissSuggestion} /> : null}
               {territoryAlert ? <TerritoryCard alerts={territory} /> : null}
               {streak ? <StreakBanner streak={streak} /> : null}
               {challenge ? <ChallengeCard challenge={challenge} /> : null}
@@ -196,6 +220,30 @@ function StreakBanner({ streak }: { streak: ProtectedStreak }) {
           {`${milestone} jours d’affilée, bravo !`}
         </ThemedText>
       ) : null}
+    </ThemedView>
+  );
+}
+
+/** Proposition d'objectif adaptatif quand l'objectif fixe semble hors de portée. */
+function AdaptiveSuggestion({ onDismiss }: { onDismiss: () => void }) {
+  const [saving, setSaving] = useState(false);
+  return (
+    <ThemedView type="backgroundElement" style={styles.card}>
+      <ThemedText type="smallBold">Un objectif qui grandit avec vous</ThemedText>
+      <ThemedText type="small">
+        Votre objectif a rarement été atteint ces deux dernières semaines. L’objectif adaptatif part
+        de votre moyenne, puis monte de 500 pas chaque semaine réussie, jusqu’à 10 000.
+      </ThemedText>
+      <Button
+        title="Essayer l’objectif adaptatif"
+        loading={saving}
+        onPress={async () => {
+          setSaving(true);
+          if (await setAdaptiveGoal(true)) onDismiss();
+          setSaving(false);
+        }}
+      />
+      <Button title="Garder mon objectif" variant="secondary" onPress={onDismiss} />
     </ThemedView>
   );
 }
