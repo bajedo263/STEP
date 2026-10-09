@@ -31,9 +31,6 @@ export default function AppTabs() {
           <TabTrigger name="amis" href="/amis" asChild>
             <TabButton>Amis</TabButton>
           </TabTrigger>
-          <TabTrigger name="profil" href="/profil" asChild>
-            <TabButton>Profil</TabButton>
-          </TabTrigger>
         </CustomTabList>
       </TabList>
     </Tabs>

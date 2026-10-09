@@ -1,8 +1,9 @@
 import { router } from 'expo-router';
 import { useMemo } from 'react';
-import { ActivityIndicator, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Avatar } from '@/components/avatar';
 import { NextBadge } from '@/components/badges-card';
 import { Icon } from '@/components/icon';
 import { Celebration } from '@/components/celebration';
@@ -78,13 +79,22 @@ export default function HomeScreen() {
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
         <ScrollView contentContainerStyle={styles.content}>
-          <ThemedText type="smallBold" themeColor="textSecondary">
-            {new Date().toLocaleDateString('fr-FR', {
-              weekday: 'long',
-              day: 'numeric',
-              month: 'long',
-            })}
-          </ThemedText>
+          <View style={styles.header}>
+            <ThemedText type="smallBold" themeColor="textSecondary" style={styles.flex}>
+              {new Date().toLocaleDateString('fr-FR', {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+              })}
+            </ThemedText>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Profil et réglages"
+              hitSlop={Spacing.two}
+              onPress={() => router.push('/profil')}>
+              <Avatar name={profile?.username || session?.user.email || '?'} size={36} />
+            </Pressable>
+          </View>
 
           {progress ? (
             <>
@@ -292,6 +302,11 @@ const styles = StyleSheet.create({
   },
   centered: {
     textAlign: 'center',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'stretch',
   },
   stats: {
     flexDirection: 'row',

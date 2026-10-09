@@ -1,7 +1,7 @@
 import { useKeepAwake } from 'expo-keep-awake';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, BackHandler, Linking, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, BackHandler, Linking, Pressable, Share, StyleSheet, View } from 'react-native';
 import MapView, { Marker, Polygon } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -470,6 +470,17 @@ function WalkDone({
           {message}
         </ThemedText>
         {saveState === 'error' ? <Button title="Réessayer" variant="secondary" onPress={onRetry} /> : null}
+        {saveState === 'saved' ? (
+          <Button
+            title="Partager"
+            variant="secondary"
+            onPress={() =>
+              Share.share({
+                message: shareMessage(summary, seconds, discovered.length, cellCount),
+              }).catch(() => {})
+            }
+          />
+        ) : null}
         <Button
           title="Fermer"
           disabled={saveState === 'saving'}
@@ -478,6 +489,16 @@ function WalkDone({
       </SafeAreaView>
     </ThemedView>
   );
+}
+
+/** Texte partagé à la fin d'un trajet : les chiffres, puis ce qui le rend unique. */
+function shareMessage(summary: WalkSummary, seconds: number, places: number, cells: number): string {
+  const parts = [
+    `${formatDistance(summary.distanceM)} et ${formatNumber(summary.steps)} pas en ${formatDuration(seconds)} avec STEP`,
+  ];
+  if (places > 0) parts.push(`${places} lieu${places > 1 ? 'x' : ''} découvert${places > 1 ? 's' : ''}`);
+  if (cells > 0) parts.push(`${formatNumber(cells)} case${cells > 1 ? 's' : ''} conquise${cells > 1 ? 's' : ''}`);
+  return `${parts.join(', ')} !`;
 }
 
 function Stat({ value, label }: { value: string; label: string }) {
