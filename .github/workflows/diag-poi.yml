@@ -15,8 +15,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: feat/ligues
-      - name: Migration ligues sur une base PostGIS locale (bouchons Supabase)
+          ref: feat/amis-plus
+      - name: Migration amis plus sur une base PostGIS locale (bouchons Supabase)
         env:
           PGPASSWORD: postgres
         run: |
@@ -37,37 +37,27 @@ jobs:
           echo "=== RÉSULTATS"
           $P <<'SQL'
           grant select, insert, update on all tables in schema public to authenticated;
-          insert into auth.users select ('00000000-0000-0000-0000-00000000000' || c)::uuid from unnest(array['a','b','c','d','e','f','9']) c;
+          insert into auth.users select ('00000000-0000-0000-0000-00000000000' || c)::uuid from unnest(array['a','b','c']) c;
           update public.profiles set username = 'user' || right(id::text, 1);
-          select public.league_week_start() as semaine;
-          -- Semaine passée : groupe Argent de 6, A 50 000 ... F 0.
-          insert into public.league_members (week, user_id, tier, group_no, joined_at)
-          select public.league_week_start() - 7, ('00000000-0000-0000-0000-00000000000' || c)::uuid, 1, 1, now() - interval '8 days' + (i || ' seconds')::interval
-          from unnest(array['a','b','c','d','e','f']) with ordinality as t(c, i);
-          insert into public.daily_steps (user_id, day, steps)
-          select ('00000000-0000-0000-0000-00000000000' || c)::uuid, public.league_week_start() - 5, s
-          from unnest(array['a','b','c','d','e'], array[50000, 40000, 30000, 20000, 10000]) as t(c, s);
-          insert into public.daily_steps (user_id, day, steps) values ('00000000-0000-0000-0000-00000000000a', public.league_week_start(), 7000), ('00000000-0000-0000-0000-00000000000e', public.league_week_start(), 9000);
+          insert into public.friend_requests (from_id, to_id, accepted_at) values ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-00000000000b', now());
+          insert into public.friend_requests (from_id, to_id) values ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-00000000000c');
+          insert into public.daily_steps (user_id, day, steps) values ('00000000-0000-0000-0000-00000000000a', public.paris_today(), 5000), ('00000000-0000-0000-0000-00000000000b', public.paris_today(), 7000), ('00000000-0000-0000-0000-00000000000b', public.paris_today() - 3, 4000), ('00000000-0000-0000-0000-00000000000a', public.paris_today() - 3, 9000);
+          -- Vieux duels : terminé il y a 1 jour (visible), en attente depuis 3 jours (caché).
+          insert into public.duels (from_id, to_id, days, status, start_day, created_at) values ('00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-00000000000a', 3, 'active', public.paris_today() - 3, now() - interval '4 days');
+          insert into public.duels (from_id, to_id, days, created_at) values ('00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-00000000000a', 2, now() - interval '3 days');
           set role authenticated;
           select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
-          select username, steps, rank, is_me, tier, players, promote, demote, previous_tier from public.my_league();
-          select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
-          select username, tier, players, previous_tier from public.my_league() where is_me;
-          select set_config('test.uid', '00000000-0000-0000-0000-00000000000e', false);
-          select username, tier, players, previous_tier from public.my_league() where is_me;
-          select set_config('test.uid', '00000000-0000-0000-0000-00000000000f', false);
-          select username, tier, players, previous_tier from public.my_league() where is_me;
-          select set_config('test.uid', '00000000-0000-0000-0000-000000000009', false);
-          select username, steps, rank, tier, players, previous_tier from public.my_league();
-          select count(*) as lignes_visibles from public.league_members;
-          reset role;
-          -- Remplissage : 40 nouveaux au Bronze, groupes de 30 au plus.
-          insert into auth.users select gen_random_uuid() from generate_series(1, 40);
-          do $$ declare u uuid; begin
-            for u in select id from auth.users where id not in (select user_id from public.league_members) loop
-              perform set_config('test.uid', u::text, true);
-              perform public.join_league();
-            end loop;
-          end $$;
-          select tier, group_no, count(*) from public.league_members where week = public.league_week_start() group by 1, 2 order by 1, 2;
+          select public.send_cheer('00000000-0000-0000-0000-00000000000b') as cheer1, public.send_cheer('00000000-0000-0000-0000-00000000000b') as cheer2, public.send_cheer('00000000-0000-0000-0000-00000000000c') as cheer_c;
+          select public.create_duel('00000000-0000-0000-0000-00000000000b', 3) as duel1;
+          select public.create_duel('00000000-0000-0000-0000-00000000000b', 3) as duel2;
+          select public.create_duel('00000000-0000-0000-0000-00000000000c', 3) as duel_c;
+          select set_config('test.uid', '00000000-0000-0000-0000-00000000000b', false);
+          select username, created_at is not null as ok from public.my_cheers();
+          select public.mark_cheers_seen();
+          select count(*) as cheers_apres from public.my_cheers();
+          select other_name, incoming, status, days, start_day = public.paris_today() as today, my_steps, their_steps from public.my_duels();
+          select public.respond_duel(id, true) from public.my_duels() where status = 'pending' and incoming;
+          select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+          select other_name, incoming, status, days, start_day - public.paris_today() as debut, my_steps, their_steps from public.my_duels();
+          select count(*) as duels_visibles_c from public.duels where '00000000-0000-0000-0000-00000000000c' in (from_id, to_id);
           SQL
