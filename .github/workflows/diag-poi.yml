@@ -5,32 +5,66 @@ on:
 jobs:
   diag:
     runs-on: ubuntu-latest
+    services:
+      db:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: fix/itineraire-secours
-      - uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-      - name: Boucle, itinéraire et recherche avec ORS en panne
+          ref: feat/amis
+      - name: Migrations Amis sur une base PostGIS locale (bouchons Supabase)
         env:
-          ORS_API_KEY: ${{ secrets.ORS_API_KEY }}
+          PGPASSWORD: postgres
         run: |
-          cat > /tmp/try.ts <<'TS'
-          import { orsRoundTrip, routeThrough, searchPlaces } from './supabase/functions/_shared/routing.ts';
-          import { triangleWaypoints, seedBearing } from './supabase/functions/_shared/loop.ts';
-          const key = Deno.env.get('ORS_API_KEY')!;
-          const start = { latitude: 48.8490, longitude: 2.2985 };
-          let t = Date.now();
-          const rt = await orsRoundTrip(start, 7500, 42, key);
-          console.log('ORS boucle', rt ? rt.distanceM : null, Date.now() - t, 'ms');
-          t = Date.now();
-          const tri = await routeThrough([start, ...triangleWaypoints(start, 7500 / 1.25, seedBearing(42)), start], key);
-          console.log('triangle', tri?.distanceM, tri?.durationS, tri?.coordinates.length, Date.now() - t, 'ms');
-          t = Date.now();
-          const ab = await routeThrough([start, { latitude: 48.8584, longitude: 2.2945 }], key);
-          console.log('A→B', ab?.distanceM, Date.now() - t, 'ms');
-          const places = await searchPlaces('tour eiffel', start, key);
-          console.log('recherche', places?.slice(0, 3).map((p) => p.label));
-          TS
-          cp /tmp/try.ts ./try.ts && deno run --allow-net --allow-env ./try.ts
+          P="psql -h localhost -U postgres -v ON_ERROR_STOP=1 -q"
+          $P <<'SQL'
+          drop extension if exists postgis_tiger_geocoder cascade;
+          drop extension if exists postgis_topology cascade;
+          drop extension if exists postgis cascade;
+          create schema extensions;
+          create schema auth;
+          create role authenticated; create role anon;
+          create table auth.users (id uuid primary key);
+          create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('test.uid', true), '')::uuid $$;
+          grant usage on schema auth, public, extensions to authenticated;
+          grant execute on function auth.uid() to authenticated;
+          SQL
+          for f in supabase/migrations/*.sql; do echo "== $f"; $P -f "$f"; done
+          echo "=== RÉSULTATS"
+          $P <<'SQL'
+          grant select, insert, update on all tables in schema public to authenticated;
+          insert into auth.users values ('11111111-1111-1111-1111-111111111111'), ('22222222-2222-2222-2222-222222222222'), ('33333333-3333-3333-3333-333333333333');
+          update public.profiles set username = 'Alice' where id = '11111111-1111-1111-1111-111111111111';
+          update public.profiles set username = 'bob' where id = '22222222-2222-2222-2222-222222222222';
+          update public.profiles set username = 'carol' where id = '33333333-3333-3333-3333-333333333333';
+          insert into public.daily_steps (user_id, day, steps) values ('22222222-2222-2222-2222-222222222222', (now() at time zone 'Europe/Paris')::date, 12345);
+          -- Trajet sans Conquête : aucune case. Puis trajets avec.
+          insert into public.walks (user_id, mode, path, started_at) values ('11111111-1111-1111-1111-111111111111', 'free', 'SRID=4326;LINESTRING(2.3005 48.8495, 2.3141 48.8495)', now());
+          select count(*) as cases_sans_conquete from public.conquest_cells;
+          insert into public.walks (user_id, mode, path, started_at, conquers) values ('22222222-2222-2222-2222-222222222222', 'free', 'SRID=4326;LINESTRING(2.3005 48.8495, 2.3141 48.8495)', now(), true);
+          insert into public.walks (user_id, mode, path, started_at, conquers) values ('33333333-3333-3333-3333-333333333333', 'free', 'SRID=4326;LINESTRING(2.3100 48.8480, 2.3100 48.8530)', now(), true);
+          select owner_id, count(*) from public.conquest_cells group by 1;
+          set role authenticated;
+          select set_config('test.uid', '11111111-1111-1111-1111-111111111111', false);
+          select public.send_friend_request('BOB') as envoi;
+          select public.send_friend_request('bob') as renvoi;
+          select public.send_friend_request('alice') as soi_meme;
+          select public.send_friend_request('personne') as inconnu;
+          select public.send_friend_request('carol') as envoi_carol;
+          select * from public.my_friends() order by username;
+          select set_config('test.uid', '22222222-2222-2222-2222-222222222222', false);
+          select * from public.my_friends();
+          select public.respond_friend_request('11111111-1111-1111-1111-111111111111', true);
+          select set_config('test.uid', '33333333-3333-3333-3333-333333333333', false);
+          select public.respond_friend_request('11111111-1111-1111-1111-111111111111', false);
+          select set_config('test.uid', '11111111-1111-1111-1111-111111111111', false);
+          select * from public.my_friends() order by username;
+          select mine, friend, count(*) from public.conquest_cells_in_box(265400, 180300, 265700, 180500) group by 1, 2 order by 1, 2;
+          select count(*) as demandes_visibles from public.friend_requests;
+          select public.remove_friend('22222222-2222-2222-2222-222222222222');
+          select count(*) as amis_apres_retrait from public.my_friends();
+          SQL
