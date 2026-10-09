@@ -194,8 +194,10 @@ function distanceToSegmentM(p: LatLng, a: LatLng, b: LatLng): number {
 }
 
 /**
- * Garde les lieux à moins de `corridorM` du tracé, dans l'ordre où on les croise,
- * en limitant leur nombre aux plus intéressants.
+ * Garde les lieux à moins de `corridorM` du tracé, dans l'ordre où on les croise.
+ * Quand il y en a trop, le tracé est découpé en `max` tronçons de même longueur et l'on prend
+ * d'abord le plus intéressant de chaque tronçon : les lieux couvrent tout le trajet, pas
+ * seulement son début.
  */
 export function poisAlongPath<T extends Poi>(
   pois: T[],
@@ -203,7 +205,12 @@ export function poisAlongPath<T extends Poi>(
   corridorM = ROUTE_CORRIDOR_M,
   max = MAX_ROUTE_POIS
 ): T[] {
-  if (path.length === 0) return [];
+  if (path.length === 0 || max <= 0) return [];
+  // Distance parcourue depuis le départ à chaque point du tracé.
+  const cumulative = [0];
+  for (let i = 1; i < path.length; i++) cumulative.push(cumulative[i - 1] + distanceM(path[i - 1], path[i]));
+  const total = cumulative[cumulative.length - 1];
+
   const located: { poi: T; along: number }[] = [];
   for (const poi of pois) {
     let best = Infinity;
@@ -213,12 +220,36 @@ export function poisAlongPath<T extends Poi>(
       const d = distanceToSegmentM(poi.coords, path[i], next);
       if (d < best) {
         best = d;
-        along = i;
+        // Position du lieu projetée sur ce segment du tracé.
+        const fromStart = distanceM(path[i], poi.coords);
+        const segment = cumulative[Math.min(i + 1, path.length - 1)] - cumulative[i];
+        along = cumulative[i] + Math.min(segment, Math.sqrt(Math.max(0, fromStart ** 2 - d ** 2)));
       }
     }
     if (best <= corridorM) located.push({ poi, along });
   }
-  const kept = located.sort((a, b) => b.poi.score - a.poi.score).slice(0, max);
+
+  const byScore = located.sort((a, b) => b.poi.score - a.poi.score);
+  let kept = byScore;
+  if (byScore.length > max) {
+    const bucketOf = (along: number) =>
+      total > 0 ? Math.min(max - 1, Math.floor((along / total) * max)) : 0;
+    const takenBuckets = new Set<number>();
+    const pickedIndexes = new Set<number>();
+    // Le meilleur lieu de chaque tronçon d'abord…
+    byScore.forEach((entry, index) => {
+      const bucket = bucketOf(entry.along);
+      if (takenBuckets.has(bucket)) return;
+      takenBuckets.add(bucket);
+      pickedIndexes.add(index);
+    });
+    // … puis les plus intéressants parmi les autres, s'il reste de la place.
+    for (let index = 0; index < byScore.length && pickedIndexes.size < max; index++) {
+      pickedIndexes.add(index);
+    }
+    const picked = byScore.filter((_, index) => pickedIndexes.has(index));
+    kept = picked;
+  }
   return kept.sort((a, b) => a.along - b.along).map(({ poi }) => poi);
 }
 
