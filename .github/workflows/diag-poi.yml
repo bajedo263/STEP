@@ -38,7 +38,7 @@ jobs:
           $P <<'SQL'
           grant select, insert, update on all tables in schema public to authenticated;
           insert into auth.users select ('00000000-0000-0000-0000-00000000000' || c)::uuid from unnest(array['a','b','c','d','e','f','9']) c;
-          update public.profiles set username = 'u' || right(id::text, 1);
+          update public.profiles set username = 'user' || right(id::text, 1);
           select public.league_week_start() as semaine;
           -- Semaine passée : groupe Argent de 6, A 50 000 ... F 0.
           insert into public.league_members (week, user_id, tier, group_no, joined_at)
