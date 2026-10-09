@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react';
 
 import { useStepHistory } from '@/hooks/use-step-history';
 import { badgesFor, type Badge } from '@/lib/badges';
+import { collectionCounts, type ZoneProgress } from '@/lib/collection';
 import type { GoalRule } from '@/lib/steps';
 import { protectedStreak } from '@/lib/streak';
 import { supabase } from '@/lib/supabase';
@@ -13,6 +14,8 @@ type Totals = {
   challenges: number;
   cells: number;
   friends: number;
+  zonesExplored: number;
+  zonesComplete: number;
 };
 
 /**
@@ -32,9 +35,13 @@ export function useBadges(todaySteps: number | null, goal: GoalRule): Badge[] | 
         client.rpc('my_badge_stats'),
         client.rpc('my_conquest_count'),
         client.rpc('my_friends'),
+        client.rpc('poi_zone_stats'),
       ])
-        .then(([stats, cells, friends]) => {
+        .then(([stats, cells, friends, zones]) => {
           if (cancelled || stats.error) return;
+          const collection = collectionCounts(
+            zones.error ? [] : ((zones.data as ZoneProgress[] | null) ?? [])
+          );
           const row = (
             stats.data as { walked_m: number; places: number; challenges: number }[] | null
           )?.[0];
@@ -48,6 +55,8 @@ export function useBadges(todaySteps: number | null, goal: GoalRule): Badge[] | 
               : ((friends.data as { status: string }[] | null) ?? []).filter(
                   (friend) => friend.status === 'friend'
                 ).length,
+            zonesExplored: collection.explored,
+            zonesComplete: collection.complete,
           });
         })
         .catch(() => {});

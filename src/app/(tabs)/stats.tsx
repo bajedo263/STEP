@@ -1,5 +1,13 @@
-import { useMemo } from 'react';
-import { ActivityIndicator, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { router } from 'expo-router';
+import { useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BadgesCard } from '@/components/badges-card';
@@ -12,6 +20,7 @@ import { useProfile } from '@/hooks/use-profile';
 import { useStats, type PoiZoneStats, type WalkRow } from '@/hooks/use-stats';
 import { useTheme } from '@/hooks/use-theme';
 import { useTodaySteps } from '@/hooks/use-today-steps';
+import { collectionCounts, zoneLevel, zoneNextStep } from '@/lib/collection';
 import { formatDistance } from '@/lib/daily-progress';
 import { formatDuration } from '@/lib/loop';
 import {
@@ -294,12 +303,15 @@ function RecordRow({ label, value, detail }: { label: string; value: string; det
 /** Lieux découverts sur le total disponible, au global et par quartier. */
 function PoiProgress({ zones }: { zones: PoiZoneStats[] }) {
   const theme = useTheme();
+  const [showAll, setShowAll] = useState(false);
   const visited = zones.reduce((sum, zone) => sum + zone.visited, 0);
   const total = zones.reduce((sum, zone) => sum + zone.total, 0);
+  const { explored, complete } = collectionCounts(zones);
+  const shown = showAll ? zones : zones.slice(0, 5);
 
   return (
     <ThemedView type="backgroundElement" style={styles.card}>
-      <ThemedText type="smallBold">Lieux découverts</ThemedText>
+      <ThemedText type="smallBold">Collection de lieux</ThemedText>
       {zones.length === 0 ? (
         <ThemedText type="small" themeColor="textSecondary">
           Marchez près des repères orange de la carte : chaque lieu devant lequel vous passez est
@@ -313,29 +325,66 @@ function PoiProgress({ zones }: { zones: PoiZoneStats[] }) {
               {` sur ${formatNumber(total)} dans les quartiers où vous avez marché`}
             </ThemedText>
           </ThemedText>
-          {zones.slice(0, 5).map((zone) => (
-            <View key={`${zone.zone_x}/${zone.zone_y}`} style={styles.zone}>
-              <View style={styles.zoneHeader}>
-                <ThemedText type="small" numberOfLines={1} style={styles.flex}>
-                  {zone.label ? `Autour de : ${zone.label}` : 'Quartier'}
-                </ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
-                  {`${zone.visited} / ${zone.total}`}
-                </ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            {`${explored} quartier${explored > 1 ? 's' : ''} exploré${explored > 1 ? 's' : ''} à moitié, ${complete} complet${complete > 1 ? 's' : ''}.`}
+          </ThemedText>
+          {shown.map((zone) => {
+            const level = zoneLevel(zone);
+            const next = zoneNextStep(zone);
+            return (
+              <View key={`${zone.zone_x}/${zone.zone_y}`} style={styles.zone}>
+                <View style={styles.zoneHeader}>
+                  <ThemedText type="small" numberOfLines={1} style={styles.flex}>
+                    {`${level === 'complete' ? '🏅 ' : level === 'explored' ? '🧭 ' : ''}${
+                      zone.label ? `Autour de : ${zone.label}` : 'Quartier'
+                    }`}
+                  </ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {`${zone.visited} / ${zone.total}`}
+                  </ThemedText>
+                </View>
+                <View style={[styles.progressTrack, { backgroundColor: theme.backgroundSelected }]}>
+                  <View
+                    style={[
+                      styles.progressFill,
+                      {
+                        width: `${Math.min(100, (zone.visited / zone.total) * 100)}%`,
+                        backgroundColor: VisitedPoiColor,
+                      },
+                    ]}
+                  />
+                </View>
+                {next ? (
+                  <View style={styles.zoneHeader}>
+                    <ThemedText type="small" themeColor="textSecondary" style={styles.flex}>
+                      {next}
+                    </ThemedText>
+                    <Pressable
+                      accessibilityRole="button"
+                      hitSlop={Spacing.two}
+                      // Un identifiant à chaque appui : la carte trace une nouvelle boucle même déjà ouverte.
+                      onPress={() =>
+                        router.navigate({
+                          pathname: '/carte',
+                          params: { quartier: `${zone.zone_x}/${zone.zone_y}/${Date.now()}` },
+                        })
+                      }>
+                      <ThemedText type="smallBold" themeColor="tint">
+                        Boucle vers les lieux manquants
+                      </ThemedText>
+                    </Pressable>
+                  </View>
+                ) : null}
               </View>
-              <View style={[styles.progressTrack, { backgroundColor: theme.backgroundSelected }]}>
-                <View
-                  style={[
-                    styles.progressFill,
-                    {
-                      width: `${Math.min(100, (zone.visited / zone.total) * 100)}%`,
-                      backgroundColor: VisitedPoiColor,
-                    },
-                  ]}
-                />
-              </View>
-            </View>
-          ))}
+            );
+          })}
+          {zones.length > 5 ? (
+            <Pressable accessibilityRole="button" onPress={() => setShowAll((value) => !value)}>
+              <ThemedText type="smallBold" themeColor="tint">
+                {showAll ? 'Voir moins' : `Voir les ${zones.length} quartiers`}
+              </ThemedText>
+            </Pressable>
+          ) : null}
         </>
       )}
     </ThemedView>
