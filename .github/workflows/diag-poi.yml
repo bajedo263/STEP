@@ -15,8 +15,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: feat/territoire-vivant
-      - name: Migration territoire vivant sur une base PostGIS locale (bouchons Supabase)
+          ref: feat/badges
+      - name: Migration badges sur une base PostGIS locale (bouchons Supabase)
         env:
           PGPASSWORD: postgres
         run: |
@@ -38,26 +38,18 @@ jobs:
           $P <<'SQL'
           grant select, insert, update on all tables in schema public to authenticated;
           insert into auth.users values ('22222222-2222-2222-2222-222222222222'), ('33333333-3333-3333-3333-333333333333');
-          -- Bob conquiert une rue, Carol la croise : Bob perd les cases du croisement.
-          insert into public.walks (user_id, mode, path, started_at, conquers) values ('22222222-2222-2222-2222-222222222222', 'free', 'SRID=4326;LINESTRING(2.3005 48.8495, 2.3141 48.8495)', now(), true);
-          insert into public.walks (user_id, mode, path, started_at, conquers) values ('33333333-3333-3333-3333-333333333333', 'free', 'SRID=4326;LINESTRING(2.3100 48.8480, 2.3100 48.8530)', now(), true);
-          select owner_id, count(*) from public.conquest_cells group by 1;
-          select user_id, taken_by, count(*) as pertes from public.conquest_losses group by 1, 2;
-          -- Une partie des cases de Bob a 6 jours (bientôt libérées), une autre 8 jours (déjà libres).
-          update public.conquest_cells set captured_at = now() - interval '6 days' where owner_id = '22222222-2222-2222-2222-222222222222' and x < 265502;
-          update public.conquest_cells set captured_at = now() - interval '8 days' where owner_id = '22222222-2222-2222-2222-222222222222' and x < 265496;
+          insert into public.walks (user_id, mode, path, started_at, distance_m) values ('22222222-2222-2222-2222-222222222222', 'free', 'SRID=4326;LINESTRING(2.3005 48.8495, 2.3141 48.8495)', now(), 1000), ('22222222-2222-2222-2222-222222222222', 'loop', null, now(), 2500), ('33333333-3333-3333-3333-333333333333', 'free', null, now(), 9000);
           set role authenticated;
           select set_config('test.uid', '22222222-2222-2222-2222-222222222222', false);
-          select kind, count(*) from public.my_territory_alerts() group by 1 order by 1;
-          select count(*) as pertes_lisibles from public.conquest_losses;
+          select * from public.my_badge_stats();
+          insert into public.challenge_completions (user_id, day, kind) values ('22222222-2222-2222-2222-222222222222', current_date, 'loop');
+          insert into public.challenge_completions (user_id, day, kind) values ('22222222-2222-2222-2222-222222222222', current_date, 'loop') on conflict (user_id, day) do nothing;
+          select * from public.my_badge_stats();
           select set_config('test.uid', '33333333-3333-3333-3333-333333333333', false);
-          select kind, count(*) as alertes_carol from public.my_territory_alerts() group by 1 order by 1;
-          reset role;
-          -- Bob reprend sa rue : plus d'alerte « reprise » pour lui, Carol en a.
-          insert into public.walks (user_id, mode, path, started_at, conquers) values ('22222222-2222-2222-2222-222222222222', 'free', 'SRID=4326;LINESTRING(2.3005 48.8495, 2.3141 48.8495)', now(), true);
-          set role authenticated;
-          select set_config('test.uid', '22222222-2222-2222-2222-222222222222', false);
-          select kind, count(*) as apres_reprise_bob from public.my_territory_alerts() group by 1 order by 1;
-          select set_config('test.uid', '33333333-3333-3333-3333-333333333333', false);
-          select kind, count(*) as apres_reprise_carol from public.my_territory_alerts() group by 1 order by 1;
+          select * from public.my_badge_stats();
+          select count(*) as defis_lisibles_par_carol from public.challenge_completions;
+          do $$ begin
+            insert into public.challenge_completions (user_id, day, kind) values ('22222222-2222-2222-2222-222222222222', current_date - 1, 'loop');
+            raise notice 'ERREUR : Carol a écrit pour Bob';
+          exception when others then raise notice 'OK refusé : %', sqlerrm; end $$;
           SQL
