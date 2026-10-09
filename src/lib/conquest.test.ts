@@ -10,6 +10,9 @@ import {
   cellRangeOf,
   cellsAlongTrack,
   MAX_VISIBLE_SPAN,
+  cellCenter,
+  defensePoints,
+  territoryAlertLabel,
 } from './conquest.ts';
 import { distanceM } from '../../supabase/functions/_shared/pois.ts';
 
@@ -27,7 +30,10 @@ test('cellOf : cases d’environ 50 m à Paris, au même découpage que la base'
 
 test('cellsAlongTrack ignore le départ et ne saute aucune case', () => {
   // 500 m vers l'est en deux points seulement.
-  const end = { latitude: start.latitude, longitude: start.longitude + 500 / (111_320 * Math.cos((start.latitude * Math.PI) / 180)) };
+  const end = {
+    latitude: start.latitude,
+    longitude: start.longitude + 500 / (111_320 * Math.cos((start.latitude * Math.PI) / 180)),
+  };
   const all = cellsAlongTrack([start, end], 0);
   assert.ok(all.length >= 10 && all.length <= 12, String(all.length));
   const xs = all.map((c) => c.x).sort((a, b) => a - b);
@@ -45,7 +51,10 @@ test('cellRangeOf refuse une carte trop dézoomée', () => {
 });
 
 test('capturedCells ignore aussi la fin et les trajets trop courts', () => {
-  const east = (m: number) => ({ latitude: start.latitude, longitude: start.longitude + m / (111_320 * Math.cos((start.latitude * Math.PI) / 180)) });
+  const east = (m: number) => ({
+    latitude: start.latitude,
+    longitude: start.longitude + m / (111_320 * Math.cos((start.latitude * Math.PI) / 180)),
+  });
   const cells = capturedCells([start, east(600)]);
   assert.ok(cells.length >= 5 && cells.length <= 8, String(cells.length));
   assert.ok(!cells.some((c) => c.x === cellOf(east(600)).x));
@@ -56,4 +65,40 @@ test('conquestUnlocked à partir de 10 000 pas', () => {
   assert.equal(conquestUnlocked(null), false);
   assert.equal(conquestUnlocked(9999), false);
   assert.equal(conquestUnlocked(10000), true);
+});
+
+test('defensePoints vise les grappes de cases proches et les ordonne autour du départ', () => {
+  const start = { latitude: 48.85, longitude: 2.35 };
+  const at = (dLat: number, dLon: number) =>
+    cellOf({ latitude: start.latitude + dLat, longitude: start.longitude + dLon });
+  const north = [at(0.009, 0), at(0.009, 0.0007), at(0.0095, 0.0003)];
+  const east = [at(0, 0.012), at(0.0004, 0.012)];
+  const lonely = at(-0.006, 0);
+  const far = at(0.05, 0);
+  const points = defensePoints([lonely, ...east, far, ...north], start);
+  assert.equal(points.length, 3);
+  assert.ok(points.every((point) => distanceM(start, point) <= 2_500));
+  // Dans le sens des aiguilles d'une montre : nord, est, sud (à une rotation près).
+  const n = points.findIndex((point) => point.latitude > start.latitude + 0.008);
+  const turned = [...points.slice(n), ...points.slice(0, n)];
+  assert.ok(turned[1].longitude > start.longitude + 0.01);
+  assert.ok(turned[2].latitude < start.latitude);
+  assert.deepEqual(defensePoints([far], start), []);
+  assert.ok(distanceM(cellCenter(north[0]), { latitude: 48.859, longitude: 2.35 }) < 50);
+});
+
+test('territoryAlertLabel accorde au singulier et au pluriel', () => {
+  const cell = { x: 1, y: 1 };
+  assert.equal(
+    territoryAlertLabel({ lost: [cell, cell], expiring: [cell] }),
+    '2 cases reprises par d’autres marcheurs, 1 case à vous libérée d’ici 2 jours.'
+  );
+  assert.equal(
+    territoryAlertLabel({ lost: [cell], expiring: [] }),
+    '1 case reprise par d’autres marcheurs.'
+  );
+  assert.equal(
+    territoryAlertLabel({ lost: [], expiring: [] }),
+    'Votre territoire est en sécurité.'
+  );
 });

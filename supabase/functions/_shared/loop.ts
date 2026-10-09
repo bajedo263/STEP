@@ -141,3 +141,31 @@ export function orsPathBody(points: LatLng[]) {
     instructions: false,
   };
 }
+
+/** Points de passage imposés d'une boucle (« Défendre » son territoire) : 4 au plus. */
+export const MAX_THROUGH_POINTS = 4;
+/** Distance maximale d'un point de passage au départ. */
+export const MAX_THROUGH_RADIUS_M = 5_000;
+
+/**
+ * Points de passage valides demandés par l'app, ou null s'il n'y en a pas : la boucle part
+ * alors au hasard. Les points trop loin du départ sont ignorés.
+ */
+export function parseThroughPoints(body: unknown, start: LatLng): LatLng[] | null {
+  const through = (body as Record<string, unknown> | null)?.through;
+  if (!Array.isArray(through)) return null;
+  const points = through
+    .map((value) => {
+      const { latitude, longitude } = (value ?? {}) as Record<string, unknown>;
+      return isFiniteNumber(latitude) && isFiniteNumber(longitude) ? { latitude, longitude } : null;
+    })
+    .filter((point): point is LatLng => {
+      if (!point || Math.abs(point.latitude) > 90 || Math.abs(point.longitude) > 180) return false;
+      // Distance approchée, largement suffisante à cette échelle.
+      const dy = (point.latitude - start.latitude) * 111_320;
+      const dx = (point.longitude - start.longitude) * 111_320 * Math.cos((start.latitude * Math.PI) / 180);
+      return Math.hypot(dx, dy) <= MAX_THROUGH_RADIUS_M;
+    })
+    .slice(0, MAX_THROUGH_POINTS);
+  return points.length > 0 ? points : null;
+}

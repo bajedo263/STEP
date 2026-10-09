@@ -45,7 +45,26 @@ export function useLoopRoute() {
     setState({ status: 'ready', route: { ...data, via: data.via ?? [] } });
   }, []);
 
+  /** Boucle qui part de `start`, passe par `through` dans l'ordre et revient au départ. */
+  const generateThrough = useCallback(async (start: LatLng, through: LatLng[]) => {
+    if (!supabase) {
+      setState({ status: 'error', message: 'Le serveur n’est pas configuré.' });
+      return;
+    }
+    setState({ status: 'loading' });
+
+    const { data, error } = await supabase.functions.invoke<LoopResult>('loop-route', {
+      // La distance est imposée par les points de passage ; le serveur l'exige quand même.
+      body: { start, through, distanceM: 5_000, seed: 0 },
+    });
+    if (error || !data) {
+      setState({ status: 'error', message: await errorMessage(error) });
+      return;
+    }
+    setState({ status: 'ready', route: { ...data, via: data.via ?? [] } });
+  }, []);
+
   const clear = useCallback(() => setState({ status: 'idle' }), []);
 
-  return { ...state, generate, clear };
+  return { ...state, generate, generateThrough, clear };
 }

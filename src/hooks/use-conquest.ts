@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 
-import type { ConquestCell, cellRangeOf } from '@/lib/conquest';
+import type { Cell, ConquestCell, cellRangeOf } from '@/lib/conquest';
 import { supabase } from '@/lib/supabase';
 
 type CellRange = NonNullable<ReturnType<typeof cellRangeOf>>;
@@ -48,4 +49,33 @@ export function useMyConquestCount(): number | null {
     };
   }, []);
   return count;
+}
+
+/** Cases qu'on m'a prises et que je n'ai pas reprises, et mes cases bientôt libérées. */
+export type TerritoryAlerts = { lost: Cell[]; expiring: Cell[] };
+
+/**
+ * Alertes de territoire, rechargées à chaque retour sur l'écran ; null tant qu'elles ne sont pas
+ * connues ou si la migration « territoire vivant » n'est pas encore appliquée.
+ */
+export function useTerritoryAlerts(): TerritoryAlerts | null {
+  const [alerts, setAlerts] = useState<TerritoryAlerts | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      if (!supabase) return;
+      let cancelled = false;
+      supabase.rpc('my_territory_alerts').then(({ data, error }) => {
+        if (cancelled || error) return;
+        const rows = (data ?? []) as { kind: 'lost' | 'expiring'; x: number; y: number }[];
+        setAlerts({
+          lost: rows.filter((row) => row.kind === 'lost').map(({ x, y }) => ({ x, y })),
+          expiring: rows.filter((row) => row.kind === 'expiring').map(({ x, y }) => ({ x, y })),
+        });
+      });
+      return () => {
+        cancelled = true;
+      };
+    }, [])
+  );
+  return alerts;
 }

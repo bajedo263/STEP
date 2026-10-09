@@ -8,6 +8,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { useTerritoryAlerts, type TerritoryAlerts } from '@/hooks/use-conquest';
 import { useDailyChallenge } from '@/hooks/use-daily-challenge';
 import { useProfile } from '@/hooks/use-profile';
 import { useStepHistory } from '@/hooks/use-step-history';
@@ -15,7 +16,7 @@ import { useSyncDailySteps } from '@/hooks/use-sync-daily-steps';
 import { useTheme } from '@/hooks/use-theme';
 import { useTodaySteps } from '@/hooks/use-today-steps';
 import type { Challenge } from '@/lib/challenge';
-import { CONQUEST_UNLOCK_STEPS, conquestUnlocked } from '@/lib/conquest';
+import { CONQUEST_UNLOCK_STEPS, conquestUnlocked, territoryAlertLabel } from '@/lib/conquest';
 import { dailyProgress, formatDistance } from '@/lib/daily-progress';
 import { DEFAULT_DAILY_GOAL } from '@/lib/steps';
 import { milestoneToday, protectedStreak, type ProtectedStreak } from '@/lib/streak';
@@ -54,6 +55,7 @@ export default function HomeScreen() {
     [history, steps, goal]
   );
   const challenge = useDailyChallenge(steps, goal);
+  const territory = useTerritoryAlerts();
 
   return (
     <ThemedView style={styles.container}>
@@ -92,6 +94,9 @@ export default function HomeScreen() {
 
               {streak ? <StreakBanner streak={streak} /> : null}
               {challenge ? <ChallengeCard challenge={challenge} /> : null}
+              {territory && territory.lost.length + territory.expiring.length > 0 ? (
+                <TerritoryCard alerts={territory} />
+              ) : null}
 
               {isPartial ? (
                 <ThemedText type="small" themeColor="textSecondary" style={styles.centered}>
@@ -179,6 +184,27 @@ function ChallengeCard({ challenge }: { challenge: Challenge }) {
       <ThemedText type="small" themeColor="textSecondary">
         {challenge.progressLabel}
       </ThemedText>
+    </ThemedView>
+  );
+}
+
+/** Territoire vivant : cases reprises ou bientôt libérées, et une boucle pour les défendre. */
+function TerritoryCard({ alerts }: { alerts: TerritoryAlerts }) {
+  const theme = useTheme();
+  return (
+    <ThemedView type="backgroundElement" style={styles.card}>
+      <ThemedText type="smallBold" style={alerts.lost.length > 0 && { color: theme.danger }}>
+        {alerts.lost.length > 0 ? 'Votre territoire est attaqué' : 'Votre territoire s’efface'}
+      </ThemedText>
+      <ThemedText type="small">{territoryAlertLabel(alerts)}</ThemedText>
+      <Button
+        title="Défendre"
+        variant="secondary"
+        // Un identifiant à chaque appui : la carte trace une nouvelle boucle même si elle est déjà ouverte.
+        onPress={() =>
+          router.navigate({ pathname: '/carte', params: { defend: String(Date.now()) } })
+        }
+      />
     </ThemedView>
   );
 }

@@ -10,6 +10,7 @@ import {
   MAX_LOOP_ATTEMPTS,
   nextRequestedLength,
   parseLoopRequest,
+  parseThroughPoints,
   seedBearing,
   triangleWaypoints,
   type LatLng,
@@ -58,9 +59,18 @@ async function handle(req: Request): Promise<Response> {
   const apiKey = Deno.env.get('ORS_API_KEY');
   if (!apiKey) return json({ error: 'Le calcul de boucle n’est pas encore configuré.' }, 503);
 
-  const parsed = parseLoopRequest(await req.json().catch(() => null));
+  const body = await req.json().catch(() => null);
+  const parsed = parseLoopRequest(body);
   if (!parsed.ok) return json({ error: parsed.error }, 400);
   const { start, distanceM, seed } = parsed.value;
+
+  // 0. Boucle imposée par des points de passage (défendre ses cases) : départ → points → départ.
+  const through = parseThroughPoints(body, start);
+  if (through) {
+    const route = await routeThrough([start, ...through, start], apiKey);
+    if (!route) return json({ error: 'Aucune boucle trouvée par ces cases.' }, 422);
+    return json({ ...route, via: [], targetM: route.distanceM, seed });
+  }
 
   // 1. Une boucle départ → lieu A → lieu B → départ, pour que le trajet ait des choses à voir.
   const poiLoop = await loopThroughPois(apiKey, start, distanceM, seed);
