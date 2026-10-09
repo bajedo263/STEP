@@ -2,9 +2,11 @@ import { useMemo } from 'react';
 import { ActivityIndicator, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { BadgesCard } from '@/components/badges-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing, VisitedPoiColor } from '@/constants/theme';
+import { useBadges } from '@/hooks/use-badges';
 import { useProfile } from '@/hooks/use-profile';
 import { useStats, type PoiZoneStats, type WalkRow } from '@/hooks/use-stats';
 import { useTheme } from '@/hooks/use-theme';
@@ -38,6 +40,7 @@ export default function StatsScreen() {
   const today = useTodaySteps();
   const goal = profile?.daily_goal ?? DEFAULT_DAILY_GOAL;
   const todaySteps = today.status === 'ready' ? today.steps : null;
+  const badges = useBadges(todaySteps, goal);
 
   const week = useMemo(
     () => (stats.status === 'ready' ? buildWeek(stats.days, new Date(), todaySteps) : null),
@@ -66,6 +69,7 @@ export default function StatsScreen() {
               <MonthCard days={stats.days} todaySteps={todaySteps} goal={goal} />
               <RecordsCard days={stats.days} todaySteps={todaySteps} longestWalk={stats.longestWalk} />
               <PoiProgress zones={stats.poiZones} />
+              {badges ? <BadgesCard badges={badges} /> : null}
               <ThemedText type="smallBold">Derniers trajets</ThemedText>
               {stats.walks.length === 0 ? (
                 <ThemedText themeColor="textSecondary">
