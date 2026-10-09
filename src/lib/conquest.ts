@@ -11,7 +11,8 @@ export const CONQUEST_MIN_WALK_M = 400;
 export const MAX_VISIBLE_SPAN = 60;
 
 export type Cell = Zone;
-export type ConquestCell = Cell & { mine: boolean };
+/** `friend` : case d'un ami (absent tant que la migration Amis n'est pas appliquée). */
+export type ConquestCell = Cell & { mine: boolean; friend?: boolean };
 
 export const cellOf = (point: LatLng): Cell => zoneOf(point, CONQUEST_ZOOM);
 export const cellKey = zoneKey;

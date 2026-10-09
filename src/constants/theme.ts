@@ -88,3 +88,5 @@ export const VisitedPoiColor = '#2F9E44';
 /** Conquête : cases à soi et cases prises par d'autres marcheurs. */
 export const ConquestMineColor = '#4B3FF0';
 export const ConquestOtherColor = '#E03131';
+/** Cases des amis. */
+export const ConquestFriendColor = '#0CA5B0';
