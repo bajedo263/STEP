@@ -5,22 +5,53 @@ on:
 jobs:
   diag:
     runs-on: ubuntu-latest
+    services:
+      db:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: feat/anecdote-lieu
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Anecdotes réelles
+          ref: feat/conquete
+      - name: Migrations sur une base PostGIS locale (bouchons Supabase)
+        env:
+          PGPASSWORD: postgres
         run: |
-          cat > /tmp/try.mts <<'TS'
-          import { shortStory } from '/home/runner/work/STEP/STEP/src/lib/poi-story.ts';
-          for (const t of ['Musée_Rodin', 'Rafle_du_Vélodrome_d\'Hiver', 'Mur_pour_la_Paix', 'Synagogue_Chasseloup-Laubat', 'Hôtel_de_Montesquiou', 'Square_Necker', 'Kinopanorama', 'Champ-de-Mars']) {
-            const r = await fetch('https://fr.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(t), { headers: { 'Api-User-Agent': 'STEP/1.0 (https://github.com/bajedo263/step)' } });
-            const j = await r.json();
-            console.log('##', t, r.status, (j.extract ?? '').length, 'car.');
-            console.log(shortStory(j.extract));
-          }
-          TS
-          node --experimental-strip-types /tmp/try.mts
+          P="psql -h localhost -U postgres -v ON_ERROR_STOP=1 -q"
+          $P <<'SQL'
+          create schema extensions;
+          create schema auth;
+          create role authenticated; create role anon;
+          create table auth.users (id uuid primary key);
+          create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('test.uid', true), '')::uuid $$;
+          grant usage on schema auth, public, extensions to authenticated;
+          grant execute on function auth.uid() to authenticated;
+          SQL
+          for f in supabase/migrations/*.sql; do echo "== $f"; $P -f "$f"; done
+          $P <<'SQL'
+          grant select, insert on all tables in schema public to authenticated;
+          insert into auth.users values ('11111111-1111-1111-1111-111111111111'), ('22222222-2222-2222-2222-222222222222');
+          -- Trajet de 1 km vers l'est (Paris 15e), puis un second marcheur qui recoupe la fin.
+          insert into public.walks (user_id, mode, path, started_at)
+          values ('11111111-1111-1111-1111-111111111111', 'free',
+            'SRID=4326;LINESTRING(2.3005 48.8495, 2.3141 48.8495)', now());
+          select count(*) as cases_marcheur_1 from public.conquest_cells;
+          insert into public.walks (user_id, mode, path, started_at)
+          values ('22222222-2222-2222-2222-222222222222', 'free',
+            'SRID=4326;LINESTRING(2.3100 48.8480, 2.3100 48.8530)', now());
+          select owner_id, count(*) from public.conquest_cells group by 1;
+          -- Trajet trop court : aucune case, mais le trajet est bien enregistré.
+          insert into public.walks (user_id, mode, path, started_at)
+          values ('22222222-2222-2222-2222-222222222222', 'free', 'SRID=4326;LINESTRING(2.35 48.85, 2.351 48.85)', now());
+          select count(*) as trajets from public.walks;
+          set role authenticated;
+          select set_config('test.uid', '11111111-1111-1111-1111-111111111111', false);
+          select public.my_conquest_count() as mes_cases;
+          select mine, count(*) from public.conquest_cells_in_box(265000, 180000, 265400, 180400) group by 1;
+          select count(*) as lignes_visibles_directement from public.conquest_cells;
+          select public.conquest_cell_x(2.3005) as x, public.conquest_cell_y(48.8495) as y;
+          SQL
+          node -e "const lat=48.8495,lon=2.3005,n=2**19,r=lat*Math.PI/180;console.log('JS', Math.floor((lon+180)/360*n), Math.floor((1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*n))"
