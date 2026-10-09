@@ -385,30 +385,32 @@ export default function MapScreen() {
           );
         })}
         {mode === 'loop' && loopRoute && handles
-          ? handles.map((handle, index) => (
-              <Marker
-                key={`poignee-${index}-${handle.latitude}-${handle.longitude}-${movingHandle === index}`}
-                coordinate={handle}
-                anchor={{ x: 0.5, y: 0.5 }}
-                draggable={!loop.refining}
-                tracksViewChanges={false}
-                onPress={() => {
-                  if (!loop.refining) setMovingHandle(movingHandle === index ? null : index);
-                }}
-                onDragEnd={(event) => {
-                  void moveHandleTo(index, event.nativeEvent.coordinate);
-                }}>
-                <View
-                  style={[
-                    styles.handle,
-                    { borderColor: theme.tint },
-                    movingHandle === index && [styles.handleMoving, { backgroundColor: theme.tint }],
-                  ]}
-                  accessible
-                  accessibilityLabel="Point de passage : touchez-le, puis l'endroit où la boucle doit passer"
-                />
-              </Marker>
-            ))
+          ? handles.map((handle, index) =>
+              index === movingHandle ? null : (
+                <Marker
+                  key={`poignee-${index}-${handle.latitude}-${handle.longitude}`}
+                  coordinate={handle}
+                  anchor={{ x: 0.5, y: 0.5 }}
+                  draggable={!loop.refining}
+                  tracksViewChanges={false}
+                  onPress={() => {
+                    if (loop.refining) return;
+                    // Viseur : la carte se centre sur le point, qu'on déplace en faisant glisser la carte.
+                    setMovingHandle(index);
+                    panel.collapse();
+                    mapRef.current?.animateCamera({ center: handle }, { duration: 300 });
+                  }}
+                  onDragEnd={(event) => {
+                    void moveHandleTo(index, event.nativeEvent.coordinate);
+                  }}>
+                  <View
+                    style={[styles.handle, { borderColor: theme.tint }]}
+                    accessible
+                    accessibilityLabel="Point de passage : touchez-le pour le déplacer"
+                  />
+                </Marker>
+              )
+            )
           : null}
         {mode === 'loop' && loopRoute ? (
           <Marker
@@ -426,6 +428,39 @@ export default function MapScreen() {
           />
         ) : null}
       </MapView>
+
+      {movingHandle !== null && handles ? (
+        <>
+          {/* Le viseur reste au centre ; on fait glisser la carte en dessous. */}
+          <View pointerEvents="none" style={styles.crosshairLayer}>
+            <View style={[styles.handle, styles.handleMoving, { backgroundColor: theme.tint }]} />
+          </View>
+          <View
+            pointerEvents="box-none"
+            style={[styles.crosshairBar, { top: insets.top + Spacing.three }]}>
+            <ThemedView style={styles.crosshairCard}>
+              <ThemedText type="small" style={styles.centeredText}>
+                Faites glisser la carte pour placer le point sur la rue voulue.
+              </ThemedText>
+              <View style={styles.crosshairButtons}>
+                <Button title="Annuler" variant="secondary" onPress={() => setMovingHandle(null)} />
+                <Button
+                  title="Passer par ici"
+                  disabled={!region || loop.refining}
+                  onPress={() => {
+                    if (!region) return;
+                    void moveHandleTo(movingHandle, {
+                      latitude: region.latitude,
+                      longitude: region.longitude,
+                    });
+                    panel.expand();
+                  }}
+                />
+              </View>
+            </ThemedView>
+          </View>
+        </>
+      ) : null}
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -503,9 +538,7 @@ export default function MapScreen() {
                         <ThemedText type="small" themeColor="textSecondary">
                           {loop.refining
                             ? 'Recalcul de la boucle par ce point…'
-                            : movingHandle !== null
-                              ? 'Touchez maintenant la rue où la boucle doit passer.'
-                              : 'Touchez un point rond du tracé, puis la rue où vous voulez passer.'}
+                            : 'Touchez un point rond du tracé pour le déplacer vers une autre rue.'}
                         </ThemedText>
                         {loop.refineError ? <ErrorText message={loop.refineError} /> : null}
                         <PoiSummary pois={pois} via={loopRoute?.via ?? []} />
@@ -712,6 +745,7 @@ function useCollapsiblePanel() {
     translateY,
     panHandlers,
     expand: () => change(false),
+    collapse: () => change(true),
     toggle: () => change(!collapsed),
   };
 }
@@ -909,6 +943,37 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     borderWidth: 4,
     backgroundColor: '#FFFFFF',
+  },
+  crosshairLayer: {
+    ...StyleSheet.absoluteFill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  crosshairBar: {
+    position: 'absolute',
+    left: Spacing.three,
+    right: Spacing.three,
+    alignItems: 'center',
+  },
+  crosshairCard: {
+    width: '100%',
+    maxWidth: MaxContentWidth,
+    gap: Spacing.two,
+    padding: Spacing.three,
+    borderRadius: Spacing.four,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+  crosshairButtons: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+    justifyContent: 'center',
+  },
+  centeredText: {
+    textAlign: 'center',
   },
   handleMoving: {
     width: 30,
