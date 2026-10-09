@@ -1,5 +1,5 @@
 import { ActivityIndicator, Linking, Pressable, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -13,16 +13,26 @@ export function PoiSheet({
   poi,
   visited,
   onClose,
+  topOffset = 0,
 }: {
   poi: Poi;
   visited: boolean;
   onClose: () => void;
+  /** Espace à laisser sous la barre d'état, pour des boutons posés en haut de l'écran. */
+  topOffset?: number;
 }) {
   const theme = useTheme();
+  // Marge haute calculée ici : dans un écran modal, SafeAreaView l'oubliait (fiche sous l'heure).
+  const insets = useSafeAreaInsets();
   const color = visited ? VisitedPoiColor : PoiColor;
 
   return (
-    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container} pointerEvents="box-none">
+    <View
+      style={[
+        styles.container,
+        { paddingTop: insets.top + topOffset, paddingLeft: insets.left, paddingRight: insets.right },
+      ]}
+      pointerEvents="box-none">
       <ThemedView style={[styles.sheet, { borderColor: color }]}>
         <View style={styles.header}>
           <ThemedText type="smallBold" style={[styles.flex, { color }]}>
@@ -51,7 +61,7 @@ export function PoiSheet({
           </Pressable>
         ) : null}
       </ThemedView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -78,7 +88,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     alignItems: 'center',
-    paddingHorizontal: Spacing.three,
+    marginHorizontal: Spacing.three,
   },
   sheet: {
     // La marge latérale est portée par le conteneur : avec width 100 % + marge, la fiche débordait.

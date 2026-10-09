@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Linking, Pressable, Share, StyleSheet, View } from 'react-native';
-import MapView, { Marker, Polygon } from 'react-native-maps';
+import { Alert, Animated, Linking, Pressable, Share, StyleSheet, View } from 'react-native';
+import MapView, { Marker, Polygon, type LatLng } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HeadingCone } from '@/components/heading-cone';
@@ -11,6 +11,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { ConquestMineColor, MaxContentWidth, PoiColor, Radius, Spacing, VisitedPoiColor } from '@/constants/theme';
+import { useCollapsiblePanel } from '@/hooks/use-collapsible-panel';
 import { useTheme } from '@/hooks/use-theme';
 import { useHeading } from '@/hooks/use-heading';
 import { localFlag, setLocalFlag } from '@/hooks/use-local-flag';
@@ -34,6 +35,8 @@ import {
 const formatNumber = (value: number) => Math.round(value).toLocaleString('fr-FR');
 
 const AWAKE_HINT_KEY = 'step.awake-hint-seen';
+/** Hauteur réservée aux boutons du haut (marge comprise). */
+const TOP_BUTTONS_HEIGHT = 64;
 
 /**
  * Écran du trajet en cours. Le suivi tourne en fond de l'app (walk-provider) : on peut réduire
@@ -119,7 +122,15 @@ function ActiveWalk({ walk, onFinish }: { walk: Walk; onFinish: () => void }) {
   const [followHeading, setFollowHeading] = useState(true);
   // Orientation actuelle de la carte : le cône tourne de l'écart entre le téléphone et la carte.
   const [mapHeading, setMapHeading] = useState(0);
-  const position = tracker.track.points.at(-1) ?? null;
+  // Le cône et la caméra suivent le point bleu affiché par la carte, pas la trace lissée :
+  // celle-ci est filtrée et posée sur l'itinéraire, donc décalée de quelques dizaines de mètres.
+  const [userCoord, setUserCoord] = useState<LatLng | null>(null);
+  const position = userCoord ?? tracker.track.points.at(-1) ?? null;
+  const panel = useCollapsiblePanel();
+  // Ce qu'il reste à marcher (trajet prévu) ou ce qu'on a marché (marche libre).
+  const mainDistance = plannedRoute
+    ? formatDistance(remainingAlongPath(plannedRoute.coordinates, tracker.track))
+    : formatDistance(tracker.track.distanceM);
   const latitude = position?.latitude;
   const longitude = position?.longitude;
 
@@ -181,6 +192,11 @@ function ActiveWalk({ walk, onFinish }: { walk: Walk; onFinish: () => void }) {
           followsUserLocation={!followHeading}
           showsCompass={false}
           showsPointsOfInterests={false}
+          onUserLocationChange={({ nativeEvent: { coordinate } }) => {
+            if (coordinate) {
+              setUserCoord({ latitude: coordinate.latitude, longitude: coordinate.longitude });
+            }
+          }}
           // Déplacer la carte à la main suspend le suivi du cap.
           onPanDrag={() => setFollowHeading(false)}
           onRegionChangeComplete={() => {
@@ -273,36 +289,63 @@ function ActiveWalk({ walk, onFinish }: { walk: Walk; onFinish: () => void }) {
             }
           />
         ) : null}
-        <ThemedView style={styles.card}>
-          {/* Ce qu'on cherche d'un coup d'œil : ce qu'il reste à marcher, puis le prochain lieu. */}
-          <ThemedText type="title" style={styles.centered}>
-            {plannedRoute
-              ? formatDistance(remainingAlongPath(plannedRoute.coordinates, tracker.track))
-              : formatDistance(tracker.track.distanceM)}
-          </ThemedText>
-          <ThemedText type="small" themeColor="textSecondary" style={styles.centered}>
-            {plannedRoute
-              ? next[0]
-                ? `restants · prochain lieu : ${next[0].title}`
-                : 'restants'
-              : next[0] && lastPoint
-                ? `parcourus · lieu le plus proche : ${next[0].title}, à ${formatDistance(distanceM(next[0].coords, lastPoint))}`
-                : 'parcourus'}
-          </ThemedText>
-          <View style={styles.stats}>
-            <Stat value={formatElapsed(elapsed)} label="de marche" />
-            <Stat value={formatNumber(estimatedSteps)} label="pas" />
-            {plannedRoute ? (
-              <Stat value={formatDistance(tracker.track.distanceM)} label="parcourus" />
-            ) : null}
-          </View>
-          {showAwakeHint ? (
-            <ThemedText type="small" themeColor="textSecondary" style={styles.centered}>
-              Gardez STEP ouvert pendant la marche : l’écran reste allumé.
-            </ThemedText>
-          ) : null}
-          <Button title="Terminer" onPress={onFinish} />
-        </ThemedView>
+        {/* Glisser vers le bas condense le panneau sur une ligne pour dégager la carte. */}
+        <Animated.View
+          {...panel.panHandlers}
+          style={[styles.cardWrapper, { transform: [{ translateY: panel.translateY }] }]}>
+          <ThemedView style={[styles.card, panel.collapsed && styles.cardCollapsed]}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={panel.collapsed ? 'Déplier le panneau' : 'Replier le panneau'}
+              hitSlop={Spacing.three}
+              onPress={panel.toggle}
+              style={styles.grabberArea}>
+              <View style={[styles.grabber, { backgroundColor: theme.backgroundSelected }]} />
+            </Pressable>
+            {panel.collapsed ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={panel.expand}
+                style={styles.collapsedRow}>
+                <ThemedText type="smallBold">
+                  {`${mainDistance} ${plannedRoute ? 'restants' : 'parcourus'}`}
+                </ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  {`${formatElapsed(elapsed)} · ${formatNumber(estimatedSteps)} pas`}
+                </ThemedText>
+              </Pressable>
+            ) : (
+              <>
+                {/* Ce qu'on cherche d'un coup d'œil : ce qu'il reste à marcher, puis le prochain lieu. */}
+                <ThemedText type="title" style={styles.centered}>
+                  {mainDistance}
+                </ThemedText>
+                <ThemedText type="small" themeColor="textSecondary" style={styles.centered}>
+                  {plannedRoute
+                    ? next[0]
+                      ? `restants · prochain lieu : ${next[0].title}`
+                      : 'restants'
+                    : next[0] && lastPoint
+                      ? `parcourus · lieu le plus proche : ${next[0].title}, à ${formatDistance(distanceM(next[0].coords, lastPoint))}`
+                      : 'parcourus'}
+                </ThemedText>
+                <View style={styles.stats}>
+                  <Stat value={formatElapsed(elapsed)} label="de marche" />
+                  <Stat value={formatNumber(estimatedSteps)} label="pas" />
+                  {plannedRoute ? (
+                    <Stat value={formatDistance(tracker.track.distanceM)} label="parcourus" />
+                  ) : null}
+                </View>
+                {showAwakeHint ? (
+                  <ThemedText type="small" themeColor="textSecondary" style={styles.centered}>
+                    Gardez STEP ouvert pendant la marche : l’écran reste allumé.
+                  </ThemedText>
+                ) : null}
+                <Button title="Terminer" onPress={onFinish} />
+              </>
+            )}
+          </ThemedView>
+        </Animated.View>
       </SafeAreaView>
 
       {selected ? (
@@ -310,6 +353,8 @@ function ActiveWalk({ walk, onFinish }: { walk: Walk; onFinish: () => void }) {
           poi={selected}
           visited={discovery.isVisited(selected)}
           onClose={() => setSelectedId(null)}
+          // Sous les boutons « Réduire » et « Suivre mon cap ».
+          topOffset={TOP_BUTTONS_HEIGHT}
         />
       ) : null}
     </View>
@@ -512,6 +557,32 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     padding: Spacing.three,
     pointerEvents: 'box-none',
+  },
+  cardWrapper: {
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: MaxContentWidth,
+  },
+  cardCollapsed: {
+    gap: Spacing.two,
+    paddingVertical: Spacing.three,
+  },
+  grabberArea: {
+    alignSelf: 'center',
+    paddingVertical: Spacing.one,
+    marginTop: -Spacing.three,
+    marginBottom: -Spacing.two,
+  },
+  grabber: {
+    width: 40,
+    height: 5,
+    borderRadius: 3,
+  },
+  collapsedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
   },
   card: {
     alignSelf: 'center',
