@@ -7,25 +7,31 @@ import '@/global.css';
 
 import { Platform } from 'react-native';
 
+/**
+ * Identité STEP : un indigo électrique pour l'action (boutons, tracés, ses cases),
+ * le vert pour l'objectif atteint, l'orange pour les lieux à voir, le rouge pour les rivaux.
+ */
 export const Colors = {
   light: {
-    text: '#000000',
-    background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
-    textSecondary: '#60646C',
-    tint: '#208AEF',
-    onTint: '#ffffff',
+    text: '#12121A',
+    background: '#FFFFFF',
+    backgroundElement: '#F2F2F7',
+    backgroundSelected: '#E2E2EC',
+    textSecondary: '#62626F',
+    tint: '#4B3FF0',
+    onTint: '#FFFFFF',
+    success: '#16A34A',
     danger: '#D93036',
   },
   dark: {
-    text: '#ffffff',
-    background: '#000000',
-    backgroundElement: '#212225',
-    backgroundSelected: '#2E3135',
-    textSecondary: '#B0B4BA',
-    tint: '#3C9CF5',
-    onTint: '#ffffff',
+    text: '#F5F5FA',
+    background: '#0E0E14',
+    backgroundElement: '#1C1C26',
+    backgroundSelected: '#2C2C3A',
+    textSecondary: '#A6A6B4',
+    tint: '#6C63FF',
+    onTint: '#FFFFFF',
+    success: '#3DD56D',
     danger: '#FF6369',
   },
 } as const;
@@ -68,11 +74,17 @@ export const Spacing = {
 } as const;
 
 export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
+/** Coins arrondis des cartes et des boutons. */
+export const Radius = {
+  card: 24,
+  tile: 18,
+  pill: 999,
+} as const;
 export const MaxContentWidth = 800;
 /** Repères des points d'intérêt, sur la carte et pendant la marche. */
 export const PoiColor = '#F08C00';
 /** Lieux déjà découverts. */
 export const VisitedPoiColor = '#2F9E44';
 /** Conquête : cases à soi et cases prises par d'autres marcheurs. */
-export const ConquestMineColor = '#1C7ED6';
+export const ConquestMineColor = '#4B3FF0';
 export const ConquestOtherColor = '#E03131';

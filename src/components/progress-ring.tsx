@@ -12,7 +12,7 @@ type ProgressRingProps = {
   children?: ReactNode;
 };
 
-export function ProgressRing({ progress, size = 240, strokeWidth = 18, children }: ProgressRingProps) {
+export function ProgressRing({ progress, size = 240, strokeWidth = 20, children }: ProgressRingProps) {
   const theme = useTheme();
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
@@ -33,7 +33,7 @@ export function ProgressRing({ progress, size = 240, strokeWidth = 18, children 
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke={theme.tint}
+          stroke={clamped >= 1 ? theme.success : theme.tint}
           strokeWidth={strokeWidth}
           strokeLinecap="round"
           strokeDasharray={`${circumference} ${circumference}`}

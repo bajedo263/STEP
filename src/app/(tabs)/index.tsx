@@ -51,7 +51,7 @@ export default function HomeScreen() {
           {progress ? (
             <>
               <ProgressRing progress={progress.ratio}>
-                <ThemedText type="subtitle">{formatNumber(progress.steps)}</ThemedText>
+                <ThemedText type="title">{formatNumber(progress.steps)}</ThemedText>
                 <ThemedText type="small" themeColor="textSecondary">
                   sur {formatNumber(progress.goal)} pas
                 </ThemedText>
@@ -59,7 +59,7 @@ export default function HomeScreen() {
 
               <ThemedText style={styles.centered}>
                 {progress.goalReached
-                  ? 'Objectif atteint, bravo ! La Conquête arrivera ici.'
+                  ? 'Objectif atteint, bravo ! Passez en mode Conquête pour colorer la carte.'
                   : `Encore ${formatNumber(progress.remainingSteps)} pas, soit environ ${formatDistance(progress.remainingDistanceM)}.`}
               </ThemedText>
 
@@ -90,7 +90,7 @@ export default function HomeScreen() {
 function Stat({ value, label }: { value: string; label: string }) {
   return (
     <ThemedView type="backgroundElement" style={styles.stat}>
-      <ThemedText type="smallBold">{value}</ThemedText>
+      <ThemedText type="stat">{value}</ThemedText>
       <ThemedText type="small" themeColor="textSecondary">
         {label}
       </ThemedText>
