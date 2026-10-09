@@ -13,6 +13,7 @@ import {
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { PoiSheet } from '@/components/poi-sheet';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
@@ -29,7 +30,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { useTodaySteps } from '@/hooks/use-today-steps';
 import { dailyProgress, formatDistance } from '@/lib/daily-progress';
 import { formatDuration, loopTargetDistance, regionForCoordinates, type LoopRoute } from '@/lib/loop';
-import { POI_KIND_LABELS, type Poi } from '@/lib/pois';
+import { type Poi } from '@/lib/pois';
 import { strideLengthMeters } from '@/lib/steps';
 
 const formatNumber = (value: number) => Math.round(value).toLocaleString('fr-FR');
@@ -74,6 +75,8 @@ export default function MapScreen() {
   const destinationRoute = destination.status === 'ready' ? destination.route : null;
   const route = mode === 'loop' ? loopRoute : destinationRoute;
   const pois = useRoutePois(route?.coordinates ?? null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = pois.find((poi) => poi.id === selectedId) ?? null;
 
   // Recadre la carte sur le tracé affiché.
   useEffect(() => {
@@ -99,7 +102,10 @@ export default function MapScreen() {
         initialRegion={{ ...start, latitudeDelta: 0.02, longitudeDelta: 0.02 }}
         showsUserLocation
         showsMyLocationButton={false}
-        showsPointsOfInterests={false}>
+        showsPointsOfInterests={false}
+        onPress={(event) => {
+          if (event.nativeEvent.action !== 'marker-press') setSelectedId(null);
+        }}>
         {route ? (
           <Polyline
             coordinates={route.coordinates}
@@ -113,9 +119,8 @@ export default function MapScreen() {
           <Marker
             key={poi.id}
             coordinate={poi.coords}
-            title={poi.title}
-            description={poi.visited ? 'Déjà découvert' : (poi.description ?? POI_KIND_LABELS[poi.kind])}
             pinColor={poi.visited ? VisitedPoiColor : PoiColor}
+            onPress={() => setSelectedId(poi.id)}
           />
         ))}
         {mode === 'loop' && loopRoute ? (
@@ -268,6 +273,10 @@ export default function MapScreen() {
           </ThemedView>
         </SafeAreaView>
       </KeyboardAvoidingView>
+
+      {selected ? (
+        <PoiSheet poi={selected} visited={selected.visited} onClose={() => setSelectedId(null)} />
+      ) : null}
     </View>
   );
 }

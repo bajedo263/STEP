@@ -5,6 +5,7 @@ import { Alert, BackHandler, Linking, Pressable, StyleSheet, View } from 'react-
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { PoiSheet, PoiStory } from '@/components/poi-sheet';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
@@ -127,6 +128,8 @@ function ActiveWalk({
   // Lieux du trajet prévu, plus ceux découverts en chemin hors du trajet.
   const shown = [...pois, ...discovery.discovered.filter((d) => !pois.some((p) => p.id === d.id))];
   const start = plannedRoute ? plannedRoute.coordinates[0] : tracker.track.points[0];
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = shown.find((poi) => poi.id === selectedId) ?? null;
 
   // Bouton retour d'Android : on propose de terminer plutôt que de perdre le trajet.
   const failed = tracker.status === 'denied' || tracker.status === 'error';
@@ -160,7 +163,10 @@ function ActiveWalk({
           initialRegion={{ ...start, latitudeDelta: 0.01, longitudeDelta: 0.01 }}
           showsUserLocation
           followsUserLocation
-          showsPointsOfInterests={false}>
+          showsPointsOfInterests={false}
+          onPress={(event) => {
+            if (event.nativeEvent.action !== 'marker-press') setSelectedId(null);
+          }}>
           {plannedRoute ? (
             <Polyline
               coordinates={plannedRoute.coordinates}
@@ -176,9 +182,8 @@ function ActiveWalk({
             <Marker
               key={poi.id}
               coordinate={poi.coords}
-              title={poi.title}
-              description={poi.description ?? POI_KIND_LABELS[poi.kind]}
               pinColor={discovery.isVisited(poi) ? VisitedPoiColor : PoiColor}
+              onPress={() => setSelectedId(poi.id)}
             />
           ))}
           {tracker.track.points.length > 1 ? (
@@ -226,6 +231,14 @@ function ActiveWalk({
           <Button title="Terminer" onPress={onFinish} />
         </ThemedView>
       </SafeAreaView>
+
+      {selected ? (
+        <PoiSheet
+          poi={selected}
+          visited={discovery.isVisited(selected)}
+          onClose={() => setSelectedId(null)}
+        />
+      ) : null}
     </View>
   );
 }
@@ -245,7 +258,7 @@ function PoiBanner({ poi, status }: { poi: RoutePoi; status: 'new' | 'visited' |
         {`${heading} · ${POI_KIND_LABELS[poi.kind]}`}
       </ThemedText>
       <ThemedText type="smallBold">{poi.title}</ThemedText>
-      {poi.description ? <ThemedText type="small">{poi.description}</ThemedText> : null}
+      <PoiStory poi={poi} numberOfLines={4} />
       {poi.wikipediaUrl ? (
         <Pressable accessibilityRole="link" onPress={() => Linking.openURL(poi.wikipediaUrl!)}>
           <ThemedText type="small" style={{ color: theme.tint }}>
