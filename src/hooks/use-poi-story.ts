@@ -19,7 +19,10 @@ export function usePoiStory(wikipediaUrl: string | null | undefined): Story {
       headers: { 'Api-User-Agent': 'STEP/1.0 (https://github.com/bajedo263/step)' },
     })
       .then((response) => (response.ok ? response.json() : null))
-      .then((json: { extract?: string } | null) => shortStory(json?.extract))
+      // Une page d'homonymie ne raconte rien du lieu.
+      .then((json: { type?: string; extract?: string } | null) =>
+        json?.type === 'standard' ? shortStory(json.extract) : null
+      )
       .catch(() => null)
       .then((text) => {
         cache.set(title, text);
