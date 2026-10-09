@@ -15,6 +15,7 @@ import { BottomTabInset, ConquestFriendColor, MaxContentWidth, PoiColor, Radius,
 import { useBadges } from '@/hooks/use-badges';
 import { useTerritoryAlerts, type TerritoryAlerts } from '@/hooks/use-conquest';
 import { useDailyChallenge } from '@/hooks/use-daily-challenge';
+import { useCheers } from '@/hooks/use-duels';
 import { setAdaptiveGoal, useDailyGoal } from '@/hooks/use-daily-goal';
 import {
   adaptiveSuggestedKey,
@@ -31,6 +32,7 @@ import { useTodaySteps } from '@/hooks/use-today-steps';
 import { useWeeklyReview, type WeeklyExtras } from '@/hooks/use-weekly-review';
 import { adaptiveLabel, suggestAdaptive } from '@/lib/adaptive-goal';
 import { nextBadges } from '@/lib/badges';
+import { cheersLabel } from '@/lib/duels';
 import type { Challenge } from '@/lib/challenge';
 import { CONQUEST_UNLOCK_STEPS, conquestUnlocked, territoryAlertLabel } from '@/lib/conquest';
 import { dailyProgress, formatDistance, localDay } from '@/lib/daily-progress';
@@ -78,6 +80,8 @@ export default function HomeScreen() {
   );
   const challenge = useDailyChallenge(steps, goal);
   const territory = useTerritoryAlerts();
+  const cheers = useCheers();
+  const cheersText = cheersLabel(cheers.names);
   const badges = useBadges(steps, rule);
   const nextBadge = useMemo(() => (badges ? (nextBadges(badges)[0] ?? null) : null), [badges]);
 
@@ -166,6 +170,20 @@ export default function HomeScreen() {
                 <Stat value={`${Math.round(progress.ratio * 100)} %`} label="de l’objectif" />
               </ThemedView>
 
+              {cheersText ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityHint="Masquer"
+                  onPress={cheers.dismiss}
+                  style={styles.cardPressable}>
+                  <ThemedView type="backgroundElement" style={styles.card}>
+                    <ThemedText type="smallBold">{cheersText}</ThemedText>
+                    <ThemedText type="small" themeColor="textSecondary">
+                      Une boucle pour leur montrer de quoi vous êtes capable ?
+                    </ThemedText>
+                  </ThemedView>
+                </Pressable>
+              ) : null}
               {showWeekly && weekly ? (
                 <WeeklyReviewCard
                   review={weekly.review}
@@ -424,6 +442,9 @@ const styles = StyleSheet.create({
   stat: {
     flex: 1,
     alignItems: 'center',
+  },
+  cardPressable: {
+    alignSelf: 'stretch',
   },
   card: {
     alignSelf: 'stretch',

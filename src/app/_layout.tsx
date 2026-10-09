@@ -35,6 +35,7 @@ function RootNavigator() {
           options={{ presentation: 'fullScreenModal', gestureEnabled: false }}
         />
         <Stack.Screen name="profil" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="ami" options={{ presentation: 'modal' }} />
       </Stack.Protected>
       <Stack.Protected guard={session !== null && !onboarded}>
         <Stack.Screen name="bienvenue" />
