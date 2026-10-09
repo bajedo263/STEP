@@ -12,12 +12,18 @@ jobs:
       - name: Fonction loop-route et OpenRouteService
         env:
           ORS_API_KEY: ${{ secrets.ORS_API_KEY }}
+        continue-on-error: true
         run: |
+          set +e
           set -a; . ./.env; set +a
           F=https://nkrkxmieqdkugtpsoufc.supabase.co/functions/v1
           for fn in loop-route destination pois; do
             curl -sS -m 60 -w " -> $fn %{http_code} %{time_total}s\n" -X POST "$F/$fn" -H "apikey: $EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY" -H "Content-Type: application/json" -d '{}'
           done
+          echo "--- DNS et connexion ORS"
+          getent ahosts api.openrouteservice.org || true
+          for i in 1 2 3; do curl -sS -4 -m 20 -o /dev/null -w "GET racine %{http_code} %{time_total}s\n" https://api.openrouteservice.org/ || true; sleep 5; done
+          curl -sS -m 20 -o /dev/null -w "site ORS %{http_code}\n" https://openrouteservice.org/ || true
           echo "--- ORS round_trip"
           curl -sS -m 60 -o /tmp/r.json -w "%{http_code} %{time_total}s\n" -X POST https://api.openrouteservice.org/v2/directions/foot-walking/geojson \
             -H "Authorization: $ORS_API_KEY" -H "Content-Type: application/json" \
