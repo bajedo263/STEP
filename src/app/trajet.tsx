@@ -2,9 +2,10 @@ import { useKeepAwake } from 'expo-keep-awake';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, BackHandler, Linking, Pressable, StyleSheet, View } from 'react-native';
-import MapView, { Marker, Polygon, Polyline } from 'react-native-maps';
+import MapView, { Marker, Polygon } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { PoiMarker, RouteLine } from '@/components/map-route';
 import { PoiSheet, PoiStory } from '@/components/poi-sheet';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -232,25 +233,21 @@ function ActiveWalk({
           onPress={(event) => {
             if (event.nativeEvent.action !== 'marker-press') setSelectedId(null);
           }}>
-          {plannedRoute ? (
-            <Polyline
-              coordinates={plannedRoute.coordinates}
-              strokeColor={theme.textSecondary}
-              strokeWidth={4}
-              lineDashPattern={[8, 8]}
-            />
-          ) : null}
+          {plannedRoute ? <RouteLine coordinates={plannedRoute.coordinates} faded /> : null}
           {planned.mode === 'destination' ? (
             <Marker coordinate={planned.route.coordinates.at(-1)!} title={planned.label} pinColor={theme.tint} />
           ) : null}
-          {shown.map((poi) => (
-            <Marker
-              key={poi.id}
-              coordinate={poi.coords}
-              pinColor={discovery.isVisited(poi) ? VisitedPoiColor : PoiColor}
-              onPress={() => setSelectedId(poi.id)}
-            />
-          ))}
+          {shown.map((poi) => {
+            const visited = discovery.isVisited(poi);
+            return (
+              <PoiMarker
+                key={`${poi.id}-${visited}`}
+                poi={poi}
+                visited={visited}
+                onPress={() => setSelectedId(poi.id)}
+              />
+            );
+          })}
           {cells.map((cell) => (
             <Polygon
               key={cellKey(cell)}
@@ -273,13 +270,7 @@ function ActiveWalk({
             </Marker>
           ) : null}
           {tracker.track.points.length > 1 ? (
-            <Polyline
-              coordinates={tracker.track.points}
-              strokeColor={theme.tint}
-              strokeWidth={6}
-              lineJoin="round"
-              lineCap="round"
-            />
+            <RouteLine coordinates={tracker.track.points} width={7} />
           ) : null}
         </MapView>
       ) : (
