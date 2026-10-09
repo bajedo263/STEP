@@ -152,6 +152,8 @@ function ActiveWalk({
   // Boussole : la carte pivote avec le téléphone pour montrer droit devant ce qui est en face.
   const heading = useHeading();
   const [followHeading, setFollowHeading] = useState(true);
+  // Orientation actuelle de la carte : le cône tourne de l'écart entre le téléphone et la carte.
+  const [mapHeading, setMapHeading] = useState(0);
   const position = tracker.track.points.at(-1) ?? null;
   const latitude = position?.latitude;
   const longitude = position?.longitude;
@@ -163,6 +165,18 @@ function ActiveWalk({
       { duration: 400 }
     );
   }, [followHeading, heading, latitude, longitude]);
+
+  // En suivi du cap, la carte est tournée comme le téléphone : le cône pointe vers le haut.
+  const shownMapHeading = followHeading ? (heading ?? 0) : mapHeading;
+
+  const toggleFollow = () => {
+    if (followHeading) {
+      // Retour au nord en haut.
+      mapRef.current?.animateCamera({ heading: 0 }, { duration: 400 });
+      setMapHeading(0);
+    }
+    setFollowHeading(!followHeading);
+  };
   const selected = shown.find((poi) => poi.id === selectedId) ?? null;
   // Cases prises en marchant (le départ ne compte pas, pour ne pas montrer l'adresse).
   const cells = useMemo(
@@ -207,6 +221,14 @@ function ActiveWalk({
           showsPointsOfInterests={false}
           // Déplacer la carte à la main suspend le suivi du cap.
           onPanDrag={() => setFollowHeading(false)}
+          onRegionChangeComplete={() => {
+            if (followHeading) return;
+            // La carte a pu être tournée au doigt : on relit son orientation.
+            mapRef.current
+              ?.getCamera()
+              .then((camera) => setMapHeading(camera.heading ?? 0))
+              .catch(() => {});
+          }}
           onPress={(event) => {
             if (event.nativeEvent.action !== 'marker-press') setSelectedId(null);
           }}>
@@ -238,14 +260,14 @@ function ActiveWalk({
             />
           ))}
           {position && heading !== null ? (
-            <Marker
-              coordinate={position}
-              anchor={{ x: 0.5, y: 0.5 }}
-              flat
-              rotation={heading}
-              tracksViewChanges={false}
-              zIndex={10}>
-              <View style={styles.headingBox}>
+            // Le cône est dessiné centré sur la position et tourné dans la vue elle-même :
+            // la rotation des marqueurs n'est pas prise en charge partout (Apple Plans).
+            <Marker coordinate={position} anchor={{ x: 0.5, y: 0.5 }} zIndex={10}>
+              <View
+                style={[
+                  styles.headingBox,
+                  { transform: [{ rotate: `${heading - shownMapHeading}deg` }] },
+                ]}>
                 <View style={[styles.headingCone, { borderBottomColor: `${theme.tint}AA` }]} />
               </View>
             </Marker>
@@ -269,7 +291,7 @@ function ActiveWalk({
       {start ? (
         <Pressable
           accessibilityRole="button"
-          onPress={() => setFollowHeading((current) => !current)}
+          onPress={toggleFollow}
           style={({ pressed }) => [
             styles.compassButton,
             { top: insets.top + Spacing.three, backgroundColor: theme.background },
