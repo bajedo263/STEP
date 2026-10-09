@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react';
 
 import { useStepHistory } from '@/hooks/use-step-history';
 import { badgesFor, type Badge } from '@/lib/badges';
+import type { GoalRule } from '@/lib/steps';
 import { protectedStreak } from '@/lib/streak';
 import { supabase } from '@/lib/supabase';
 
@@ -18,7 +19,7 @@ type Totals = {
  * Badges de l'utilisateur, relus à chaque retour sur l'écran ; null tant qu'ils ne sont pas
  * connus ou si la migration Badges n'est pas encore appliquée.
  */
-export function useBadges(todaySteps: number | null, goal: number): Badge[] | null {
+export function useBadges(todaySteps: number | null, goal: GoalRule): Badge[] | null {
   const history = useStepHistory();
   const [totals, setTotals] = useState<Totals | null>(null);
 

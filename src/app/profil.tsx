@@ -17,6 +17,7 @@ import { TextField } from '@/components/ui/text-field';
 import { Avatar } from '@/components/avatar';
 import { MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useBadges } from '@/hooks/use-badges';
+import { setAdaptiveGoal, useAdaptiveSince, useDailyGoal } from '@/hooks/use-daily-goal';
 import { setReminderHour, useReminderHour } from '@/hooks/use-daily-reminders';
 import { useProfile } from '@/hooks/use-profile';
 import { useStepHistory } from '@/hooks/use-step-history';
@@ -29,7 +30,7 @@ import {
   type ProfileErrors,
   type ProfileForm,
 } from '@/lib/profile';
-import { DEFAULT_DAILY_GOAL, type Sex } from '@/lib/steps';
+import type { Sex } from '@/lib/steps';
 import { protectedStreak } from '@/lib/streak';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/auth-provider';
@@ -50,6 +51,7 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ text: string; isError: boolean } | null>(null);
+  const adaptive = useAdaptiveSince() !== null;
 
   useEffect(() => {
     if (!supabase || !userId) return;
@@ -94,7 +96,10 @@ export default function ProfileScreen() {
     }
 
     setSaving(true);
-    const { error } = await supabase.from('profiles').update(result.value).eq('id', userId);
+    // L'objectif adaptatif se met à jour tout seul : on ne l'écrase pas.
+    const { daily_goal, ...rest } = result.value;
+    const values = adaptive ? rest : { ...rest, daily_goal };
+    const { error } = await supabase.from('profiles').update(values).eq('id', userId);
     setSaving(false);
 
     if (error?.code === '23505') {
@@ -145,13 +150,16 @@ export default function ProfileScreen() {
                   autoCapitalize="none"
                   error={errors.username}
                 />
-                <TextField
-                  label="Objectif quotidien (pas)"
-                  value={form.dailyGoal}
-                  onChangeText={(value) => update('dailyGoal', value)}
-                  keyboardType="number-pad"
-                  error={errors.dailyGoal}
-                />
+                <GoalModeChoice adaptive={adaptive} />
+                {adaptive ? null : (
+                  <TextField
+                    label="Objectif quotidien (pas)"
+                    value={form.dailyGoal}
+                    onChangeText={(value) => update('dailyGoal', value)}
+                    keyboardType="number-pad"
+                    error={errors.dailyGoal}
+                  />
+                )}
                 <TextField
                   label="Taille (cm)"
                   value={form.heightCm}
@@ -199,6 +207,40 @@ export default function ProfileScreen() {
   );
 }
 
+const GOAL_MODE_OPTIONS = [
+  { value: 'fixed', label: 'Fixe' },
+  { value: 'adaptive', label: 'Adaptatif' },
+] as const;
+
+/** Objectif fixe choisi à la main, ou adaptatif qui monte avec les semaines réussies. */
+function GoalModeChoice({ adaptive }: { adaptive: boolean }) {
+  const theme = useTheme();
+  const [failed, setFailed] = useState(false);
+  return (
+    <View style={{ gap: Spacing.two }}>
+      <SegmentedChoice
+        label="Objectif quotidien"
+        options={[...GOAL_MODE_OPTIONS]}
+        value={adaptive ? 'adaptive' : 'fixed'}
+        onChange={async (value) => {
+          setFailed(false);
+          if (!(await setAdaptiveGoal(value === 'adaptive'))) setFailed(true);
+        }}
+      />
+      <ThemedText type="small" themeColor="textSecondary">
+        {adaptive
+          ? 'Il part de votre moyenne + 10 %, monte de 500 pas après chaque semaine à 5 jours sur 7, redescend après une semaine difficile, et s’arrête à 10 000.'
+          : 'Passez en adaptatif pour un objectif qui grandit avec vous, jusqu’à 10 000 pas.'}
+      </ThemedText>
+      {failed ? (
+        <ThemedText type="small" style={{ color: theme.danger }}>
+          Le changement n’a pas pu être enregistré. Réessayez.
+        </ThemedText>
+      ) : null}
+    </View>
+  );
+}
+
 const REMINDER_OPTIONS = [
   { value: 'off', label: 'Aucun' },
   { value: '12', label: '12 h' },
@@ -230,12 +272,12 @@ function Highlights() {
   const profile = useProfile();
   const today = useTodaySteps();
   const steps = today.status === 'ready' ? today.steps : null;
-  const goal = profile?.daily_goal ?? DEFAULT_DAILY_GOAL;
-  const badges = useBadges(steps, goal);
   const history = useStepHistory();
+  const { rule } = useDailyGoal(profile, history, steps);
+  const badges = useBadges(steps, rule);
   const streak = useMemo(
-    () => (history ? protectedStreak(history, new Date(), steps, goal) : null),
-    [history, steps, goal]
+    () => (history ? protectedStreak(history, new Date(), steps, rule) : null),
+    [history, steps, rule]
   );
   const unlocked = badges?.filter((badge) => badge.unlocked) ?? [];
 

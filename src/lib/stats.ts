@@ -1,4 +1,5 @@
 import { localDay, startOfDay } from './daily-progress.ts';
+import { goalOn, type GoalRule } from './steps.ts';
 
 export type DailyStepsRow = { day: string; steps: number };
 
@@ -43,12 +44,12 @@ export function buildWeek(rows: DailyStepsRow[], today: Date, todaySteps: number
   });
 }
 
-export function weekTotals(week: WeekDay[], goal: number) {
+export function weekTotals(week: WeekDay[], goal: GoalRule) {
   const steps = week.reduce((sum, day) => sum + day.steps, 0);
   return {
     steps,
     average: Math.round(steps / week.length),
-    daysAtGoal: week.filter((day) => day.steps >= goal).length,
+    daysAtGoal: week.filter((day) => day.steps >= goalOn(goal, day.day)).length,
   };
 }
 
@@ -82,10 +83,13 @@ export function goalStreaks(
   rows: DailyStepsRow[],
   today: Date,
   todaySteps: number | null,
-  goal: number
+  goal: GoalRule
 ): { current: number; best: number; todayDone: boolean } {
   const byDay = stepsByDay(rows, today, todaySteps);
-  const atGoal = (date: Date) => (byDay.get(localDay(date)) ?? 0) >= goal;
+  const atGoal = (date: Date) => {
+    const day = localDay(date);
+    return (byDay.get(day) ?? 0) >= goalOn(goal, day);
+  };
 
   const todayDone = atGoal(today);
   const cursor = startOfDay(today);
@@ -97,7 +101,7 @@ export function goalStreaks(
   }
 
   const days = [...byDay.entries()]
-    .filter(([, steps]) => steps >= goal)
+    .filter(([day, steps]) => steps >= goalOn(goal, day))
     .map(([day]) => day)
     .sort();
   let best = 0;
@@ -130,7 +134,7 @@ export function monthTotals(
   rows: HistoryRow[],
   today: Date,
   todaySteps: number | null,
-  goal: number
+  goal: GoalRule
 ): { current: PeriodTotals; previous: PeriodTotals } {
   const byDay = stepsByDay(rows, today, todaySteps);
   const extras = new Map(rows.map((row) => [row.day, row]));
@@ -146,7 +150,7 @@ export function monthTotals(
       totals.steps += steps;
       totals.distanceM += row?.distance_m ?? 0;
       totals.calories += row?.calories_kcal ?? 0;
-      if (steps >= goal) totals.daysAtGoal += 1;
+      if (steps >= goalOn(goal, key)) totals.daysAtGoal += 1;
     }
     return totals;
   };

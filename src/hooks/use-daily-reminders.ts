@@ -3,12 +3,13 @@ import { router } from 'expo-router';
 import { useEffect, useMemo } from 'react';
 import { Platform } from 'react-native';
 
+import { useDailyGoal } from '@/hooks/use-daily-goal';
 import { localFlag, setLocalFlag, useLocalFlag } from '@/hooks/use-local-flag';
 import { useProfile } from '@/hooks/use-profile';
 import { useStepHistory } from '@/hooks/use-step-history';
 import { useTodaySteps } from '@/hooks/use-today-steps';
 import { DEFAULT_REMINDER_HOUR, planReminders, reminderKey } from '@/lib/reminders';
-import { DEFAULT_DAILY_GOAL, strideLengthMeters } from '@/lib/steps';
+import { strideLengthMeters } from '@/lib/steps';
 import { protectedStreak } from '@/lib/streak';
 
 /** Réglage des rappels sur ce téléphone : une heure (« 18 ») ou « off ». */
@@ -66,10 +67,10 @@ export function useDailyReminders() {
   const hour = useReminderHour();
 
   const steps = today.status === 'ready' ? today.steps : null;
-  const goal = profile?.daily_goal ?? DEFAULT_DAILY_GOAL;
+  const { goal, rule } = useDailyGoal(profile, history, steps);
   const reminders = useMemo(() => {
     if (steps === null || !history) return null;
-    const streak = protectedStreak(history, new Date(), steps, goal);
+    const streak = protectedStreak(history, new Date(), steps, rule);
     return planReminders({
       now: new Date(),
       hour,
@@ -80,7 +81,7 @@ export function useDailyReminders() {
       strideM: strideLengthMeters(profile?.height_cm ?? 170, profile?.sex ?? 'unspecified'),
       reliable: today.status === 'ready' && !today.partial,
     });
-  }, [steps, history, goal, hour, profile, today]);
+  }, [steps, history, goal, rule, hour, profile, today]);
   const key = reminders ? reminderKey(reminders) : null;
 
   useEffect(() => {

@@ -1,5 +1,6 @@
 import { localDay, startOfDay } from './daily-progress.ts';
 import type { DailyStepsRow } from './stats.ts';
+import { goalOn, type GoalRule } from './steps.ts';
 
 /** Un gel gagné tous les 7 jours d'affilée à l'objectif. */
 export const FREEZE_EVERY_DAYS = 7;
@@ -29,7 +30,7 @@ export function protectedStreak(
   rows: DailyStepsRow[],
   today: Date,
   todaySteps: number | null,
-  goal: number
+  goal: GoalRule
 ): ProtectedStreak {
   const todayKey = localDay(today);
   const byDay = new Map(rows.map((row) => [row.day, row.steps]));
@@ -50,7 +51,7 @@ export function protectedStreak(
   const end = startOfDay(today);
   while (cursor <= end) {
     const day = localDay(cursor);
-    const atGoal = (byDay.get(day) ?? 0) >= goal;
+    const atGoal = (byDay.get(day) ?? 0) >= goalOn(goal, day);
     if (atGoal) {
       result.current += 1;
       result.best = Math.max(result.best, result.current);
