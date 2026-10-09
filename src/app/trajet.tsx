@@ -1,7 +1,6 @@
-import { useKeepAwake } from 'expo-keep-awake';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, BackHandler, Linking, Pressable, Share, StyleSheet, View } from 'react-native';
+import { Alert, Linking, Pressable, Share, StyleSheet, View } from 'react-native';
 import MapView, { Marker, Polygon } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -12,152 +11,82 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { ConquestMineColor, MaxContentWidth, PoiColor, Radius, Spacing, VisitedPoiColor } from '@/constants/theme';
-import { usePlannedWalk } from '@/hooks/use-planned-walk';
-import { usePoiDiscovery } from '@/hooks/use-poi-discovery';
-import { useProfile } from '@/hooks/use-profile';
-import { useRoutePois } from '@/hooks/use-route-pois';
 import { useTheme } from '@/hooks/use-theme';
-import { useTodaySteps } from '@/hooks/use-today-steps';
 import { useHeading } from '@/hooks/use-heading';
 import { localFlag, setLocalFlag } from '@/hooks/use-local-flag';
-import { useElapsedSeconds, useWalkTracker } from '@/hooks/use-walk-tracker';
+import { useElapsedSeconds } from '@/hooks/use-walk-tracker';
 import { feedback } from '@/lib/feedback';
-import { capturedCells, cellKey, cellPolygon, cellsAlongTrack, conquestUnlocked } from '@/lib/conquest';
+import { cellKey, cellPolygon, cellsAlongTrack } from '@/lib/conquest';
 import { formatDistance } from '@/lib/daily-progress';
 import { formatDuration, regionForCoordinates } from '@/lib/loop';
 import { upcomingPois } from '@/lib/map-declutter';
-import { mergePois, POI_KIND_LABELS, type RoutePoi } from '@/lib/pois';
-import { strideLengthMeters } from '@/lib/steps';
-import { supabase } from '@/lib/supabase';
-import { formatElapsed, hasArrived, remainingAlongPath } from '@/lib/track';
-import { MIN_WALK_M, summarizeWalk, walkRow, type WalkSummary } from '@/lib/walk-summary';
-import { useAuth } from '@/providers/auth-provider';
+import { distanceM, nearestPois, POI_KIND_LABELS, type RoutePoi } from '@/lib/pois';
+import { formatElapsed, remainingAlongPath } from '@/lib/track';
+import { type WalkSummary } from '@/lib/walk-summary';
+import {
+  endWalk,
+  type ActiveWalk as Walk,
+  type SaveState,
+  useActiveWalk,
+  useWalkStarting,
+} from '@/providers/walk-provider';
 
 const formatNumber = (value: number) => Math.round(value).toLocaleString('fr-FR');
 
-type SaveState = 'saving' | 'saved' | 'error' | 'too-short';
-
-const NO_POIS: RoutePoi[] = [];
 const AWAKE_HINT_KEY = 'step.awake-hint-seen';
 
+/**
+ * Écran du trajet en cours. Le suivi tourne en fond de l'app (walk-provider) : on peut réduire
+ * cet écran pour consulter les stats ou les amis, puis y revenir par le bandeau.
+ */
 export default function WalkScreen() {
-  const [summary, setSummary] = useState<WalkSummary | null>(null);
-  const [saveState, setSaveState] = useState<SaveState>('saving');
-  // La Conquête s'active dès 10 000 pas dans la journée, y compris en cours de trajet.
-  const today = useTodaySteps();
-  const conquering = conquestUnlocked(today.status === 'ready' ? today.steps : null);
-  const [conquered, setConquered] = useState(false);
-  const { session } = useAuth();
-  const profile = useProfile();
-  const planned = usePlannedWalk();
-  const tracker = useWalkTracker(planned.mode === 'free' ? null : planned.route.coordinates);
-  // Si l'on est parti avant que les lieux du trajet soient arrivés sur la carte, on les charge ici.
-  const routePois = useRoutePois(planned.mode === 'free' ? null : planned.route.coordinates);
-  const plannedPois = useMemo(
-    () => (planned.mode === 'free' ? NO_POIS : mergePois(routePois, planned.pois)),
-    [planned, routePois]
-  );
-  const discovery = usePoiDiscovery(plannedPois, summary ? null : tracker.track.points.at(-1));
+  const walk = useActiveWalk();
+  const starting = useWalkStarting();
 
-  const strideM = strideLengthMeters(profile?.height_cm ?? 170, profile?.sex ?? 'unspecified');
-
-  const save = async (walk: WalkSummary, conquers: boolean) => {
-    if (walk.distanceM < MIN_WALK_M) {
-      setSaveState('too-short');
-      return;
+  if (!walk) {
+    if (starting) {
+      return (
+        <ThemedView style={[styles.container, styles.centeredScreen]}>
+          <ThemedText themeColor="textSecondary">Démarrage du trajet…</ThemedText>
+        </ThemedView>
+      );
     }
-    const userId = session?.user.id;
-    if (!supabase || !userId) {
-      setSaveState('error');
-      return;
-    }
-    setSaveState('saving');
-    const row = walkRow(userId, walk, conquers);
-    let { error } = await supabase.from('walks').insert(row);
-    if (error?.code === 'PGRST204') {
-      // Base pas encore migrée (colonne conquers absente) : on enregistre sans.
-      const { conquers: _ignored, ...legacyRow } = row;
-      ({ error } = await supabase.from('walks').insert(legacyRow));
-    }
-    setSaveState(error ? 'error' : 'saved');
-  };
+    return (
+      <ThemedView style={[styles.container, styles.centeredScreen]}>
+        <ThemedText style={styles.centered}>Aucun trajet en cours.</ThemedText>
+        <Button title="Retour" onPress={() => router.back()} />
+      </ThemedView>
+    );
+  }
 
-  const finish = () => {
-    tracker.stop();
-    const walk = summarizeWalk({
-      mode: planned.mode,
-      track: tracker.track,
-      pedometerSteps: tracker.steps,
-      strideM,
-      weightKg: profile?.weight_kg ?? 70,
-      startedAt: tracker.startedAt,
-      endedAt: new Date(),
-    });
-    setSummary(walk);
-    setConquered(conquering);
-    save(walk, conquering);
-  };
-
-  // Arrivé au bout du trajet prévu : on termine tout seul, sans demander de confirmation.
-  const arrived =
-    !summary && planned.mode !== 'free' && hasArrived(planned.route.coordinates, tracker.track);
-  useEffect(() => {
-    if (!arrived) return;
-    const timer = setTimeout(finish, 0);
-    return () => clearTimeout(timer);
-    // `finish` change à chaque rendu ; seule l'arrivée compte.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [arrived]);
-
-  if (summary) {
+  if (walk.summary) {
     return (
       <WalkDone
-        summary={summary}
-        saveState={saveState}
-        discovered={discovery.discovered}
-        cellCount={conquered ? capturedCells(tracker.track.points).length : 0}
-        points={tracker.track.points}
-        onRetry={() => save(summary, conquered)}
+        summary={walk.summary}
+        saveState={walk.saveState}
+        discovered={walk.discovery.discovered}
+        cellCount={walk.cellCount}
+        points={walk.tracker.track.points}
+        onRetry={walk.retrySave}
       />
     );
   }
 
   return (
     <ActiveWalk
-      tracker={tracker}
-      planned={planned}
-      plannedPois={plannedPois}
-      discovery={discovery}
-      estimatedSteps={tracker.steps ?? tracker.track.distanceM / strideM}
-      conquering={conquering}
+      walk={walk}
       onFinish={() =>
         Alert.alert('Terminer le trajet ?', undefined, [
           { text: 'Continuer', style: 'cancel' },
-          { text: 'Terminer', style: 'destructive', onPress: finish },
+          { text: 'Terminer', style: 'destructive', onPress: walk.finish },
         ])
       }
     />
   );
 }
 
-function ActiveWalk({
-  tracker,
-  planned,
-  plannedPois: pois,
-  discovery,
-  estimatedSteps,
-  conquering,
-  onFinish,
-}: {
-  tracker: ReturnType<typeof useWalkTracker>;
-  planned: ReturnType<typeof usePlannedWalk>;
-  plannedPois: RoutePoi[];
-  discovery: ReturnType<typeof usePoiDiscovery>;
-  estimatedSteps: number;
-  conquering: boolean;
-  onFinish: () => void;
-}) {
-  useKeepAwake();
+function ActiveWalk({ walk, onFinish }: { walk: Walk; onFinish: () => void }) {
+  const { tracker, planned, plannedPois: pois, discovery, estimatedSteps, conquering } = walk;
   const theme = useTheme();
   const elapsed = useElapsedSeconds(tracker.startedAt, true);
   const plannedRoute = planned.mode === 'free' ? null : planned.route;
@@ -165,16 +94,21 @@ function ActiveWalk({
   const [showAwakeHint] = useState(() => localFlag(AWAKE_HINT_KEY) === null);
   useEffect(() => setLocalFlag(AWAKE_HINT_KEY, '1'), []);
   // Pour ne pas couvrir la carte : les 3 prochains lieux du trajet, plus ceux déjà découverts.
+  // En marche libre, sans trajet, ce sont les 3 lieux les plus proches.
   const lastPoint = tracker.track.points.at(-1);
-  const next = upcomingPois(
-    pois.filter((poi) => !discovery.isVisited(poi)).map((poi) => ({ ...poi, visited: false })),
-    planned.mode === 'free' ? [] : planned.route.coordinates,
-    lastPoint
-  );
+  const next = plannedRoute
+    ? upcomingPois(
+        pois.filter((poi) => !discovery.isVisited(poi)).map((poi) => ({ ...poi, visited: false })),
+        plannedRoute.coordinates,
+        lastPoint
+      )
+    : nearestPois(discovery.all.filter((poi) => !discovery.isVisited(poi)), lastPoint);
   const shown = [
     ...next,
     ...pois.filter((poi) => discovery.isVisited(poi) && !next.some((n) => n.id === poi.id)),
-    ...discovery.discovered.filter((d) => !pois.some((p) => p.id === d.id)),
+    ...discovery.discovered.filter(
+      (d) => !pois.some((p) => p.id === d.id) && !next.some((n) => n.id === d.id)
+    ),
   ];
   const start = plannedRoute ? plannedRoute.coordinates[0] : tracker.track.points[0];
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -208,11 +142,6 @@ function ActiveWalk({
     }
     setFollowHeading(!followHeading);
   };
-  // Une vibration à chaque nouveau lieu découvert, même téléphone en poche.
-  const newPlaceId = discovery.hereIsNew ? discovery.here?.id : undefined;
-  useEffect(() => {
-    if (newPlaceId) feedback.success();
-  }, [newPlaceId]);
   const selected = shown.find((poi) => poi.id === selectedId) ?? null;
   // Cases prises en marchant (le départ ne compte pas, pour ne pas montrer l'adresse).
   const cells = useMemo(
@@ -220,16 +149,7 @@ function ActiveWalk({
     [conquering, tracker.track.points]
   );
 
-  // Bouton retour d'Android : on propose de terminer plutôt que de perdre le trajet.
   const failed = tracker.status === 'denied' || tracker.status === 'error';
-  useEffect(() => {
-    if (failed) return;
-    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      onFinish();
-      return true;
-    });
-    return () => subscription.remove();
-  }, [failed, onFinish]);
 
   if (failed) {
     return (
@@ -239,7 +159,13 @@ function ActiveWalk({
             ? 'STEP a besoin de votre position pour suivre le trajet.'
             : 'Le suivi de position n’a pas pu démarrer.'}
         </ThemedText>
-        <Button title="Retour" onPress={() => router.back()} />
+        <Button
+          title="Retour"
+          onPress={() => {
+            router.back();
+            endWalk();
+          }}
+        />
       </ThemedView>
     );
   }
@@ -308,6 +234,21 @@ function ActiveWalk({
         </ThemedView>
       )}
 
+      <Pressable
+        accessibilityRole="button"
+        accessibilityHint="Le trajet continue pendant que vous consultez le reste de l’app"
+        onPress={() => router.back()}
+        style={({ pressed }) => [
+          styles.compassButton,
+          styles.minimizeButton,
+          { top: insets.top + Spacing.three, backgroundColor: theme.background },
+          pressed && styles.pressed,
+        ]}>
+        <ThemedText type="smallBold" style={{ color: theme.tint }}>
+          Réduire
+        </ThemedText>
+      </Pressable>
+
       {start ? (
         <Pressable
           accessibilityRole="button"
@@ -344,7 +285,9 @@ function ActiveWalk({
               ? next[0]
                 ? `restants · prochain lieu : ${next[0].title}`
                 : 'restants'
-              : 'parcourus'}
+              : next[0] && lastPoint
+                ? `parcourus · lieu le plus proche : ${next[0].title}, à ${formatDistance(distanceM(next[0].coords, lastPoint))}`
+                : 'parcourus'}
           </ThemedText>
           <View style={styles.stats}>
             <Stat value={formatElapsed(elapsed)} label="de marche" />
@@ -490,7 +433,11 @@ function WalkDone({
         <Button
           title="Fermer"
           disabled={saveState === 'saving'}
-          onPress={() => router.dismissTo('/')}
+          onPress={() => {
+            router.dismissTo('/');
+            // Après la fermeture, pour ne pas faire clignoter l'écran pendant l'animation.
+            setTimeout(endWalk, 600);
+          }}
         />
       </SafeAreaView>
     </ThemedView>
@@ -542,6 +489,10 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.6,
+  },
+  minimizeButton: {
+    right: undefined,
+    left: Spacing.three,
   },
   compassButton: {
     position: 'absolute',
