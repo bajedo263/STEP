@@ -139,3 +139,27 @@ test('zoneOf et zoneBbox sont cohérents', async () => {
   assert.equal(zonesAround(point).length, 9);
   assert.ok(zonesAlongPath(street).length >= 1);
 });
+
+test('poisAlongPath répartit les lieux sur tout le trajet quand il y en a trop', () => {
+  // Une rue de ~4 km vers le nord, 30 lieux de même intérêt sur le premier kilomètre
+  // et 5 sur le dernier.
+  const road = [
+    { latitude: 48.84, longitude: 2.33 },
+    { latitude: 48.876, longitude: 2.33 },
+  ];
+  const poi = (id: number, latitude: number) => ({
+    id: `wiki/${id}`,
+    kind: 'monument' as const,
+    title: `Lieu ${id}`,
+    description: null,
+    coords: { latitude, longitude: 2.3301 },
+    wikipediaUrl: null,
+    score: 3,
+  });
+  const early = Array.from({ length: 30 }, (_, i) => poi(i, 48.84 + i * 0.0003));
+  const late = Array.from({ length: 5 }, (_, i) => poi(100 + i, 48.868 + i * 0.0015));
+  const kept = poisAlongPath([...early, ...late], road, 50, 10);
+  assert.equal(kept.length, 10);
+  const lateKept = kept.filter((p) => Number(p.id.slice(5)) >= 100).length;
+  assert.ok(lateKept >= 2, `lieux de fin gardés : ${lateKept}`);
+});
