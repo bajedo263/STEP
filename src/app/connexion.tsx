@@ -64,7 +64,9 @@ export default function SignInScreen() {
           style={styles.flex}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-            <ThemedText type="title">STEP</ThemedText>
+            <ThemedText type="title" style={{ color: theme.tint }}>
+              STEP
+            </ThemedText>
             <ThemedText themeColor="textSecondary" style={styles.centered}>
               {isSignUp
                 ? 'Créez votre compte pour suivre vos pas et vos trajets.'

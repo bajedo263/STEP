@@ -1,7 +1,7 @@
 import { ActivityIndicator, Pressable, StyleSheet, type PressableProps } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
+import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 type ButtonProps = Omit<PressableProps, 'children'> & {
@@ -22,14 +22,15 @@ export function Button({ title, variant = 'primary', loading = false, disabled, 
       style={(state) => [
         styles.button,
         { backgroundColor: isPrimary ? theme.tint : theme.backgroundElement },
-        (state.pressed || isDisabled) && styles.dimmed,
+        state.pressed && styles.pressed,
+        isDisabled && styles.dimmed,
         typeof style === 'function' ? style(state) : style,
       ]}
       {...props}>
       {loading ? (
         <ActivityIndicator color={isPrimary ? theme.onTint : theme.text} />
       ) : (
-        <ThemedText type="smallBold" style={{ color: isPrimary ? theme.onTint : theme.text }}>
+        <ThemedText style={[styles.label, { color: isPrimary ? theme.onTint : theme.text }]}>
           {title}
         </ThemedText>
       )}
@@ -42,11 +43,20 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 48,
+    minHeight: 52,
     paddingHorizontal: Spacing.four,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.pill,
+  },
+  label: {
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: 700,
+  },
+  pressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.98 }],
   },
   dimmed: {
-    opacity: 0.6,
+    opacity: 0.5,
   },
 });

@@ -98,7 +98,7 @@ function WeekSummary({ week, goal }: { week: WeekDay[]; goal: number }) {
                 styles.bar,
                 {
                   height: `${Math.max(2, (day.steps / max) * 100)}%`,
-                  backgroundColor: day.steps >= goal ? theme.tint : theme.backgroundSelected,
+                  backgroundColor: day.steps >= goal ? theme.success : theme.backgroundSelected,
                 },
               ]}
             />
@@ -205,7 +205,7 @@ function WalkItem({ walk }: { walk: WalkRow }) {
 function Stat({ value, label }: { value: string; label: string }) {
   return (
     <View style={styles.stat}>
-      <ThemedText type="smallBold">{value}</ThemedText>
+      <ThemedText type="stat">{value}</ThemedText>
       <ThemedText type="small" themeColor="textSecondary" style={styles.centered}>
         {label}
       </ThemedText>

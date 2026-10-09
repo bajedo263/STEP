@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import MapView, { Marker, Polygon, Polyline, type Region } from 'react-native-maps';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PoiSheet } from '@/components/poi-sheet';
 import { ThemedText } from '@/components/themed-text';
@@ -25,6 +25,7 @@ import {
   ConquestOtherColor,
   MaxContentWidth,
   PoiColor,
+  Radius,
   Spacing,
   VisitedPoiColor,
 } from '@/constants/theme';
@@ -60,6 +61,7 @@ export default function MapScreen() {
   const destination = useDestinationRoute();
   const today = useTodaySteps();
   const profile = useProfile();
+  const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
   const [mode, setMode] = useState<MapMode>('loop');
   const [query, setQuery] = useState('');
@@ -158,8 +160,14 @@ export default function MapScreen() {
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.overlay}>
-        <SafeAreaView edges={['left', 'right']} style={styles.overlayInner}>
-          <ThemedView style={styles.card}>
+        <SafeAreaView
+          edges={['left', 'right']}
+          style={[
+            styles.overlayInner,
+            // Sur iPhone, la barre d'onglets flotte au-dessus de la carte : on remonte le panneau.
+            Platform.OS === 'ios' && { paddingBottom: insets.bottom + BottomTabInset + Spacing.two },
+          ]}>
+          <ThemedView style={[styles.card, { borderColor: theme.backgroundSelected }]}>
             <SegmentedChoice options={MODE_OPTIONS} value={mode} onChange={setMode} />
 
             {mode === 'conquest' ? (
@@ -378,7 +386,7 @@ function ErrorText({ message }: { message: string }) {
 function Stat({ value, label }: { value: string; label: string }) {
   return (
     <ThemedView type="backgroundElement" style={styles.stat}>
-      <ThemedText type="smallBold">{value}</ThemedText>
+      <ThemedText type="stat">{value}</ThemedText>
       <ThemedText type="small" themeColor="textSecondary">
         {label}
       </ThemedText>
@@ -462,7 +470,8 @@ const styles = StyleSheet.create({
     maxWidth: MaxContentWidth,
     gap: Spacing.three,
     padding: Spacing.four,
-    borderRadius: Spacing.four,
+    borderRadius: Radius.card,
+    borderWidth: StyleSheet.hairlineWidth,
     shadowColor: '#000',
     shadowOpacity: 0.15,
     shadowRadius: 12,

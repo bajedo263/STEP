@@ -348,7 +348,7 @@ function WalkDone({
 function Stat({ value, label }: { value: string; label: string }) {
   return (
     <ThemedView type="backgroundElement" style={styles.stat}>
-      <ThemedText type="smallBold">{value}</ThemedText>
+      <ThemedText type="stat">{value}</ThemedText>
       <ThemedText type="small" themeColor="textSecondary">
         {label}
       </ThemedText>

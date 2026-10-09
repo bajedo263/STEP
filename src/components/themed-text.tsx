@@ -4,7 +4,7 @@ import { Fonts, ThemeColor } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 export type ThemedTextProps = TextProps & {
-  type?: 'default' | 'title' | 'small' | 'smallBold' | 'subtitle' | 'link' | 'linkPrimary' | 'code';
+  type?: 'default' | 'title' | 'small' | 'smallBold' | 'subtitle' | 'stat' | 'link' | 'linkPrimary' | 'code';
   themeColor?: ThemeColor;
 };
 
@@ -20,6 +20,7 @@ export function ThemedText({ style, type = 'default', themeColor, ...rest }: The
         type === 'small' && styles.small,
         type === 'smallBold' && styles.smallBold,
         type === 'subtitle' && styles.subtitle,
+        type === 'stat' && styles.stat,
         type === 'link' && styles.link,
         type === 'linkPrimary' && styles.linkPrimary,
         type === 'code' && styles.code,
@@ -46,15 +47,26 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     fontWeight: 500,
   },
+  // Titres et chiffres en police arrondie (SF Pro Rounded sur iPhone) : plus sportif.
   title: {
+    fontFamily: Fonts.rounded,
     fontSize: 48,
-    fontWeight: 600,
+    fontWeight: 800,
     lineHeight: 52,
+    fontVariant: ['tabular-nums'],
   },
   subtitle: {
+    fontFamily: Fonts.rounded,
     fontSize: 32,
-    lineHeight: 44,
-    fontWeight: 600,
+    lineHeight: 40,
+    fontWeight: 800,
+  },
+  stat: {
+    fontFamily: Fonts.rounded,
+    fontSize: 20,
+    lineHeight: 26,
+    fontWeight: 800,
+    fontVariant: ['tabular-nums'],
   },
   link: {
     lineHeight: 30,

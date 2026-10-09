@@ -1,7 +1,7 @@
 import { StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
+import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 type TextFieldProps = TextInputProps & {
@@ -45,8 +45,8 @@ const styles = StyleSheet.create({
   input: {
     fontSize: 16,
     paddingHorizontal: Spacing.three,
-    paddingVertical: 12,
-    borderRadius: Spacing.three,
+    paddingVertical: 14,
+    borderRadius: Radius.tile,
     borderWidth: 1.5,
   },
 });

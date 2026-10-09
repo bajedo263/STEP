@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
+import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 type Option<T extends string> = { value: T; label: string };
@@ -28,8 +28,11 @@ export function SegmentedChoice<T extends string>({ label, options, value, onCha
               accessibilityRole="radio"
               accessibilityState={{ selected }}
               onPress={() => onChange(option.value)}
-              style={[styles.option, selected && { backgroundColor: theme.background }]}>
-              <ThemedText type="small" themeColor={selected ? 'text' : 'textSecondary'}>
+              style={[styles.option, selected && { backgroundColor: theme.tint }]}>
+              <ThemedText
+                type={selected ? 'smallBold' : 'small'}
+                themeColor="textSecondary"
+                style={selected && { color: theme.onTint }}>
                 {option.label}
               </ThemedText>
             </Pressable>
@@ -48,13 +51,13 @@ const styles = StyleSheet.create({
   track: {
     flexDirection: 'row',
     padding: Spacing.one,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.pill,
     gap: Spacing.one,
   },
   option: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: Spacing.two,
-    borderRadius: Spacing.two,
+    paddingVertical: Spacing.two + Spacing.half,
+    borderRadius: Radius.pill,
   },
 });

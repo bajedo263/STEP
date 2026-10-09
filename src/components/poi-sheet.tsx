@@ -3,7 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { MaxContentWidth, PoiColor, Spacing, VisitedPoiColor } from '@/constants/theme';
+import { MaxContentWidth, PoiColor, Radius, Spacing, VisitedPoiColor } from '@/constants/theme';
 import { usePoiStory } from '@/hooks/use-poi-story';
 import { useTheme } from '@/hooks/use-theme';
 import { POI_KIND_LABELS, type Poi } from '@/lib/pois';
@@ -25,20 +25,27 @@ export function PoiSheet({
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.container} pointerEvents="box-none">
       <ThemedView style={[styles.sheet, { borderColor: color }]}>
         <View style={styles.header}>
-          <ThemedText type="small" style={[styles.flex, { color }]}>
+          <ThemedText type="smallBold" style={[styles.flex, { color }]}>
             {visited ? `Déjà découvert · ${POI_KIND_LABELS[poi.kind]}` : POI_KIND_LABELS[poi.kind]}
           </ThemedText>
-          <Pressable accessibilityRole="button" accessibilityLabel="Fermer" hitSlop={12} onPress={onClose}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Fermer"
+            hitSlop={8}
+            onPress={onClose}
+            style={[styles.close, { backgroundColor: theme.backgroundElement }]}>
             <ThemedText type="smallBold" themeColor="textSecondary">
               ✕
             </ThemedText>
           </Pressable>
         </View>
-        <ThemedText type="smallBold">{poi.title}</ThemedText>
+        <ThemedText type="default" style={styles.title}>
+          {poi.title}
+        </ThemedText>
         <PoiStory poi={poi} />
         {poi.wikipediaUrl ? (
           <Pressable accessibilityRole="link" onPress={() => Linking.openURL(poi.wikipediaUrl!)}>
-            <ThemedText type="small" style={{ color: theme.tint }}>
+            <ThemedText type="smallBold" style={{ color: theme.tint }}>
               Lire l’article sur Wikipédia
             </ThemedText>
           </Pressable>
@@ -71,16 +78,32 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     alignItems: 'center',
+    paddingHorizontal: Spacing.three,
   },
   sheet: {
+    // La marge latérale est portée par le conteneur : avec width 100 % + marge, la fiche débordait.
     width: '100%',
     maxWidth: MaxContentWidth,
-    gap: Spacing.one,
+    gap: Spacing.two,
     padding: Spacing.three,
     marginTop: Spacing.two,
-    marginHorizontal: Spacing.three,
-    borderRadius: Spacing.four,
+    borderRadius: Radius.card,
     borderWidth: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+  close: {
+    width: 32,
+    height: 32,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: {
+    fontWeight: 800,
   },
   header: {
     flexDirection: 'row',
