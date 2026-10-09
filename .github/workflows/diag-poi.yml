@@ -15,8 +15,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: feat/badges
-      - name: Migration badges sur une base PostGIS locale (bouchons Supabase)
+          ref: feat/saisons
+      - name: Migration saisons sur une base PostGIS locale (bouchons Supabase)
         env:
           PGPASSWORD: postgres
         run: |
@@ -37,19 +37,26 @@ jobs:
           echo "=== RÉSULTATS"
           $P <<'SQL'
           grant select, insert, update on all tables in schema public to authenticated;
-          insert into auth.users values ('22222222-2222-2222-2222-222222222222'), ('33333333-3333-3333-3333-333333333333');
-          insert into public.walks (user_id, mode, path, started_at, distance_m) values ('22222222-2222-2222-2222-222222222222', 'free', 'SRID=4326;LINESTRING(2.3005 48.8495, 2.3141 48.8495)', now(), 1000), ('22222222-2222-2222-2222-222222222222', 'loop', null, now(), 2500), ('33333333-3333-3333-3333-333333333333', 'free', null, now(), 9000);
+          insert into auth.users values ('22222222-2222-2222-2222-222222222222'), ('33333333-3333-3333-3333-333333333333'), ('44444444-4444-4444-4444-444444444444');
+          select now(), public.conquest_season_start(), public.conquest_since(), public.conquest_expires_at(public.conquest_season_start() - interval '1 day') as exp_fin_saison;
+          -- Saison passée : Bob a 3 cases actives au dernier jour, Carol 2, Dan 1 trop ancienne.
+          insert into public.conquest_cells (x, y, owner_id, captured_at) values
+            (1, 1, '22222222-2222-2222-2222-222222222222', public.conquest_season_start() - interval '2 days'),
+            (1, 2, '22222222-2222-2222-2222-222222222222', public.conquest_season_start() - interval '2 days'),
+            (1, 3, '22222222-2222-2222-2222-222222222222', public.conquest_season_start() - interval '3 days'),
+            (2, 1, '33333333-3333-3333-3333-333333333333', public.conquest_season_start() - interval '1 day'),
+            (2, 2, '33333333-3333-3333-3333-333333333333', public.conquest_season_start() - interval '1 day'),
+            (3, 1, '44444444-4444-4444-4444-444444444444', public.conquest_season_start() - interval '20 days');
+          -- Cette saison : Carol conquiert une rue (déclenche l'archivage), Bob rien.
+          insert into public.walks (user_id, mode, path, started_at, conquers) values ('33333333-3333-3333-3333-333333333333', 'free', 'SRID=4326;LINESTRING(2.3005 48.8495, 2.3141 48.8495)', now(), true);
+          select * from public.conquest_seasons;
+          select user_id, cells, rank from public.conquest_season_results order by rank;
+          select count(*) filter (where captured_at > public.conquest_since()) as actives, count(*) as total from public.conquest_cells;
           set role authenticated;
           select set_config('test.uid', '22222222-2222-2222-2222-222222222222', false);
-          select * from public.my_badge_stats();
-          insert into public.challenge_completions (user_id, day, kind) values ('22222222-2222-2222-2222-222222222222', current_date, 'loop');
-          insert into public.challenge_completions (user_id, day, kind) values ('22222222-2222-2222-2222-222222222222', current_date, 'loop') on conflict (user_id, day) do nothing;
-          select * from public.my_badge_stats();
+          select cells, rank, players, last_cells, last_rank, last_players, season_end - season_start as duree from public.my_conquest_season();
+          select count(*) as resultats_visibles_bob from public.conquest_season_results;
           select set_config('test.uid', '33333333-3333-3333-3333-333333333333', false);
-          select * from public.my_badge_stats();
-          select count(*) as defis_lisibles_par_carol from public.challenge_completions;
-          do $$ begin
-            insert into public.challenge_completions (user_id, day, kind) values ('22222222-2222-2222-2222-222222222222', current_date - 1, 'loop');
-            raise notice 'ERREUR : Carol a écrit pour Bob';
-          exception when others then raise notice 'OK refusé : %', sqlerrm; end $$;
+          select cells, rank, players, last_cells, last_rank, last_players from public.my_conquest_season();
+          select kind, count(*) from public.my_territory_alerts() group by 1;
           SQL
