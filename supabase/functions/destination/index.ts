@@ -1,15 +1,12 @@
-// Mode Destination : recherche de lieux et itinéraire à pied, via OpenRouteService.
+// Mode Destination : recherche de lieux et itinéraire à pied, via OpenRouteService (ou les
+// services de secours d'OpenStreetMap s'il ne répond pas).
 // Appelée par l'app (écran Carte) avec la session de l'utilisateur connecté.
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 import {
   detourWaypoint,
   MAX_DESTINATION_M,
-  orsAutocompleteParams,
-  orsDirectionsBody,
-  orsViaBody,
   parseDestinationRequest,
-  parseOrsPlaces,
   ROUTE_DETOUR_FACTOR,
 } from '../_shared/destination.ts';
 import {
@@ -18,13 +15,12 @@ import {
   LOOP_TOLERANCE,
   MAX_LOOP_ATTEMPTS,
   nextRequestedLength,
-  parseOrsResponse,
   type LoopRoute,
 } from '../_shared/loop.ts';
 import { bestPoiNear, type Poi } from '../_shared/pois.ts';
+import { routeThrough, searchPlaces } from '../_shared/routing.ts';
 import { fetchWikipediaPoisNear } from '../_shared/wikipedia.ts';
 
-const ORS = 'https://api.openrouteservice.org';
 const NOT_FOUND = 'Aucun itinéraire à pied trouvé vers ce lieu.';
 
 const corsHeaders = {
@@ -38,7 +34,17 @@ const json = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
 
+// Une panne imprévue renvoie quand même un message lisible par l'app.
 Deno.serve(async (req) => {
+  try {
+    return await handle(req);
+  } catch (error) {
+    console.error('destination', error);
+    return json({ error: 'Le calcul d’itinéraire ne répond pas. Réessayez dans un instant.' }, 502);
+  }
+});
+
+async function handle(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return json({ error: 'Méthode non autorisée.' }, 405);
 
@@ -58,32 +64,13 @@ Deno.serve(async (req) => {
   const request = parsed.value;
 
   if (request.action === 'search') {
-    const params = orsAutocompleteParams(request.query, request.near);
-    const response = await fetch(`${ORS}/geocode/autocomplete?${params}`, {
-      headers: { Authorization: apiKey },
-    });
-    if (!response.ok) {
-      console.error('OpenRouteService geocode', response.status, await response.text());
-      return json({ error: 'La recherche de lieux ne répond pas.' }, 502);
-    }
-    return json({ places: parseOrsPlaces(await response.json()) });
+    const places = await searchPlaces(request.query, request.near, apiKey);
+    if (!places) return json({ error: 'La recherche de lieux ne répond pas.' }, 502);
+    return json({ places });
   }
 
-  const directions = async (body: unknown): Promise<LoopRoute | null> => {
-    const response = await fetch(`${ORS}/v2/directions/foot-walking/geojson`, {
-      method: 'POST',
-      headers: { Authorization: apiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!response.ok) {
-      console.error('OpenRouteService directions', response.status, await response.text());
-      return null;
-    }
-    return parseOrsResponse(await response.json());
-  };
-
   const { start, end, targetM, seed } = request;
-  const direct = await directions(orsDirectionsBody(start, end));
+  const direct = await routeThrough([start, end], apiKey);
   if (!direct) return json({ error: NOT_FOUND }, 422);
   if (direct.distanceM > MAX_DESTINATION_M) {
     return json({ error: 'Ce lieu est trop loin pour y aller à pied (plus de 25 km).' }, 422);
@@ -109,7 +96,7 @@ Deno.serve(async (req) => {
   for (let attempt = 0; attempt < MAX_LOOP_ATTEMPTS; attempt++) {
     const target = detourWaypoint(start, end, requested, side);
     const via = bestPoiNear(candidates, target, snapRadiusM);
-    const route = await directions(orsViaBody(start, via?.coords ?? target, end));
+    const route = await routeThrough([start, via?.coords ?? target, end], apiKey);
     if (!route) break;
     routes.push({ ...route, via });
     if (isCloseEnough(targetM, route.distanceM)) break;
@@ -121,4 +108,4 @@ Deno.serve(async (req) => {
     return json({ ...direct, lengthened: false, via: null });
   }
   return json({ ...best, lengthened: true });
-});
+}

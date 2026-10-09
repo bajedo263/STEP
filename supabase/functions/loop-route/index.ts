@@ -1,4 +1,5 @@
-// Calcule une boucle à pied qui part et revient au point donné, via OpenRouteService.
+// Calcule une boucle à pied qui part et revient au point donné, via OpenRouteService (ou le
+// service de secours d'OpenStreetMap s'il ne répond pas).
 // Appelée par l'app (écran Carte) avec la session de l'utilisateur connecté.
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
@@ -8,22 +9,18 @@ import {
   isCloseEnough,
   MAX_LOOP_ATTEMPTS,
   nextRequestedLength,
-  orsPathBody,
-  orsRoundTripBody,
   parseLoopRequest,
-  parseOrsResponse,
   seedBearing,
   triangleWaypoints,
   type LatLng,
   type LoopRoute,
 } from '../_shared/loop.ts';
 import { bestPoiNear, type Poi } from '../_shared/pois.ts';
+import { orsRoundTrip, routeThrough } from '../_shared/routing.ts';
 import { fetchWikipediaPoisNear } from '../_shared/wikipedia.ts';
 
 /** Écart accepté pour une boucle par des points d'intérêt avant de se rabattre sur une boucle libre. */
 const POI_LOOP_TOLERANCE = 0.2;
-
-const ORS_DIRECTIONS_URL = 'https://api.openrouteservice.org/v2/directions/foot-walking/geojson';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -36,7 +33,17 @@ const json = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
 
+// Une panne imprévue renvoie quand même un message lisible par l'app.
 Deno.serve(async (req) => {
+  try {
+    return await handle(req);
+  } catch (error) {
+    console.error('loop-route', error);
+    return json({ error: 'Le calcul de boucle ne répond pas. Réessayez dans un instant.' }, 502);
+  }
+});
+
+async function handle(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return json({ error: 'Méthode non autorisée.' }, 405);
 
@@ -61,24 +68,16 @@ Deno.serve(async (req) => {
     return json({ ...poiLoop, targetM: distanceM, seed });
   }
 
-  // 2. Sinon, une boucle libre calculée par OpenRouteService.
+  // 2. Sinon, une boucle libre : celle d'OpenRouteService, ou un triangle s'il ne répond pas.
   const routes: (LoopRoute & { via: Poi[] })[] = poiLoop ? [poiLoop] : [];
   let requested = distanceM;
   for (let attempt = 0; attempt < MAX_LOOP_ATTEMPTS; attempt++) {
-    const response = await fetch(ORS_DIRECTIONS_URL, {
-      method: 'POST',
-      headers: { Authorization: apiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify(orsRoundTripBody(start, requested, seed)),
-    });
-    if (!response.ok) {
-      console.error('OpenRouteService', response.status, await response.text());
-      // Une erreur sur une tentative de correction ne doit pas faire perdre une boucle déjà trouvée.
-      if (routes.length > 0) break;
-      const status = response.status === 404 ? 422 : 502;
-      return json({ error: 'Aucune boucle trouvée depuis ce point.' }, status);
-    }
-
-    const route = parseOrsResponse(await response.json());
+    const route =
+      (await orsRoundTrip(start, requested, seed, apiKey)) ??
+      (await routeThrough(
+        [start, ...triangleWaypoints(start, requested / ROUTE_DETOUR_FACTOR, seedBearing(seed)), start],
+        apiKey
+      ));
     if (!route) break;
     routes.push({ ...route, via: [] });
     if (isCloseEnough(distanceM, route.distanceM)) break;
@@ -88,7 +87,7 @@ Deno.serve(async (req) => {
   const best = closestRoute(distanceM, routes);
   if (!best) return json({ error: 'Aucune boucle trouvée depuis ce point.' }, 422);
   return json({ ...best, targetM: distanceM, seed });
-});
+}
 
 /**
  * Boucle triangulaire dont les deux sommets sont « aimantés » sur les lieux les plus intéressants
@@ -121,16 +120,7 @@ async function loopThroughPois(
     );
     if (!viaA && !viaB) break;
 
-    const response = await fetch(ORS_DIRECTIONS_URL, {
-      method: 'POST',
-      headers: { Authorization: apiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify(orsPathBody([start, viaA?.coords ?? a, viaB?.coords ?? b, start])),
-    });
-    if (!response.ok) {
-      console.error('OpenRouteService', response.status, await response.text());
-      break;
-    }
-    const route = parseOrsResponse(await response.json());
+    const route = await routeThrough([start, viaA?.coords ?? a, viaB?.coords ?? b, start], apiKey);
     if (!route) break;
     routes.push({ ...route, via: [viaA, viaB].filter((poi): poi is Poi => poi !== null) });
     if (isCloseEnough(targetM, route.distanceM)) break;

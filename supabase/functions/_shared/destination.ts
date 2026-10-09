@@ -88,17 +88,6 @@ export function parseOrsPlaces(json: unknown): Place[] {
   return places;
 }
 
-/** Corps de la requête OpenRouteService `foot-walking/geojson` de A vers B. */
-export function orsDirectionsBody(start: LatLng, end: LatLng) {
-  return {
-    coordinates: [
-      [start.longitude, start.latitude],
-      [end.longitude, end.latitude],
-    ],
-    instructions: false,
-  };
-}
-
 const EARTH_RADIUS_M = 6_371_008.8;
 /** Un trajet à pied fait en moyenne ~1,25 fois la distance à vol d'oiseau. */
 export const ROUTE_DETOUR_FACTOR = 1.25;
@@ -132,17 +121,5 @@ export function detourWaypoint(start: LatLng, end: LatLng, lengthM: number, side
   return {
     latitude: (start.latitude + end.latitude) / 2 + (side * ny * height) / mPerDegLat,
     longitude: (start.longitude + end.longitude) / 2 + (side * nx * height) / mPerDegLng,
-  };
-}
-
-/** Corps de la requête OpenRouteService pour A → point de passage → B. */
-export function orsViaBody(start: LatLng, via: LatLng, end: LatLng) {
-  return {
-    coordinates: [
-      [start.longitude, start.latitude],
-      [via.longitude, via.latitude],
-      [end.longitude, end.latitude],
-    ],
-    instructions: false,
   };
 }

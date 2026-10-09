@@ -5,7 +5,6 @@ import { test } from 'node:test';
 import {
   detourWaypoint,
   orsAutocompleteParams,
-  orsDirectionsBody,
   parseDestinationRequest,
   parseOrsPlaces,
   straightDistanceM,
@@ -58,13 +57,6 @@ test('parseOrsPlaces lit les lieux et ignore les entrées incomplètes', () => {
     { id: 'osm:venue:1', label: 'Musée du Louvre, Paris, France', coords: { latitude: 48.8606, longitude: 2.3376 } },
   ]);
   assert.deepEqual(parseOrsPlaces({ error: 'x' }), []);
-});
-
-test('orsDirectionsBody', () => {
-  assert.deepEqual(orsDirectionsBody(paris, { latitude: 48.86, longitude: 2.34 }).coordinates, [
-    [2.35, 48.85],
-    [2.34, 48.86],
-  ]);
 });
 
 test('detourWaypoint allonge le trajet à la longueur voulue', () => {
