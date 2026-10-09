@@ -34,6 +34,7 @@ const wikipedia = {
       {
         pageid: 2,
         title: 'Fresque du quartier',
+        description: 'fresque murale',
         fullurl: 'https://fr.wikipedia.org/wiki/Fresque_du_quartier',
         coordinates: [{ lat: 48.883, lon: 2.3301 }],
       },
@@ -44,7 +45,11 @@ const wikipedia = {
         coordinates: [{ lat: 48.882, lon: 2.336 }],
       },
       { pageid: 4, title: 'Rue Chaptal', description: 'rue de Paris, en France', coordinates: [{ lat: 48.881, lon: 2.33 }] },
-      { pageid: 5, title: '9e arrondissement de Paris', coordinates: [{ lat: 48.88, lon: 2.33 }] },
+      { pageid: 5, title: '9e arrondissement de Paris', description: 'arrondissement de Paris', coordinates: [{ lat: 48.88, lon: 2.33 }] },
+      { pageid: 7, title: 'Hôtel Mercure', description: 'hôtel quatre étoiles', coordinates: [{ lat: 48.881, lon: 2.33 }] },
+      { pageid: 9, title: 'American School', description: 'école de musique à Paris', coordinates: [{ lat: 48.881, lon: 2.33 }] },
+      { pageid: 10, title: 'Paris Cité', description: 'université', coordinates: [{ lat: 48.881, lon: 2.33 }] },
+      { pageid: 8, title: 'Affaire obscure', coordinates: [{ lat: 48.881, lon: 2.33 }] },
       { pageid: 6, title: 'Sans position', description: 'église' },
     ],
   },
@@ -60,9 +65,9 @@ test('parseWikipediaPois garde les lieux à voir, pas les rues ni les découpage
   assert.equal(museum.kind, 'museum');
   assert.equal(museum.title, 'Musée de la Vie romantique');
   assert.equal(museum.description, 'Musée parisien consacré au romantisme');
-  assert.equal(museum.score, 4); // musée + description
+  assert.equal(museum.score, 3);
   assert.equal(pois[1].kind, 'artwork');
-  assert.equal(pois[1].description, null);
+  assert.equal(pois[1].description, 'Fresque murale');
   assert.equal(pois[2].kind, 'monument');
   assert.deepEqual(parseWikipediaPois({ error: { code: 'toobig' } }), []);
   // L'ancien format (pages indexées par identifiant) est aussi lu.

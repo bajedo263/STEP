@@ -87,7 +87,7 @@ const text = (value: unknown): string | null =>
 // Articles géolocalisés qui ne sont pas des lieux à voir en passant : découpages administratifs,
 // rues (le point est au milieu de la rue), organismes logés dans un bâtiment quelconque, métro.
 const SKIPPED_DESCRIPTION =
-  /^(ancienne )?(arrondissement|région|département|commune|quartier|circonscription|canton|ville|capitale|pays|rue|avenue|boulevard|voie|impasse|passage|allée|villa|cité|quai|chemin|route|agence|autorité|institution|organisme|organisation|entreprise|société|association|parti|syndicat|fondation|ministère|commission|commissariat|établissement|administration|station)\b|station (du|de) métro/i;
+  /^(ancienne )?(arrondissement|région|département|commune|quartier|circonscription|canton|ville|capitale|pays|rue|avenue|boulevard|voie|impasse|passage|allée|villa|cité|quai|chemin|route|agence|autorité|institution|institut|organisme|organisation|entreprise|société|association|fédération|parti|syndicat|fondation|ministère|commission|commissariat|établissement|administration|service|centre|université|école|lycée|collège|hôpital|résidence|hôtel(?! particulier)|restaurant|club|équipe|journal|magazine|chaîne|groupe|banque|station)(?=[\s,.'’-]|$)|station (du|de) métro/i;
 
 const KIND_RULES: [RegExp, PoiKind][] = [
   [/musée|galerie|muséum/i, 'museum'],
@@ -111,9 +111,8 @@ const KIND_SCORES: Record<PoiKind, number> = {
   attraction: 1,
 };
 
-function kindOf(description: string | null, title: string): PoiKind {
-  const subject = `${description ?? ''} ${title}`;
-  return KIND_RULES.find(([pattern]) => pattern.test(subject))?.[1] ?? 'attraction';
+function kindOf(description: string): PoiKind {
+  return KIND_RULES.find(([pattern]) => pattern.test(description))?.[1] ?? 'attraction';
 }
 
 const truncate = (value: string, max: number) =>
@@ -159,20 +158,21 @@ export function parseWikipediaPois(json: unknown): Poi[] {
     const title = text(page.title);
     if (typeof page.pageid !== 'number' || !title) continue;
     if (typeof coords?.lat !== 'number' || typeof coords?.lon !== 'number') continue;
+    // Sans description, l'article est le plus souvent un événement ou un sujet obscur.
     const description = text(page.description);
-    if (description && SKIPPED_DESCRIPTION.test(description)) continue;
+    if (!description || SKIPPED_DESCRIPTION.test(description)) continue;
     if (/^\d+(e|er) arrondissement/i.test(title)) continue;
 
-    const kind = kindOf(description, title);
+    const kind = kindOf(description);
     pois.push({
       id: `wiki/${page.pageid}`,
       kind,
       // « Musée Rodin (Paris) » : la précision entre parenthèses n'apporte rien sur place.
       title: title.replace(/\s*\([^)]*\)$/, ''),
-      description: description ? truncate(capitalize(description), 280) : null,
+      description: truncate(capitalize(description), 280),
       coords: { latitude: coords.lat, longitude: coords.lon },
       wikipediaUrl: text(page.fullurl),
-      score: KIND_SCORES[kind] + (description ? 1 : 0),
+      score: KIND_SCORES[kind],
     });
   }
   return pois;
