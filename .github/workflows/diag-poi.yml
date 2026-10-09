@@ -6,20 +6,15 @@ jobs:
   diag:
     runs-on: ubuntu-latest
     steps:
-      - name: État des lieux en base (lecture seule)
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      - name: Overpass et Wikipédia
         run: |
-          q() { python3 -c 'import json,sys; print(json.dumps({"query": sys.argv[1]}))' "$1" | curl -sS -X POST "https://api.supabase.com/v1/projects/nkrkxmieqdkugtpsoufc/database/query" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data-binary @- ; echo; }
-          q "select to_regclass('public.poi_zones') as zones_table"
-          q "select count(*) zones, sum(poi_count) pois, min(fetched_at), max(fetched_at) from public.poi_zones"
-          q "select x, y, poi_count, fetched_at from public.poi_zones order by fetched_at desc limit 40"
-          q "select count(*) total, count(zone_x) with_zone from public.pois"
-          q "select count(*) from public.poi_visits"
-          q "select id, mode, started_at, distance_m from public.walks order by started_at desc limit 5"
-      - name: Temps de réponse Overpass (quartier Paris 7e)
-        run: |
-          Q='[out:json][timeout:25];(nwr["historic"](48.848,2.30,48.862,2.32);nwr["tourism"~"museum|attraction|artwork|viewpoint"](48.848,2.30,48.862,2.32););out center tags 3000;'
-          for u in https://overpass-api.de/api/interpreter https://z.overpass-api.de/api/interpreter https://lz4.overpass-api.de/api/interpreter https://maps.mail.ru/osm/tools/overpass/api/interpreter; do
-            curl -sS -o /tmp/o.json -w "$u %{http_code} %{time_total}s %{size_download}B\n" -m 30 --data-urlencode "data=$Q" "$u" || echo "$u échec"
+          Q='[out:json][timeout:25];(nwr["historic"](48.848,2.30,48.862,2.32););out center tags 3000;'
+          for ua in "STEP (https://github.com/bajedo263/step)" "Mozilla/5.0 STEP"; do
+            for u in https://overpass-api.de/api/interpreter https://lz4.overpass-api.de/api/interpreter https://overpass.private.coffee/api/interpreter https://overpass.kumi.systems/api/interpreter; do
+              curl -sS -o /tmp/o.json -w "$u [$ua] %{http_code} %{time_total}s %{size_download}B\n" -m 25 -A "$ua" -H 'Accept: application/json' --data-urlencode "data=$Q" "$u" || true
+              head -c 300 /tmp/o.json; echo
+            done
           done
+          W='https://fr.wikipedia.org/w/api.php?action=query&format=json&generator=geosearch&ggsbbox=48.862|2.30|48.848|2.32&ggslimit=500&prop=coordinates|description|info&inprop=url&colimit=max'
+          curl -sS -o /tmp/w.json -w "wiki %{http_code} %{time_total}s %{size_download}B\n" -A "STEP (https://github.com/bajedo263/step)" "$W"
+          python3 -c 'import json;d=json.load(open("/tmp/w.json"));p=d.get("query",{}).get("pages",{});print(len(p),"pages", "continue" in d);[print(v.get("title"),"|",v.get("description"),"|",v.get("coordinates")) for v in list(p.values())[:12]]'
