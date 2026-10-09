@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 
 type CellRange = NonNullable<ReturnType<typeof cellRangeOf>>;
 
-/** Cases prises aujourd'hui dans la zone affichée (les miennes et celles des autres). */
+/** Cases en cours dans la zone affichée (les miennes et celles des autres). */
 export function useConquestCells(range: CellRange | null): ConquestCell[] {
   const key = range ? `${range.minX}/${range.minY}/${range.maxX}/${range.maxY}` : null;
   const [loaded, setLoaded] = useState<{ key: string; cells: ConquestCell[] } | null>(null);
@@ -34,7 +34,7 @@ export function useConquestCells(range: CellRange | null): ConquestCell[] {
   return loaded?.cells ?? [];
 }
 
-/** Nombre de cases à moi aujourd'hui ; null tant qu'il n'est pas connu. */
+/** Nombre de cases à moi en ce moment ; null tant qu'il n'est pas connu. */
 export function useMyConquestCount(): number | null {
   const [count, setCount] = useState<number | null>(null);
   useEffect(() => {

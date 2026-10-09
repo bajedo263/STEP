@@ -325,7 +325,7 @@ function WalkDone({
         ) : null}
         {saveState === 'saved' && cellCount > 0 ? (
           <ThemedText style={styles.centered}>
-            {`${formatNumber(cellCount)} case${cellCount > 1 ? 's' : ''} conquise${cellCount > 1 ? 's' : ''} jusqu’à minuit`}
+            {`${formatNumber(cellCount)} case${cellCount > 1 ? 's' : ''} conquise${cellCount > 1 ? 's' : ''} pour 7 jours`}
           </ThemedText>
         ) : null}
         <ThemedText

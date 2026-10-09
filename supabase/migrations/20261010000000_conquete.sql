@@ -1,17 +1,26 @@
 -- Conquête : la carte est découpée en cases d'environ 50 m (tuiles cartographiques au zoom 19).
--- Le dernier marcheur à traverser une case la possède jusqu'à minuit (heure locale).
+-- Le dernier marcheur à traverser une case la possède pendant 7 jours. Plus tard, des saisons
+-- remettront tout le territoire à zéro : il suffira de changer conquest_since().
 
 create table public.conquest_cells (
   x integer not null,
   y integer not null,
   owner_id uuid not null references public.profiles (id) on delete cascade,
-  -- Jour local du marcheur au moment de la prise : la case redevient libre le lendemain.
-  day date not null,
   captured_at timestamptz not null default now(),
   primary key (x, y)
 );
 
-create index conquest_cells_owner_day_idx on public.conquest_cells (owner_id, day);
+create index conquest_cells_owner_idx on public.conquest_cells (owner_id, captured_at);
+
+-- Les cases prises avant cette date sont redevenues libres.
+create function public.conquest_since()
+returns timestamptz
+language sql
+stable
+set search_path = ''
+as $$
+  select now() - interval '7 days';
+$$;
 
 alter table public.conquest_cells enable row level security;
 
@@ -52,7 +61,6 @@ as $$
 declare
   v_line extensions.geometry;
   v_length double precision;
-  v_day date;
 begin
   if new.path is null then
     return new;
@@ -63,9 +71,6 @@ begin
     return new;
   end if;
 
-  select (now() at time zone coalesce(p.timezone, 'Europe/Paris'))::date into v_day
-  from public.profiles p where p.id = new.user_id;
-
   -- Tracé découpé tous les 10 m, sans ses deux bouts.
   v_line := extensions.st_linesubstring(
     extensions.st_segmentize(new.path, 10)::extensions.geometry,
@@ -73,16 +78,15 @@ begin
     1 - 150 / v_length
   );
 
-  insert into public.conquest_cells (x, y, owner_id, day, captured_at)
+  insert into public.conquest_cells (x, y, owner_id, captured_at)
   select distinct
     public.conquest_cell_x(extensions.st_x(pt.geom)),
     public.conquest_cell_y(extensions.st_y(pt.geom)),
     new.user_id,
-    coalesce(v_day, current_date),
     now()
   from extensions.st_dumppoints(v_line) pt
   on conflict (x, y) do update
-    set owner_id = excluded.owner_id, day = excluded.day, captured_at = excluded.captured_at;
+    set owner_id = excluded.owner_id, captured_at = excluded.captured_at;
 
   return new;
 exception when others then
@@ -96,7 +100,7 @@ create trigger walks_capture_cells
   after insert on public.walks
   for each row execute function public.capture_walk_cells();
 
--- Cases prises aujourd'hui dans un rectangle : les miennes et celles des autres, sans leur nom.
+-- Cases en cours dans un rectangle : les miennes et celles des autres, sans leur nom.
 create function public.conquest_cells_in_box(
   p_min_x integer,
   p_min_y integer,
@@ -115,17 +119,14 @@ as $$
     and c.y between p_min_y and p_max_y
     and p_max_x - p_min_x <= 400
     and p_max_y - p_min_y <= 400
-    and c.day >= (
-      select (now() at time zone coalesce(p.timezone, 'Europe/Paris'))::date
-      from public.profiles p where p.id = (select auth.uid())
-    )
+    and c.captured_at > public.conquest_since()
   limit 5000;
 $$;
 
 revoke all on function public.conquest_cells_in_box(integer, integer, integer, integer) from public, anon;
 grant execute on function public.conquest_cells_in_box(integer, integer, integer, integer) to authenticated;
 
--- Mon nombre de cases aujourd'hui.
+-- Mon nombre de cases en cours.
 create function public.my_conquest_count()
 returns integer
 language sql
@@ -135,9 +136,8 @@ set search_path = ''
 as $$
   select count(*)::integer
   from public.conquest_cells c
-  join public.profiles p on p.id = c.owner_id
   where c.owner_id = (select auth.uid())
-    and c.day = (now() at time zone p.timezone)::date;
+    and c.captured_at > public.conquest_since();
 $$;
 
 grant execute on function public.my_conquest_count() to authenticated;

@@ -310,7 +310,7 @@ export default function MapScreen() {
   );
 }
 
-/** Mode Conquête : ses cases du jour, et comment en prendre d'autres. */
+/** Mode Conquête : ses cases, et comment en prendre d'autres. */
 function ConquestCard({ zoomedOut, onStart }: { zoomedOut: boolean; onStart: () => void }) {
   const count = useMyConquestCount();
   return (
@@ -319,10 +319,10 @@ function ConquestCard({ zoomedOut, onStart }: { zoomedOut: boolean; onStart: () 
         <View style={[styles.swatch, { backgroundColor: ConquestMineColor }]} />
         <ThemedText type="small" style={styles.flex}>
           {count === null
-            ? 'Vos cases du jour'
+            ? 'Vos cases'
             : count === 0
-              ? 'Aucune case à vous aujourd’hui'
-              : `${formatNumber(count)} case${count > 1 ? 's' : ''} à vous aujourd’hui`}
+              ? 'Aucune case à vous pour l’instant'
+              : `${formatNumber(count)} case${count > 1 ? 's' : ''} à vous`}
         </ThemedText>
         <View style={[styles.swatch, { backgroundColor: ConquestOtherColor }]} />
         <ThemedText type="small">Autres marcheurs</ThemedText>
@@ -330,7 +330,7 @@ function ConquestCard({ zoomedOut, onStart }: { zoomedOut: boolean; onStart: () 
       <ThemedText type="small" themeColor="textSecondary">
         {zoomedOut
           ? 'Rapprochez la carte pour voir les cases.'
-          : 'Chaque trajet enregistré colore les cases traversées à votre nom jusqu’à minuit. Repassez sur celles des autres pour les reprendre. Le début et la fin du trajet ne comptent pas, pour ne pas montrer votre adresse.'}
+          : 'Chaque trajet enregistré colore les cases traversées à votre nom pendant 7 jours. Repassez sur celles des autres pour les reprendre. Le début et la fin du trajet ne comptent pas, pour ne pas montrer votre adresse.'}
       </ThemedText>
       <Button title="Partir conquérir" onPress={onStart} />
     </>
