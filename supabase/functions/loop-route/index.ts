@@ -17,8 +17,8 @@ import {
   type LatLng,
   type LoopRoute,
 } from '../_shared/loop.ts';
-import { fetchOverpassPois } from '../_shared/overpass.ts';
-import { bestPoiNear, overpassQueryNear, type Poi } from '../_shared/pois.ts';
+import { bestPoiNear, type Poi } from '../_shared/pois.ts';
+import { fetchWikipediaPoisNear } from '../_shared/wikipedia.ts';
 
 /** Écart accepté pour une boucle par des points d'intérêt avant de se rabattre sur une boucle libre. */
 const POI_LOOP_TOLERANCE = 0.2;
@@ -104,8 +104,9 @@ async function loopThroughPois(
   const bearing = seedBearing(seed);
   let requested = targetM / ROUTE_DETOUR_FACTOR;
   const radiusM = Math.min(800, Math.max(150, (requested / 3) * 0.35));
-  const candidates = await fetchOverpassPois(
-    overpassQueryNear(triangleWaypoints(start, requested, bearing), radiusM * 1.5)
+  const candidates = await fetchWikipediaPoisNear(
+    triangleWaypoints(start, requested, bearing),
+    radiusM * 1.5
   );
   if (candidates.length === 0) return null;
 

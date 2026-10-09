@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase';
 
 /**
  * Pendant la marche : le lieu devant lequel on passe, et les lieux découverts depuis le départ.
- * Passer à moins de 40 m d'un lieu l'enregistre comme visité (vérifié côté serveur).
+ * Passer à moins de 50 m d'un lieu l'enregistre comme visité (vérifié côté serveur).
  */
 export function usePoiDiscovery(plannedPois: RoutePoi[], position: LatLng | null | undefined) {
   const areaPois = useAreaPois(position);

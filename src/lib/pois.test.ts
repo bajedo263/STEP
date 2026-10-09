@@ -5,10 +5,11 @@ import { test } from 'node:test';
 import {
   bestPoiNear,
   distanceM,
-  overpassQuery,
-  parseOverpassPois,
+  parseWikipediaPois,
   poisAlongPath,
   samplePath,
+  wikipediaBboxParams,
+  wikipediaNearParams,
 } from '../../supabase/functions/_shared/pois.ts';
 
 // Une rue nord-sud d'environ 400 m.
@@ -18,65 +19,88 @@ const street = [
   { latitude: 48.8836, longitude: 2.33 },
 ];
 
-const overpass = {
-  elements: [
-    {
-      type: 'node',
-      id: 1,
-      lat: 48.881,
-      lon: 2.3302, // ~15 m de la rue
-      tags: {
-        historic: 'memorial',
-        memorial: 'plaque',
-        inscription: 'Ici est né Serge Gainsbourg le 2 avril 1928',
-        wikidata: 'Q1290',
+// Réponse de l'API Wikipédia (formatversion=2).
+const wikipedia = {
+  batchcomplete: true,
+  query: {
+    pages: [
+      {
+        pageid: 1,
+        title: 'Musée de la Vie romantique (Paris)',
+        description: 'musée parisien consacré au romantisme',
+        fullurl: 'https://fr.wikipedia.org/wiki/Mus%C3%A9e_de_la_Vie_romantique',
+        coordinates: [{ lat: 48.881, lon: 2.3302 }], // ~15 m de la rue
       },
-    },
-    {
-      type: 'way',
-      id: 2,
-      center: { lat: 48.8830, lon: 2.3301 },
-      tags: { tourism: 'artwork', name: 'Fresque du quartier', wikipedia: 'fr:Fresque du quartier' },
-    },
-    { type: 'node', id: 3, lat: 48.882, lon: 2.336, tags: { historic: 'monument', name: 'Trop loin' } },
-    { type: 'node', id: 4, lat: 48.881, lon: 2.33, tags: { historic: 'memorial' } }, // ni nom ni texte
-    { type: 'node', id: 5, tags: { name: 'Sans position' } },
-  ],
+      {
+        pageid: 2,
+        title: 'Fresque du quartier',
+        description: 'fresque murale',
+        fullurl: 'https://fr.wikipedia.org/wiki/Fresque_du_quartier',
+        coordinates: [{ lat: 48.883, lon: 2.3301 }],
+      },
+      {
+        pageid: 3,
+        title: 'Trop loin',
+        description: 'monument historique',
+        coordinates: [{ lat: 48.882, lon: 2.336 }],
+      },
+      { pageid: 4, title: 'Rue Chaptal', description: 'rue de Paris, en France', coordinates: [{ lat: 48.881, lon: 2.33 }] },
+      { pageid: 5, title: '9e arrondissement de Paris', description: 'arrondissement de Paris', coordinates: [{ lat: 48.88, lon: 2.33 }] },
+      { pageid: 7, title: 'Hôtel Mercure', description: 'hôtel quatre étoiles', coordinates: [{ lat: 48.881, lon: 2.33 }] },
+      { pageid: 9, title: 'American School', description: 'école de musique à Paris', coordinates: [{ lat: 48.881, lon: 2.33 }] },
+      { pageid: 10, title: 'Paris Cité', description: 'université', coordinates: [{ lat: 48.881, lon: 2.33 }] },
+      { pageid: 8, title: 'Affaire obscure', coordinates: [{ lat: 48.881, lon: 2.33 }] },
+      { pageid: 6, title: 'Sans position', description: 'église' },
+    ],
+  },
 };
 
-test('parseOverpassPois lit les plaques, œuvres et monuments', () => {
-  const pois = parseOverpassPois(overpass);
+test('parseWikipediaPois garde les lieux à voir, pas les rues ni les découpages', () => {
+  const pois = parseWikipediaPois(wikipedia);
   assert.deepEqual(
     pois.map((p) => p.id),
-    ['node/1', 'way/2', 'node/3']
+    ['wiki/1', 'wiki/2', 'wiki/3']
   );
-  const plaque = pois[0];
-  assert.equal(plaque.kind, 'plaque');
-  assert.equal(plaque.title, 'Ici est né Serge Gainsbourg le 2 avril 1928');
-  assert.equal(plaque.description, null);
-  assert.equal(plaque.score, 5); // plaque + inscription + wikidata
-  assert.equal(pois[1].wikipediaUrl, 'https://fr.wikipedia.org/wiki/Fresque_du_quartier');
-  assert.deepEqual(parseOverpassPois({ remark: 'timeout' }), []);
+  const museum = pois[0];
+  assert.equal(museum.kind, 'museum');
+  assert.equal(museum.title, 'Musée de la Vie romantique');
+  assert.equal(museum.description, 'Musée parisien consacré au romantisme');
+  assert.equal(museum.score, 3);
+  assert.equal(pois[1].kind, 'artwork');
+  assert.equal(pois[1].description, 'Fresque murale');
+  assert.equal(pois[2].kind, 'monument');
+  assert.deepEqual(parseWikipediaPois({ error: { code: 'toobig' } }), []);
+  // L'ancien format (pages indexées par identifiant) est aussi lu.
+  assert.equal(parseWikipediaPois({ query: { pages: { 1: wikipedia.query.pages[0] } } }).length, 1);
+});
+
+test('paramètres de recherche Wikipédia', () => {
+  const box = wikipediaBboxParams({ south: 48.848, west: 2.3, north: 48.862, east: 2.32 });
+  assert.equal(box.ggsbbox, '48.862000|2.300000|48.848000|2.320000');
+  assert.equal(box.generator, 'geosearch');
+  const near = wikipediaNearParams(street[0], 20_000);
+  assert.equal(near.ggscoord, '48.880000|2.330000');
+  assert.equal(near.ggsradius, '10000');
 });
 
 test('poisAlongPath garde ce qui est au bord du trajet, dans l’ordre de passage', () => {
-  const pois = parseOverpassPois(overpass);
+  const pois = parseWikipediaPois(wikipedia);
   assert.deepEqual(
     poisAlongPath(pois, street).map((p) => p.id),
-    ['node/1', 'way/2']
+    ['wiki/1', 'wiki/2']
   );
   assert.deepEqual(
     poisAlongPath(pois, [...street].reverse()).map((p) => p.id),
-    ['way/2', 'node/1']
+    ['wiki/2', 'wiki/1']
   );
-  assert.equal(poisAlongPath(pois, street, 35, 1)[0].id, 'node/1');
+  assert.equal(poisAlongPath(pois, street, 35, 1)[0].id, 'wiki/1');
 });
 
 test('bestPoiNear préfère le lieu le plus intéressant dans le rayon', () => {
-  const pois = parseOverpassPois(overpass);
+  const pois = parseWikipediaPois(wikipedia);
   const target = { latitude: 48.8825, longitude: 2.3301 };
-  assert.equal(bestPoiNear(pois, target, 200)?.id, 'node/1');
-  assert.equal(bestPoiNear(pois, target, 80)?.id, 'way/2');
+  assert.equal(bestPoiNear(pois, target, 200)?.id, 'wiki/1');
+  assert.equal(bestPoiNear(pois, target, 80)?.id, 'wiki/2');
   assert.equal(bestPoiNear(pois, target, 10), null);
 });
 
@@ -89,35 +113,20 @@ test('samplePath allège le tracé en gardant les extrémités', () => {
   assert.ok(samplePath(dense, 1, 10).length <= 10);
 });
 
-test('overpassQuery suit le tracé', () => {
-  const query = overpassQuery(street, 35);
-  assert.match(query, /\(around:35,48\.880000,2\.330000,48\.881800,2\.330000,48\.883600,2\.330000\);/);
-  assert.match(query, /out center tags/);
-});
-
 test('distanceM', () => {
   assert.ok(Math.abs(distanceM(street[0], street[2]) - 400) < 2);
 });
 
-
-
 test('nearbyPoi signale le lieu le plus proche à portée', async () => {
   const { nearbyPoi } = await import('./pois.ts');
-  const pois = parseOverpassPois(overpass);
-  assert.equal(nearbyPoi(pois, { latitude: 48.8811, longitude: 2.3301 })?.id, 'node/1');
+  const pois = parseWikipediaPois(wikipedia);
+  assert.equal(nearbyPoi(pois, { latitude: 48.8811, longitude: 2.3301 })?.id, 'wiki/1');
   assert.equal(nearbyPoi(pois, street[0]), null);
   assert.equal(nearbyPoi(pois, null), null);
 });
 
-test('overpassQueryNear cherche autour de chaque point', async () => {
-  const { overpassQueryNear } = await import('../../supabase/functions/_shared/pois.ts');
-  const query = overpassQueryNear([street[0], street[2]], 300);
-  assert.match(query, /\(around:300,48\.880000,2\.330000\);/);
-  assert.match(query, /\(around:300,48\.883600,2\.330000\);/);
-});
-
 test('zoneOf et zoneBbox sont cohérents', async () => {
-  const { zoneOf, zoneBbox, zonesAround, zonesAlongPath, overpassQueryBbox } = await import(
+  const { zoneOf, zoneBbox, zonesAround, zonesAlongPath } = await import(
     '../../supabase/functions/_shared/pois.ts'
   );
   const point = { latitude: 48.8566, longitude: 2.3522 };
@@ -129,5 +138,4 @@ test('zoneOf et zoneBbox sont cohérents', async () => {
   assert.ok(distanceM({ latitude: box.south, longitude: box.west }, { latitude: box.south, longitude: box.east }) < 900);
   assert.equal(zonesAround(point).length, 9);
   assert.ok(zonesAlongPath(street).length >= 1);
-  assert.match(overpassQueryBbox(box), /\(48\.\d{6},2\.\d{6},48\.\d{6},2\.\d{6}\);/);
 });
