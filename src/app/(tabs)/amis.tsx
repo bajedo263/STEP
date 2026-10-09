@@ -1,3 +1,5 @@
+import Constants, { ExecutionEnvironment } from 'expo-constants';
+import * as Linking from 'expo-linking';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import {
@@ -7,6 +9,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   View,
 } from 'react-native';
@@ -24,6 +27,7 @@ import {
   Spacing,
 } from '@/constants/theme';
 import { useConquestSeason, useMyConquestCount } from '@/hooks/use-conquest';
+import { sendCheer, useDuels } from '@/hooks/use-duels';
 import { useFriends } from '@/hooks/use-friends';
 import { useLeague } from '@/hooks/use-league';
 import { useProfile } from '@/hooks/use-profile';
@@ -51,6 +55,8 @@ import {
   tierName,
   type LeagueRow,
 } from '@/lib/league';
+import { localDay } from '@/lib/daily-progress';
+import { DUEL_DAYS, duelLabel, duelPhase, inviteMessage, type DuelRow } from '@/lib/duels';
 import { useAuth } from '@/providers/auth-provider';
 
 const formatNumber = (value: number) => Math.round(value).toLocaleString('fr-FR');
@@ -63,6 +69,7 @@ export default function FriendsScreen() {
   const season = useConquestSeason();
   const league = useLeague();
   const friends = useFriends();
+  const duels = useDuels();
   const [username, setUsername] = useState('');
   const [adding, setAdding] = useState(false);
   const [message, setMessage] = useState<{ text: string; isError: boolean } | null>(null);
@@ -82,6 +89,53 @@ export default function FriendsScreen() {
       isError: result === 'not_found' || result === 'self',
     });
     if (result === 'sent' || result === 'accepted') setUsername('');
+  };
+
+  const invite = () => {
+    if (!profile?.username) return;
+    // Dans Expo Go, le lien d'ajout n'est pas stable : seul le pseudo est partagé.
+    const link =
+      Constants.executionEnvironment === ExecutionEnvironment.StoreClient
+        ? null
+        : Linking.createURL('ami', { queryParams: { pseudo: profile.username } });
+    Share.share({ message: inviteMessage(profile.username, link) }).catch(() => {});
+  };
+
+  // Un appui sur un ami : l'encourager, le défier ou le retirer.
+  const friendActions = (entry: RankingEntry) => {
+    const cheer = async () => {
+      const result = await sendCheer(entry.id);
+      setMessage(
+        result === 'sent'
+          ? { text: `${entry.name} verra votre encouragement à sa prochaine ouverture.`, isError: false }
+          : result === 'already'
+            ? { text: `Vous avez déjà encouragé ${entry.name} aujourd’hui.`, isError: false }
+            : { text: 'L’encouragement n’a pas pu être envoyé. Réessayez.', isError: true }
+      );
+    };
+    const challenge = async (days: number) => {
+      const result = await duels.challenge(entry.id, days);
+      setMessage(
+        result === 'sent'
+          ? { text: `Défi envoyé à ${entry.name}. Il commence dès qu’il est accepté.`, isError: false }
+          : result === 'already'
+            ? { text: `Un duel est déjà en cours avec ${entry.name}.`, isError: false }
+            : { text: 'Le défi n’a pas pu être envoyé. Réessayez.', isError: true }
+      );
+    };
+    Alert.alert(entry.name, undefined, [
+      { text: 'Encourager 👏', onPress: cheer },
+      ...DUEL_DAYS.map((days) => ({
+        text: `Défier sur ${days} jours`,
+        onPress: () => challenge(days),
+      })),
+      {
+        text: 'Retirer de mes amis',
+        style: 'destructive' as const,
+        onPress: () => friends.remove(entry.id),
+      },
+      { text: 'Annuler', style: 'cancel' as const },
+    ]);
   };
 
   const list = friends.status === 'ready' ? friends.friends : [];
@@ -118,6 +172,9 @@ export default function FriendsScreen() {
                   {`. Donnez-le à vos amis pour qu’ils vous ajoutent.`}
                 </ThemedText>
               ) : null}
+              {profile?.username ? (
+                <Button title="Inviter un ami" variant="secondary" onPress={invite} />
+              ) : null}
               <TextField
                 label="Ajouter un ami"
                 placeholder="Son pseudo"
@@ -145,6 +202,10 @@ export default function FriendsScreen() {
               <Message text="Impossible de charger vos amis. Vérifiez votre connexion." isError />
             ) : null}
 
+            {duels.duels.length > 0 ? (
+              <DuelsCard duels={duels.duels} onRespond={duels.respond} />
+            ) : null}
+
             {incoming.length > 0 ? (
               <ThemedView type="backgroundElement" style={styles.card}>
                 <ThemedText type="smallBold">Demandes reçues</ThemedText>
@@ -168,22 +229,14 @@ export default function FriendsScreen() {
                   </ThemedText>
                 ) : (
                   ranking.map((entry) => (
-                    <RankingRow
-                      key={entry.id}
-                      entry={entry}
-                      onRemove={() =>
-                        Alert.alert(`Retirer ${entry.name} de vos amis ?`, undefined, [
-                          { text: 'Annuler', style: 'cancel' },
-                          {
-                            text: 'Retirer',
-                            style: 'destructive',
-                            onPress: () => friends.remove(entry.id),
-                          },
-                        ])
-                      }
-                    />
+                    <RankingRow key={entry.id} entry={entry} onPress={() => friendActions(entry)} />
                   ))
                 )}
+                {ranking.length > 1 ? (
+                  <ThemedText type="small" themeColor="textSecondary">
+                    Touchez un ami pour l’encourager ou le défier en duel.
+                  </ThemedText>
+                ) : null}
                 {ranking.length > 1 ? (
                   <View style={styles.legend}>
                     <View style={[styles.swatch, { backgroundColor: ConquestFriendColor }]} />
@@ -270,14 +323,14 @@ function IncomingRequest({
   );
 }
 
-function RankingRow({ entry, onRemove }: { entry: RankingEntry; onRemove: () => void }) {
+function RankingRow({ entry, onPress }: { entry: RankingEntry; onPress: () => void }) {
   const theme = useTheme();
   return (
     <Pressable
       accessibilityRole={entry.isMe ? undefined : 'button'}
-      accessibilityHint={entry.isMe ? undefined : 'Appui long pour retirer cet ami'}
+      accessibilityHint={entry.isMe ? undefined : 'Encourager, défier ou retirer cet ami'}
       disabled={entry.isMe}
-      onLongPress={onRemove}
+      onPress={onPress}
       style={[styles.rankingRow, entry.isMe && { backgroundColor: theme.backgroundSelected }]}>
       <ThemedText type="smallBold" style={styles.rank}>
         {entry.rank}
@@ -394,6 +447,70 @@ function LeagueCard({ rows }: { rows: LeagueRow[] }) {
   );
 }
 
+/** Duels entre amis : défis reçus à accepter, duels en cours et résultats récents. */
+function DuelsCard({
+  duels,
+  onRespond,
+}: {
+  duels: DuelRow[];
+  onRespond: (duelId: string, accept: boolean) => Promise<void>;
+}) {
+  const theme = useTheme();
+  const today = localDay(new Date());
+  return (
+    <ThemedView type="backgroundElement" style={styles.card}>
+      <ThemedText type="smallBold">⚔️ Duels</ThemedText>
+      {duels.map((duel) => {
+        const phase = duelPhase(duel, today);
+        const total = Math.max(1, duel.my_steps + duel.their_steps);
+        return (
+          <View key={duel.id} style={styles.request}>
+            <ThemedText
+              type="small"
+              style={[
+                phase === 'won' && { color: theme.success },
+                phase === 'lost' && { color: theme.danger },
+              ]}>
+              {duelLabel(duel, today)}
+            </ThemedText>
+            {phase === 'pending' && duel.incoming ? (
+              <View style={styles.row}>
+                <Button title="Relever" style={styles.flex} onPress={() => onRespond(duel.id, true)} />
+                <Button
+                  title="Refuser"
+                  variant="secondary"
+                  style={styles.flex}
+                  onPress={() => onRespond(duel.id, false)}
+                />
+              </View>
+            ) : null}
+            {phase !== 'pending' ? (
+              <View style={[styles.duelTrack, { backgroundColor: ConquestFriendColor }]}>
+                <View
+                  style={[
+                    styles.duelFill,
+                    { width: `${(duel.my_steps / total) * 100}%`, backgroundColor: theme.tint },
+                  ]}
+                />
+              </View>
+            ) : null}
+            {phase !== 'pending' ? (
+              <View style={styles.row}>
+                <ThemedText type="small" style={styles.flex}>
+                  {`Vous : ${formatNumber(duel.my_steps)}`}
+                </ThemedText>
+                <ThemedText type="small">
+                  {`${duel.other_name ?? 'Ami'} : ${formatNumber(duel.their_steps)}`}
+                </ThemedText>
+              </View>
+            ) : null}
+          </View>
+        );
+      })}
+    </ThemedView>
+  );
+}
+
 function Message({ text, isError }: { text: string; isError: boolean }) {
   const theme = useTheme();
   return (
@@ -445,6 +562,14 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.two,
     borderRadius: Spacing.three,
+  },
+  duelTrack: {
+    height: 8,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  duelFill: {
+    height: '100%',
   },
   rank: {
     width: 24,
