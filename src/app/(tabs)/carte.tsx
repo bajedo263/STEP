@@ -24,6 +24,7 @@ import { SegmentedChoice } from '@/components/ui/segmented-choice';
 import { TextField } from '@/components/ui/text-field';
 import {
   BottomTabInset,
+  ConquestFriendColor,
   ConquestMineColor,
   ConquestOtherColor,
   MaxContentWidth,
@@ -171,7 +172,7 @@ export default function MapScreen() {
               <Polygon
                 key={cellKey(cell)}
                 coordinates={cellPolygon(cell)}
-                fillColor={`${cell.mine ? ConquestMineColor : ConquestOtherColor}55`}
+                fillColor={`${cell.mine ? ConquestMineColor : cell.friend ? ConquestFriendColor : ConquestOtherColor}55`}
                 strokeWidth={0}
               />
             ))
@@ -497,6 +498,8 @@ function ConquestStatus({
             ? 'Conquête active'
             : `Conquête active : ${formatNumber(count)} case${count > 1 ? 's' : ''} à vous`}
         </ThemedText>
+        <View style={[styles.swatch, { backgroundColor: ConquestFriendColor }]} />
+        <ThemedText type="small">Amis</ThemedText>
         <View style={[styles.swatch, { backgroundColor: ConquestOtherColor }]} />
         <ThemedText type="small">Autres</ThemedText>
       </View>
