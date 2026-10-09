@@ -2,6 +2,7 @@ import * as Location from 'expo-location';
 import { Pedometer } from 'expo-sensors';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import type { LatLng } from '@/lib/loop';
 import { addPoint, emptyTrack, type Track } from '@/lib/track';
 
 export type WalkTracker = {
@@ -13,15 +14,20 @@ export type WalkTracker = {
 };
 
 /**
- * Suit la marche pendant que l'écran est ouvert : positions GPS filtrées et pas du podomètre.
+ * Suit la marche pendant que l'écran est ouvert : positions GPS lissées et pas du podomètre.
+ * Avec un trajet prévu (`path`), les positions proches sont posées dessus.
  * Expo Go ne permet pas le suivi en arrière-plan ; il viendra avec la version de test dédiée.
  */
-export function useWalkTracker() {
+export function useWalkTracker(path: LatLng[] | null = null) {
   const [startedAt] = useState(() => new Date());
   const [status, setStatus] = useState<WalkTracker['status']>('starting');
   const [track, setTrack] = useState<Track>(emptyTrack);
   const [steps, setSteps] = useState<number | null>(null);
   const subscriptions = useRef<{ remove: () => void }[]>([]);
+  const pathRef = useRef(path);
+  useEffect(() => {
+    pathRef.current = path;
+  }, [path]);
 
   const stop = useCallback(() => {
     subscriptions.current.forEach((subscription) => subscription.remove());
@@ -45,15 +51,23 @@ export function useWalkTracker() {
 
       keep(
         await Location.watchPositionAsync(
-          { accuracy: Location.Accuracy.BestForNavigation, distanceInterval: 5, timeInterval: 3000 },
+          {
+            accuracy: Location.Accuracy.BestForNavigation,
+            distanceInterval: 5,
+            timeInterval: 3000,
+          },
           ({ coords, timestamp }) =>
             setTrack((current) =>
-              addPoint(current, {
-                latitude: coords.latitude,
-                longitude: coords.longitude,
-                accuracy: coords.accuracy,
-                timestamp,
-              })
+              addPoint(
+                current,
+                {
+                  latitude: coords.latitude,
+                  longitude: coords.longitude,
+                  accuracy: coords.accuracy,
+                  timestamp,
+                },
+                pathRef.current
+              )
             )
         )
       );

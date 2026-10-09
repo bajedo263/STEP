@@ -5,6 +5,7 @@ import { Alert, BackHandler, Linking, Pressable, Share, StyleSheet, View } from 
 import MapView, { Marker, Polygon } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { HeadingCone } from '@/components/heading-cone';
 import { PoiMarker, RouteLine } from '@/components/map-route';
 import { PoiSheet, PoiStory } from '@/components/poi-sheet';
 import { ThemedText } from '@/components/themed-text';
@@ -28,7 +29,7 @@ import { upcomingPois } from '@/lib/map-declutter';
 import { mergePois, POI_KIND_LABELS, type RoutePoi } from '@/lib/pois';
 import { strideLengthMeters } from '@/lib/steps';
 import { supabase } from '@/lib/supabase';
-import { formatElapsed } from '@/lib/track';
+import { formatElapsed, hasArrived, remainingAlongPath } from '@/lib/track';
 import { MIN_WALK_M, summarizeWalk, walkRow, type WalkSummary } from '@/lib/walk-summary';
 import { useAuth } from '@/providers/auth-provider';
 
@@ -49,7 +50,7 @@ export default function WalkScreen() {
   const { session } = useAuth();
   const profile = useProfile();
   const planned = usePlannedWalk();
-  const tracker = useWalkTracker();
+  const tracker = useWalkTracker(planned.mode === 'free' ? null : planned.route.coordinates);
   // Si l'on est parti avant que les lieux du trajet soient arrivés sur la carte, on les charge ici.
   const routePois = useRoutePois(planned.mode === 'free' ? null : planned.route.coordinates);
   const plannedPois = useMemo(
@@ -96,6 +97,17 @@ export default function WalkScreen() {
     setConquered(conquering);
     save(walk, conquering);
   };
+
+  // Arrivé au bout du trajet prévu : on termine tout seul, sans demander de confirmation.
+  const arrived =
+    !summary && planned.mode !== 'free' && hasArrived(planned.route.coordinates, tracker.track);
+  useEffect(() => {
+    if (!arrived) return;
+    const timer = setTimeout(finish, 0);
+    return () => clearTimeout(timer);
+    // `finish` change à chaque rendu ; seule l'arrivée compte.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arrived]);
 
   if (summary) {
     return (
@@ -283,13 +295,7 @@ function ActiveWalk({
             // Le cône est dessiné centré sur la position et tourné dans la vue elle-même :
             // la rotation des marqueurs n'est pas prise en charge partout (Apple Plans).
             <Marker coordinate={position} anchor={{ x: 0.5, y: 0.5 }} zIndex={10}>
-              <View
-                style={[
-                  styles.headingBox,
-                  { transform: [{ rotate: `${heading - shownMapHeading}deg` }] },
-                ]}>
-                <View style={[styles.headingCone, { borderBottomColor: `${theme.tint}AA` }]} />
-              </View>
+              <HeadingCone color={theme.tint} rotation={heading - shownMapHeading} />
             </Marker>
           ) : null}
           {tracker.track.points.length > 1 ? (
@@ -330,7 +336,7 @@ function ActiveWalk({
           {/* Ce qu'on cherche d'un coup d'œil : ce qu'il reste à marcher, puis le prochain lieu. */}
           <ThemedText type="title" style={styles.centered}>
             {plannedRoute
-              ? formatDistance(Math.max(0, plannedRoute.distanceM - tracker.track.distanceM))
+              ? formatDistance(remainingAlongPath(plannedRoute.coordinates, tracker.track))
               : formatDistance(tracker.track.distanceM)}
           </ThemedText>
           <ThemedText type="small" themeColor="textSecondary" style={styles.centered}>
@@ -549,21 +555,6 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
     elevation: 4,
-  },
-  headingBox: {
-    width: 64,
-    height: 64,
-    alignItems: 'center',
-  },
-  // Cône de direction : un triangle qui part du point bleu vers l'avant du téléphone.
-  headingCone: {
-    width: 0,
-    height: 0,
-    borderLeftWidth: 14,
-    borderRightWidth: 14,
-    borderBottomWidth: 30,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
   },
   overlay: {
     flex: 1,
