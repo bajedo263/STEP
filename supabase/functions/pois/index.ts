@@ -150,7 +150,17 @@ async function storedPois(admin: SupabaseClient, zones: Zone[], userId: string):
   }));
 }
 
+// Une panne imprévue renvoie quand même un message lisible par l'app.
 Deno.serve(async (req) => {
+  try {
+    return await handle(req);
+  } catch (error) {
+    console.error('pois', error);
+    return json({ error: 'Les lieux à voir ne répondent pas. Réessayez dans un instant.' }, 502);
+  }
+});
+
+async function handle(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return json({ error: 'Méthode non autorisée.' }, 405);
 
@@ -181,4 +191,4 @@ Deno.serve(async (req) => {
     const live = (await Promise.all(zones.map(fetchZone))).flatMap((pois) => pois ?? []);
     return json({ pois: pick(live.map((poi) => ({ ...poi, dbId: null, visited: false }))) });
   }
-});
+}
