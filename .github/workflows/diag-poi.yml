@@ -6,15 +6,28 @@ jobs:
   diag:
     runs-on: ubuntu-latest
     steps:
-      - name: Overpass et Wikipédia
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/lieux-wikipedia
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Lieux Wikipédia sur un quartier réel
         run: |
-          Q='[out:json][timeout:25];(nwr["historic"](48.848,2.30,48.862,2.32););out center tags 3000;'
-          for ua in "STEP (https://github.com/bajedo263/step)" "Mozilla/5.0 STEP"; do
-            for u in https://overpass-api.de/api/interpreter https://lz4.overpass-api.de/api/interpreter https://overpass.private.coffee/api/interpreter https://overpass.kumi.systems/api/interpreter; do
-              curl -sS -o /tmp/o.json -w "$u [$ua] %{http_code} %{time_total}s %{size_download}B\n" -m 25 -A "$ua" -H 'Accept: application/json' --data-urlencode "data=$Q" "$u" || true
-              head -c 300 /tmp/o.json; echo
-            done
-          done
-          W='https://fr.wikipedia.org/w/api.php?action=query&format=json&generator=geosearch&ggsbbox=48.862|2.30|48.848|2.32&ggslimit=500&prop=coordinates|description|info&inprop=url&colimit=max'
-          curl -sS -o /tmp/w.json -w "wiki %{http_code} %{time_total}s %{size_download}B\n" -A "STEP (https://github.com/bajedo263/step)" "$W"
-          python3 -c 'import json;d=json.load(open("/tmp/w.json"));p=d.get("query",{}).get("pages",{});print(len(p),"pages", "continue" in d);[print(v.get("title"),"|",v.get("description"),"|",v.get("coordinates")) for v in list(p.values())[:12]]'
+          cat > /tmp/try.mts <<'TS'
+          import { parseWikipediaPois, wikipediaBboxParams, zoneBbox, zoneOf, zonesAround, zoneKey } from '/home/runner/work/STEP/STEP/supabase/functions/_shared/pois.ts';
+          const center = { latitude: 48.8495, longitude: 2.3005 }; // départ de la boucle (15e)
+          let total = 0;
+          for (const zone of zonesAround(center)) {
+            const t = Date.now();
+            const r = await fetch('https://fr.wikipedia.org/w/api.php?' + new URLSearchParams(wikipediaBboxParams(zoneBbox(zone))), { headers: { 'User-Agent': 'STEP/1.0 (https://github.com/bajedo263/step)' } });
+            const json = await r.json();
+            const raw = json.query?.pages?.length ?? 0;
+            const pois = parseWikipediaPois(json).filter((p) => zoneKey(zoneOf(p.coords)) === zoneKey(zone));
+            total += pois.length;
+            console.log(zoneKey(zone), r.status, Date.now() - t, 'ms', raw, 'articles ->', pois.length, 'lieux', json.continue ? 'CONTINUE' : '');
+            for (const p of pois.slice(0, 6)) console.log('   ', p.kind, p.score, '|', p.title, '|', p.description);
+          }
+          console.log('total', total);
+          TS
+          node --experimental-strip-types /tmp/try.mts
