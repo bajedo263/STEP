@@ -15,8 +15,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: feat/saisons
-      - name: Migration saisons sur une base PostGIS locale (bouchons Supabase)
+          ref: feat/ligues
+      - name: Migration ligues sur une base PostGIS locale (bouchons Supabase)
         env:
           PGPASSWORD: postgres
         run: |
@@ -37,26 +37,37 @@ jobs:
           echo "=== RÉSULTATS"
           $P <<'SQL'
           grant select, insert, update on all tables in schema public to authenticated;
-          insert into auth.users values ('22222222-2222-2222-2222-222222222222'), ('33333333-3333-3333-3333-333333333333'), ('44444444-4444-4444-4444-444444444444');
-          select now(), public.conquest_season_start(), public.conquest_since(), public.conquest_expires_at(public.conquest_season_start() - interval '1 day') as exp_fin_saison;
-          -- Saison passée : Bob a 3 cases actives au dernier jour, Carol 2, Dan 1 trop ancienne.
-          insert into public.conquest_cells (x, y, owner_id, captured_at) values
-            (1, 1, '22222222-2222-2222-2222-222222222222', public.conquest_season_start() - interval '2 days'),
-            (1, 2, '22222222-2222-2222-2222-222222222222', public.conquest_season_start() - interval '2 days'),
-            (1, 3, '22222222-2222-2222-2222-222222222222', public.conquest_season_start() - interval '3 days'),
-            (2, 1, '33333333-3333-3333-3333-333333333333', public.conquest_season_start() - interval '1 day'),
-            (2, 2, '33333333-3333-3333-3333-333333333333', public.conquest_season_start() - interval '1 day'),
-            (3, 1, '44444444-4444-4444-4444-444444444444', public.conquest_season_start() - interval '20 days');
-          -- Cette saison : Carol conquiert une rue (déclenche l'archivage), Bob rien.
-          insert into public.walks (user_id, mode, path, started_at, conquers) values ('33333333-3333-3333-3333-333333333333', 'free', 'SRID=4326;LINESTRING(2.3005 48.8495, 2.3141 48.8495)', now(), true);
-          select * from public.conquest_seasons;
-          select user_id, cells, rank from public.conquest_season_results order by rank;
-          select count(*) filter (where captured_at > public.conquest_since()) as actives, count(*) as total from public.conquest_cells;
+          insert into auth.users select ('00000000-0000-0000-0000-00000000000' || c)::uuid from unnest(array['a','b','c','d','e','f','9']) c;
+          update public.profiles set username = 'u' || right(id::text, 1);
+          select public.league_week_start() as semaine;
+          -- Semaine passée : groupe Argent de 6, A 50 000 ... F 0.
+          insert into public.league_members (week, user_id, tier, group_no, joined_at)
+          select public.league_week_start() - 7, ('00000000-0000-0000-0000-00000000000' || c)::uuid, 1, 1, now() - interval '8 days' + (i || ' seconds')::interval
+          from unnest(array['a','b','c','d','e','f']) with ordinality as t(c, i);
+          insert into public.daily_steps (user_id, day, steps)
+          select ('00000000-0000-0000-0000-00000000000' || c)::uuid, public.league_week_start() - 5, s
+          from unnest(array['a','b','c','d','e'], array[50000, 40000, 30000, 20000, 10000]) as t(c, s);
+          insert into public.daily_steps (user_id, day, steps) values ('00000000-0000-0000-0000-00000000000a', public.league_week_start(), 7000), ('00000000-0000-0000-0000-00000000000e', public.league_week_start(), 9000);
           set role authenticated;
-          select set_config('test.uid', '22222222-2222-2222-2222-222222222222', false);
-          select cells, rank, players, last_cells, last_rank, last_players, season_end - season_start as duree from public.my_conquest_season();
-          select count(*) as resultats_visibles_bob from public.conquest_season_results;
-          select set_config('test.uid', '33333333-3333-3333-3333-333333333333', false);
-          select cells, rank, players, last_cells, last_rank, last_players from public.my_conquest_season();
-          select kind, count(*) from public.my_territory_alerts() group by 1;
+          select set_config('test.uid', '00000000-0000-0000-0000-00000000000a', false);
+          select username, steps, rank, is_me, tier, players, promote, demote, previous_tier from public.my_league();
+          select set_config('test.uid', '00000000-0000-0000-0000-00000000000c', false);
+          select username, tier, players, previous_tier from public.my_league() where is_me;
+          select set_config('test.uid', '00000000-0000-0000-0000-00000000000e', false);
+          select username, tier, players, previous_tier from public.my_league() where is_me;
+          select set_config('test.uid', '00000000-0000-0000-0000-00000000000f', false);
+          select username, tier, players, previous_tier from public.my_league() where is_me;
+          select set_config('test.uid', '00000000-0000-0000-0000-000000000009', false);
+          select username, steps, rank, tier, players, previous_tier from public.my_league();
+          select count(*) as lignes_visibles from public.league_members;
+          reset role;
+          -- Remplissage : 40 nouveaux au Bronze, groupes de 30 au plus.
+          insert into auth.users select gen_random_uuid() from generate_series(1, 40);
+          do $$ declare u uuid; begin
+            for u in select id from auth.users where id not in (select user_id from public.league_members) loop
+              perform set_config('test.uid', u::text, true);
+              perform public.join_league();
+            end loop;
+          end $$;
+          select tier, group_no, count(*) from public.league_members where week = public.league_week_start() group by 1, 2 order by 1, 2;
           SQL
