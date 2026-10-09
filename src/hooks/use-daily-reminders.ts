@@ -3,11 +3,14 @@ import { router } from 'expo-router';
 import { useEffect, useMemo } from 'react';
 import { Platform } from 'react-native';
 
+import { useGiftDays } from '@/hooks/use-comeback';
+import { useMyConquestCount } from '@/hooks/use-conquest';
 import { useDailyGoal } from '@/hooks/use-daily-goal';
 import { localFlag, setLocalFlag, useLocalFlag } from '@/hooks/use-local-flag';
 import { useProfile } from '@/hooks/use-profile';
 import { useStepHistory } from '@/hooks/use-step-history';
 import { useTodaySteps } from '@/hooks/use-today-steps';
+import { comebackReminders } from '@/lib/comeback';
 import { DEFAULT_REMINDER_HOUR, planReminders, reminderKey } from '@/lib/reminders';
 import { strideLengthMeters } from '@/lib/steps';
 import { protectedStreak } from '@/lib/streak';
@@ -66,12 +69,14 @@ export function useDailyReminders() {
   const profile = useProfile();
   const history = useStepHistory();
   const hour = useReminderHour();
+  const gifts = useGiftDays();
+  const cells = useMyConquestCount();
 
   const steps = today.status === 'ready' ? today.steps : null;
   const { goal, rule } = useDailyGoal(profile, history, steps);
   const reminders = useMemo(() => {
     if (steps === null || !history) return null;
-    const streak = protectedStreak(history, new Date(), steps, rule);
+    const streak = protectedStreak(history, new Date(), steps, rule, gifts);
     const now = new Date();
     const daily = planReminders({
       now,
@@ -83,9 +88,18 @@ export function useDailyReminders() {
       strideM: strideLengthMeters(profile?.height_cm ?? 170, profile?.sex ?? 'unspecified'),
       reliable: today.status === 'ready' && !today.partial,
     });
-    // Le bilan de la semaine s'annonce le lundi matin, sauf si les rappels sont coupés.
-    return hour === null ? daily : [...daily, weeklyReviewReminder(now)];
-  }, [steps, history, goal, rule, hour, profile, today]);
+    // Le bilan de la semaine s'annonce le lundi matin, et les rappels de retour à J+3 et J+7
+    // ne sonnent que si l'app n'est pas rouverte d'ici là ; rien si les rappels sont coupés.
+    if (hour === null) return daily;
+    const comeback = comebackReminders({
+      now,
+      hour,
+      streak: streak.current,
+      best: streak.best,
+      cells,
+    });
+    return [...daily, weeklyReviewReminder(now), ...comeback];
+  }, [steps, history, goal, rule, hour, profile, today, gifts, cells]);
   const key = reminders ? reminderKey(reminders) : null;
 
   useEffect(() => {

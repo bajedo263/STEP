@@ -5,6 +5,7 @@ import { useStepHistory } from '@/hooks/use-step-history';
 import { badgesFor, type Badge } from '@/lib/badges';
 import { collectionCounts, type ZoneProgress } from '@/lib/collection';
 import type { GoalRule } from '@/lib/steps';
+import { useGiftDays } from '@/hooks/use-comeback';
 import { protectedStreak } from '@/lib/streak';
 import { supabase } from '@/lib/supabase';
 
@@ -24,6 +25,7 @@ type Totals = {
  */
 export function useBadges(todaySteps: number | null, goal: GoalRule): Badge[] | null {
   const history = useStepHistory();
+  const gifts = useGiftDays();
   const [totals, setTotals] = useState<Totals | null>(null);
 
   useFocusEffect(
@@ -67,6 +69,6 @@ export function useBadges(todaySteps: number | null, goal: GoalRule): Badge[] | 
   );
 
   if (!totals || !history) return null;
-  const { best } = protectedStreak(history, new Date(), todaySteps, goal);
+  const { best } = protectedStreak(history, new Date(), todaySteps, goal, gifts);
   return badgesFor({ ...totals, bestStreak: best });
 }

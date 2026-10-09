@@ -1,6 +1,8 @@
 import { useKeepAwake } from 'expo-keep-awake';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 
+import { firstWalkDoneKey, useHasWalked } from '@/hooks/use-comeback';
+import { setLocalFlag } from '@/hooks/use-local-flag';
 import type { PlannedWalk } from '@/hooks/use-planned-walk';
 import { usePoiDiscovery } from '@/hooks/use-poi-discovery';
 import { useProfile } from '@/hooks/use-profile';
@@ -84,9 +86,12 @@ export function WalkHost() {
 function WalkSession({ planned }: { planned: PlannedWalk }) {
   const [summary, setSummary] = useState<WalkSummary | null>(null);
   const [saveState, setSaveState] = useState<SaveState>('saving');
-  // La Conquête s'active dès 10 000 pas dans la journée, y compris en cours de trajet.
+  // La Conquête s'active dès 10 000 pas dans la journée, y compris en cours de trajet. La toute
+  // première marche fait exception : elle rapporte ses premières cases, pour goûter au jeu.
   const today = useTodaySteps();
-  const conquering = conquestUnlocked(today.status === 'ready' ? today.steps : null);
+  const hasWalked = useHasWalked();
+  const conquering =
+    conquestUnlocked(today.status === 'ready' ? today.steps : null) || hasWalked === false;
   const [conquered, setConquered] = useState(false);
   const { session } = useAuth();
   const profile = useProfile();
@@ -119,6 +124,7 @@ function WalkSession({ planned }: { planned: PlannedWalk }) {
       ({ error } = await supabase.from('walks').insert(legacyRow));
     }
     setSaveState(error ? 'error' : 'saved');
+    if (!error) setLocalFlag(firstWalkDoneKey(userId), '1');
   };
 
   const finish = () => {

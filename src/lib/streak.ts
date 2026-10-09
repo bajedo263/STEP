@@ -30,8 +30,11 @@ export function protectedStreak(
   rows: DailyStepsRow[],
   today: Date,
   todaySteps: number | null,
-  goal: GoalRule
+  goal: GoalRule,
+  /** Jours où un gel a été offert (retour après une absence), au format AAAA-MM-JJ. */
+  giftDays: string[] = []
 ): ProtectedStreak {
+  const gifts = new Set(giftDays);
   const todayKey = localDay(today);
   const byDay = new Map(rows.map((row) => [row.day, row.steps]));
   byDay.set(todayKey, Math.max(byDay.get(todayKey) ?? 0, todaySteps ?? 0));
@@ -51,6 +54,8 @@ export function protectedStreak(
   const end = startOfDay(today);
   while (cursor <= end) {
     const day = localDay(cursor);
+    // Le gel offert s'ajoute après l'absence : il protège les jours suivants.
+    const gifted = gifts.has(day);
     const atGoal = (byDay.get(day) ?? 0) >= goalOn(goal, day);
     if (atGoal) {
       result.current += 1;
@@ -68,6 +73,7 @@ export function protectedStreak(
         result.freezes = 0;
       }
     }
+    if (gifted) result.freezes = Math.min(MAX_FREEZES, result.freezes + 1);
     cursor.setDate(cursor.getDate() + 1);
   }
   return result;

@@ -36,6 +36,7 @@ import type { Sex } from '@/lib/steps';
 import { protectedStreak } from '@/lib/streak';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/auth-provider';
+import { useGiftDays } from '@/hooks/use-comeback';
 
 const SEX_OPTIONS: { value: Sex; label: string }[] = [
   { value: 'female', label: 'Femme' },
@@ -310,9 +311,10 @@ function Highlights() {
   const history = useStepHistory();
   const { rule } = useDailyGoal(profile, history, steps);
   const badges = useBadges(steps, rule);
+  const gifts = useGiftDays();
   const streak = useMemo(
-    () => (history ? protectedStreak(history, new Date(), steps, rule) : null),
-    [history, steps, rule]
+    () => (history ? protectedStreak(history, new Date(), steps, rule, gifts) : null),
+    [history, steps, rule, gifts]
   );
   const unlocked = badges?.filter((badge) => badge.unlocked) ?? [];
 

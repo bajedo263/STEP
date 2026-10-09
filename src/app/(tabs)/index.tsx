@@ -13,6 +13,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { BottomTabInset, ConquestFriendColor, MaxContentWidth, PoiColor, Radius, Spacing } from '@/constants/theme';
 import { useBadges } from '@/hooks/use-badges';
+import { useComebackBanner, useGiftDays, useHasWalked } from '@/hooks/use-comeback';
 import { useTerritoryAlerts, type TerritoryAlerts } from '@/hooks/use-conquest';
 import { useDailyChallenge } from '@/hooks/use-daily-challenge';
 import { useCheers } from '@/hooks/use-duels';
@@ -34,6 +35,7 @@ import { useWeeklyReview, type WeeklyExtras } from '@/hooks/use-weekly-review';
 import { adaptiveLabel, suggestAdaptive } from '@/lib/adaptive-goal';
 import { nextBadges } from '@/lib/badges';
 import { TROPHY_COLORS } from '@/lib/season-rewards';
+import { FIRST_WALK_STEPS } from '@/lib/comeback';
 import { cheersLabel } from '@/lib/duels';
 import type { Challenge } from '@/lib/challenge';
 import { CONQUEST_UNLOCK_STEPS, conquestUnlocked, territoryAlertLabel } from '@/lib/conquest';
@@ -76,15 +78,18 @@ export default function HomeScreen() {
   const isPartial = today.status === 'ready' && today.partial;
   useSyncDailySteps(isPartial || !profile ? null : progress);
 
+  const gifts = useGiftDays();
   const streak = useMemo(
-    () => (history ? protectedStreak(history, new Date(), steps, rule) : null),
-    [history, steps, rule]
+    () => (history ? protectedStreak(history, new Date(), steps, rule, gifts) : null),
+    [history, steps, rule, gifts]
   );
   const challenge = useDailyChallenge(steps, goal);
   const territory = useTerritoryAlerts();
   const cheers = useCheers();
   const trophies = useTrophies();
   const cheersText = cheersLabel(cheers.names);
+  const comeback = useComebackBanner();
+  const hasWalked = useHasWalked();
   const badges = useBadges(steps, rule);
   const nextBadge = useMemo(() => (badges ? (nextBadges(badges)[0] ?? null) : null), [badges]);
 
@@ -177,6 +182,26 @@ export default function HomeScreen() {
                 <Stat value={`${Math.round(progress.ratio * 100)} %`} label="de l’objectif" />
               </ThemedView>
 
+              {comeback.show ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityHint="Masquer"
+                  onPress={comeback.dismiss}
+                  style={styles.cardPressable}>
+                  <ThemedView type="backgroundElement" style={styles.card}>
+                    <View style={styles.row}>
+                      <Icon ios="snowflake" fallback="❄️" color={ConquestFriendColor} size={22} />
+                      <View style={styles.flex}>
+                        <ThemedText type="smallBold">Bon retour !</ThemedText>
+                        <ThemedText type="small" themeColor="textSecondary">
+                          Un gel de série vous est offert pour repartir du bon pied.
+                        </ThemedText>
+                      </View>
+                    </View>
+                  </ThemedView>
+                </Pressable>
+              ) : null}
+              {hasWalked === false ? <FirstWalkCard /> : null}
               {cheersText ? (
                 <Pressable
                   accessibilityRole="button"
@@ -304,6 +329,22 @@ function WeeklyReviewCard({
       ) : null}
       <ThemedText type="small">{weekCheer(review)}</ThemedText>
       <Button title="C’est noté" variant="secondary" onPress={onClose} />
+    </ThemedView>
+  );
+}
+
+/** Première marche guidée : une boucle courte qui rapporte déjà des cases de Conquête. */
+function FirstWalkCard() {
+  return (
+    <ThemedView type="backgroundElement" style={styles.card}>
+      <ThemedText type="smallBold">Votre première marche</ThemedText>
+      <ThemedText type="small">
+        {`Une boucle d’environ ${formatNumber(FIRST_WALK_STEPS)} pas depuis chez vous, avec un lieu à découvrir. Elle vous rapporte vos premières cases de Conquête, même avant 10 000 pas.`}
+      </ThemedText>
+      <Button
+        title="Préparer ma boucle"
+        onPress={() => router.push(`/carte?premiere=${Date.now()}`)}
+      />
     </ThemedView>
   );
 }
