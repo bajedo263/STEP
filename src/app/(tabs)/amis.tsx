@@ -23,7 +23,7 @@ import {
   Radius,
   Spacing,
 } from '@/constants/theme';
-import { useMyConquestCount } from '@/hooks/use-conquest';
+import { useConquestSeason, useMyConquestCount } from '@/hooks/use-conquest';
 import { useFriends } from '@/hooks/use-friends';
 import { useProfile } from '@/hooks/use-profile';
 import { useTheme } from '@/hooks/use-theme';
@@ -34,6 +34,14 @@ import {
   type FriendRow,
   type RankingEntry,
 } from '@/lib/friends';
+import {
+  ordinal,
+  rankLabel,
+  seasonEndLabel,
+  seasonName,
+  seasonRanking,
+  type SeasonRow,
+} from '@/lib/season';
 import { useAuth } from '@/providers/auth-provider';
 
 const formatNumber = (value: number) => Math.round(value).toLocaleString('fr-FR');
@@ -43,6 +51,7 @@ export default function FriendsScreen() {
   const profile = useProfile();
   const today = useTodaySteps();
   const myCells = useMyConquestCount();
+  const season = useConquestSeason();
   const friends = useFriends();
   const [username, setUsername] = useState('');
   const [adding, setAdding] = useState(false);
@@ -176,6 +185,17 @@ export default function FriendsScreen() {
               </ThemedView>
             ) : null}
 
+            {season && friends.status === 'ready' ? (
+              <SeasonCard
+                season={season}
+                ranking={seasonRanking(list, {
+                  id: session?.user.id ?? 'me',
+                  name: profile?.username ?? 'Moi',
+                  cells: season.cells,
+                })}
+              />
+            ) : null}
+
             {outgoing.length > 0 ? (
               <ThemedView type="backgroundElement" style={styles.card}>
                 <ThemedText type="smallBold">En attente de réponse</ThemedText>
@@ -262,6 +282,48 @@ function RankingRow({ entry, onRemove }: { entry: RankingEntry; onRemove: () => 
       </View>
       <ThemedText type="smallBold">{`${formatNumber(entry.steps)} pas`}</ThemedText>
     </Pressable>
+  );
+}
+
+/** Saison de Conquête : classement entre amis aux cases détenues, rang général et saison passée. */
+function SeasonCard({ season, ranking }: { season: SeasonRow; ranking: ReturnType<typeof seasonRanking> }) {
+  const theme = useTheme();
+  const lastPlayers = season.last_players ?? 0;
+  return (
+    <ThemedView type="backgroundElement" style={styles.card}>
+      <View>
+        <ThemedText type="smallBold">{`🚩 ${seasonName(new Date(season.season_start))}`}</ThemedText>
+        <ThemedText type="small" themeColor="textSecondary">
+          {`${seasonEndLabel(new Date(season.season_end), new Date())}. Toutes les cases repartent de zéro le 1er du mois.`}
+        </ThemedText>
+      </View>
+      <ThemedText type="small">{`Vous : ${rankLabel(season.rank, season.players)}.`}</ThemedText>
+      {ranking.length > 1
+        ? ranking.map((entry) => (
+            <View
+              key={entry.id}
+              style={[styles.rankingRow, entry.isMe && { backgroundColor: theme.backgroundSelected }]}>
+              <ThemedText type="smallBold" style={styles.rank}>
+                {entry.rank}
+              </ThemedText>
+              <ThemedText
+                numberOfLines={1}
+                type={entry.isMe ? 'smallBold' : 'small'}
+                style={styles.flex}>
+                {entry.isMe ? `${entry.name} (vous)` : entry.name}
+              </ThemedText>
+              <ThemedText type="smallBold">
+                {`${formatNumber(entry.cells)} case${entry.cells > 1 ? 's' : ''}`}
+              </ThemedText>
+            </View>
+          ))
+        : null}
+      {season.last_rank && season.last_cells ? (
+        <ThemedText type="small" themeColor="textSecondary">
+          {`${seasonName(new Date(season.last_season_start))} : vous avez fini ${ordinal(season.last_rank)} sur ${lastPlayers}, avec ${formatNumber(season.last_cells)} case${season.last_cells > 1 ? 's' : ''}.`}
+        </ThemedText>
+      ) : null}
+    </ThemedView>
   );
 }
 

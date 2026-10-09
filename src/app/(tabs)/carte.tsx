@@ -34,6 +34,7 @@ import {
 } from '@/constants/theme';
 import {
   useConquestCells,
+  useConquestSeason,
   useMyConquestCount,
   useTerritoryAlerts,
   type TerritoryAlerts,
@@ -65,6 +66,7 @@ import {
 } from '@/lib/loop';
 import { clusterByRegion } from '@/lib/map-declutter';
 import { type Poi } from '@/lib/pois';
+import { rankLabel, seasonEndLabel, seasonName } from '@/lib/season';
 import { strideLengthMeters } from '@/lib/steps';
 
 const formatNumber = (value: number) => Math.round(value).toLocaleString('fr-FR');
@@ -603,13 +605,25 @@ function ConquestStatus({
   zoomedOut: boolean;
 }) {
   const count = useMyConquestCount();
+  const season = useConquestSeason();
+  // « Saison d'octobre, jusqu'au 31 octobre : 2e sur 15 conquérants. »
+  const seasonLine = season
+    ? `${seasonName(new Date(season.season_start))}, ${seasonEndLabel(new Date(season.season_end), new Date())} : ${rankLabel(season.rank, season.players)}.`
+    : null;
   if (!active) {
     return (
-      <ThemedText type="small" themeColor="textSecondary">
-        {steps === null
-          ? `Conquête : se débloque à ${formatNumber(CONQUEST_UNLOCK_STEPS)} pas dans la journée.`
-          : `Conquête : encore ${formatNumber(CONQUEST_UNLOCK_STEPS - steps)} pas pour colorer la carte à votre nom.`}
-      </ThemedText>
+      <View style={styles.conquest}>
+        <ThemedText type="small" themeColor="textSecondary">
+          {steps === null
+            ? `Conquête : se débloque à ${formatNumber(CONQUEST_UNLOCK_STEPS)} pas dans la journée.`
+            : `Conquête : encore ${formatNumber(CONQUEST_UNLOCK_STEPS - steps)} pas pour colorer la carte à votre nom.`}
+        </ThemedText>
+        {seasonLine ? (
+          <ThemedText type="small" themeColor="textSecondary">
+            {seasonLine}
+          </ThemedText>
+        ) : null}
+      </View>
     );
   }
   return (
@@ -631,6 +645,11 @@ function ConquestStatus({
           ? 'Rapprochez la carte pour voir les cases.'
           : 'Vos trajets du jour colorent les cases traversées pendant 7 jours, sauf le début et la fin.'}
       </ThemedText>
+      {seasonLine ? (
+        <ThemedText type="small" themeColor="textSecondary">
+          {`${seasonLine} Toutes les cases repartent de zéro à la fin du mois.`}
+        </ThemedText>
+      ) : null}
     </View>
   );
 }
