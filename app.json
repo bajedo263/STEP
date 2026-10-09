@@ -39,6 +39,7 @@
         }
       ],
       "expo-sqlite",
+      "expo-notifications",
       [
         "expo-sensors",
         {

@@ -17,6 +17,7 @@ import { TextField } from '@/components/ui/text-field';
 import { Avatar } from '@/components/avatar';
 import { MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useBadges } from '@/hooks/use-badges';
+import { setReminderHour, useReminderHour } from '@/hooks/use-daily-reminders';
 import { useProfile } from '@/hooks/use-profile';
 import { useStepHistory } from '@/hooks/use-step-history';
 import { useTodaySteps } from '@/hooks/use-today-steps';
@@ -188,11 +189,39 @@ export default function ProfileScreen() {
               </>
             )}
 
+            {Platform.OS !== 'web' ? <ReminderSettings /> : null}
+
             <Button variant="secondary" title="Se déconnecter" onPress={() => supabase?.auth.signOut()} />
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
     </ThemedView>
+  );
+}
+
+const REMINDER_OPTIONS = [
+  { value: 'off', label: 'Aucun' },
+  { value: '12', label: '12 h' },
+  { value: '18', label: '18 h' },
+  { value: '20', label: '20 h' },
+] as const;
+
+/** Heure du rappel du jour, ou aucun rappel. Réglage propre à ce téléphone. */
+function ReminderSettings() {
+  const hour = useReminderHour();
+  return (
+    <View style={[styles.section, { gap: Spacing.two }]}>
+      <SegmentedChoice
+        label="Rappel du jour"
+        options={[...REMINDER_OPTIONS]}
+        value={hour === null ? 'off' : (REMINDER_OPTIONS.find((o) => o.value === String(hour))?.value ?? '18')}
+        onChange={(value) => setReminderHour(value === 'off' ? null : Number(value))}
+      />
+      <ThemedText type="small" themeColor="textSecondary">
+        Un rappel par jour au plus, avec les pas qu’il vous reste et une boucle à la bonne longueur,
+        plus un rappel à 21 h si votre série est en danger. Rien quand l’objectif est atteint.
+      </ThemedText>
+    </View>
   );
 }
 

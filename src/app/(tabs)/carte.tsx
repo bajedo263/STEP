@@ -147,7 +147,10 @@ export default function MapScreen() {
   );
 
   // Depuis l'accueil, « Défendre » ouvre la carte avec une boucle de défense, une seule fois.
-  const { defend: defendRequest } = useLocalSearchParams<{ defend?: string }>();
+  const { defend: defendRequest, boucle: loopRequest } = useLocalSearchParams<{
+    defend?: string;
+    boucle?: string;
+  }>();
   const handledDefend = useRef<string | undefined>(undefined);
   const here = location.status === 'ready' ? location.coords : null;
   useEffect(() => {
@@ -155,6 +158,16 @@ export default function MapScreen() {
     handledDefend.current = defendRequest;
     defend(here);
   }, [defendRequest, here, alerts, defend]);
+
+  // Depuis un rappel, la carte s'ouvre avec une boucle à la longueur qu'il reste à marcher.
+  const handledLoop = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!loopRequest || !here || handledLoop.current === loopRequest) return;
+    handledLoop.current = loopRequest;
+    setMode('loop');
+    setPin(null);
+    loop.generate(here, targetM);
+  }, [loopRequest, here, loop, targetM]);
 
   // Au dézoom, les lieux voisins se regroupent en une pastille numérotée.
   const poiClusters = useMemo(() => clusterByRegion(pois, region), [pois, region]);
