@@ -87,3 +87,73 @@ export const CONQUEST_UNLOCK_STEPS = 10_000;
 export function conquestUnlocked(todaySteps: number | null | undefined): boolean {
   return (todaySteps ?? 0) >= CONQUEST_UNLOCK_STEPS;
 }
+
+/** Centre d'une case. */
+export function cellCenter(cell: Cell): LatLng {
+  const { south, west, north, east } = zoneBbox(cell, CONQUEST_ZOOM);
+  return { latitude: (south + north) / 2, longitude: (west + east) / 2 };
+}
+
+/** Distance maximale entre le départ et une case à défendre. */
+export const DEFENSE_RADIUS_M = 2_500;
+/** Points de passage d'une boucle de défense (le serveur en accepte 4). */
+export const DEFENSE_MAX_POINTS = 3;
+/** Une case est couverte par un point de passage si elle est à moins de cette distance. */
+const DEFENSE_COVER_M = 150;
+
+/**
+ * Points de passage d'une boucle qui reprend le plus de cases menacées près du départ :
+ * on choisit d'abord les endroits où elles sont les plus nombreuses, puis on les ordonne
+ * autour du départ pour que la boucle ne se croise pas.
+ */
+export function defensePoints(cells: Cell[], start: LatLng): LatLng[] {
+  let left = cells.map(cellCenter).filter((center) => distanceM(start, center) <= DEFENSE_RADIUS_M);
+  const chosen: LatLng[] = [];
+  while (left.length > 0 && chosen.length < DEFENSE_MAX_POINTS) {
+    let best = left[0];
+    let bestCover = -1;
+    for (const candidate of left) {
+      const cover = left.filter((other) => distanceM(candidate, other) <= DEFENSE_COVER_M).length;
+      // À égalité, le plus proche du départ.
+      if (
+        cover > bestCover ||
+        (cover === bestCover && distanceM(start, candidate) < distanceM(start, best))
+      ) {
+        best = candidate;
+        bestCover = cover;
+      }
+    }
+    chosen.push(best);
+    left = left.filter((other) => distanceM(best, other) > DEFENSE_COVER_M);
+  }
+  const bearing = (point: LatLng) =>
+    Math.atan2(
+      (point.longitude - start.longitude) * Math.cos((start.latitude * Math.PI) / 180),
+      point.latitude - start.latitude
+    );
+  return chosen.sort((a, b) => bearing(a) - bearing(b));
+}
+
+const cases = (count: number) => `${count} case${count > 1 ? 's' : ''}`;
+
+/** « 3 cases reprises par d'autres marcheurs, 1 case bientôt libérée ». */
+export function territoryAlertLabel({
+  lost,
+  expiring,
+}: {
+  lost: Cell[];
+  expiring: Cell[];
+}): string {
+  const parts = [];
+  if (lost.length > 0) {
+    parts.push(
+      `${cases(lost.length)} ${lost.length > 1 ? 'reprises' : 'reprise'} par d’autres marcheurs`
+    );
+  }
+  if (expiring.length > 0) {
+    parts.push(
+      `${cases(expiring.length)} à vous ${expiring.length > 1 ? 'libérées' : 'libérée'} d’ici 2 jours`
+    );
+  }
+  return parts.length > 0 ? `${parts.join(', ')}.` : 'Votre territoire est en sécurité.';
+}

@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -32,7 +32,12 @@ import {
   Radius,
   Spacing,
 } from '@/constants/theme';
-import { useConquestCells, useMyConquestCount } from '@/hooks/use-conquest';
+import {
+  useConquestCells,
+  useMyConquestCount,
+  useTerritoryAlerts,
+  type TerritoryAlerts,
+} from '@/hooks/use-conquest';
 import { useCurrentLocation } from '@/hooks/use-current-location';
 import { useDestinationRoute, usePlaceSearch, type Place } from '@/hooks/use-destination';
 import { useLoopRoute } from '@/hooks/use-loop-route';
@@ -47,6 +52,9 @@ import {
   cellPolygon,
   cellRangeOf,
   conquestUnlocked,
+  defensePoints,
+  territoryAlertLabel,
+  type Cell,
 } from '@/lib/conquest';
 import { dailyProgress, formatDistance } from '@/lib/daily-progress';
 import {
@@ -112,6 +120,38 @@ export default function MapScreen() {
   const pois = useRoutePois(route?.coordinates ?? null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = pois.find((poi) => poi.id === selectedId) ?? null;
+  const alerts = useTerritoryAlerts();
+  const [defenseNote, setDefenseNote] = useState<string | null>(null);
+  const alertCells = useMemo(
+    () => visibleAlerts(alerts, region ? cellRangeOf(region) : null),
+    [alerts, region]
+  );
+
+  // Boucle qui passe par les cases menacées les plus proches.
+  const defend = useCallback(
+    (from: LatLng) => {
+      const points = alerts ? defensePoints([...alerts.lost, ...alerts.expiring], from) : [];
+      setMode('loop');
+      setPin(null);
+      if (points.length === 0) {
+        setDefenseNote('Aucune case à défendre à moins de 2,5 km d’ici.');
+        return;
+      }
+      setDefenseNote(null);
+      loop.generateThrough(from, points);
+    },
+    [alerts, loop]
+  );
+
+  // Depuis l'accueil, « Défendre » ouvre la carte avec une boucle de défense, une seule fois.
+  const { defend: defendRequest } = useLocalSearchParams<{ defend?: string }>();
+  const handledDefend = useRef<string | undefined>(undefined);
+  const here = location.status === 'ready' ? location.coords : null;
+  useEffect(() => {
+    if (!defendRequest || !here || !alerts || handledDefend.current === defendRequest) return;
+    handledDefend.current = defendRequest;
+    defend(here);
+  }, [defendRequest, here, alerts, defend]);
 
   // Recadre la carte sur le tracé affiché.
   useEffect(() => {
@@ -176,6 +216,16 @@ export default function MapScreen() {
               />
             ))
           : null}
+        {alertCells.map(({ cell, lost }) => (
+          <Polygon
+            key={`alerte-${cellKey(cell)}`}
+            coordinates={cellPolygon(cell)}
+            fillColor={`${lost ? ConquestOtherColor : ConquestMineColor}22`}
+            strokeColor={lost ? ConquestOtherColor : ConquestMineColor}
+            strokeWidth={2}
+            lineDashPattern={lost ? undefined : [4, 4]}
+          />
+        ))}
         {route ? (
           <RouteLine coordinates={route.coordinates} />
         ) : null}
@@ -258,6 +308,15 @@ export default function MapScreen() {
                     steps={today.status === 'ready' ? today.steps : null}
                     zoomedOut={region !== null && cellRangeOf(region) === null}
                   />
+                  {alerts && alerts.lost.length + alerts.expiring.length > 0 ? (
+                    <TerritoryAlert
+                      alerts={alerts}
+                      active={conquestActive}
+                      note={defenseNote}
+                      loading={loop.status === 'loading'}
+                      onDefend={() => defend(start)}
+                    />
+                  ) : null}
 
                   {mode === 'loop' ? (
                     route ? (
@@ -268,7 +327,10 @@ export default function MapScreen() {
                         <Button
                           title="Autre boucle"
                           variant="secondary"
-                          onPress={() => loop.generate(start, targetM)}
+                          onPress={() => {
+                            setDefenseNote(null);
+                            loop.generate(start, targetM);
+                          }}
                         />
                       </>
                     ) : (
@@ -460,6 +522,53 @@ function useCollapsiblePanel() {
     expand: () => change(false),
     toggle: () => change(!collapsed),
   };
+}
+
+/** Cases menacées dans la zone affichée (rien si la carte est trop dézoomée). */
+function visibleAlerts(
+  alerts: TerritoryAlerts | null,
+  range: ReturnType<typeof cellRangeOf>
+): { cell: Cell; lost: boolean }[] {
+  if (!alerts || !range) return [];
+  const inside = (cell: Cell) =>
+    cell.x >= range.minX && cell.x <= range.maxX && cell.y >= range.minY && cell.y <= range.maxY;
+  return [
+    ...alerts.lost.filter(inside).map((cell) => ({ cell, lost: true })),
+    ...alerts.expiring.filter(inside).map((cell) => ({ cell, lost: false })),
+  ];
+}
+
+/** Cases reprises ou bientôt libérées, et le bouton qui trace une boucle pour les défendre. */
+function TerritoryAlert({
+  alerts,
+  active,
+  note,
+  loading,
+  onDefend,
+}: {
+  alerts: TerritoryAlerts;
+  active: boolean;
+  note: string | null;
+  loading: boolean;
+  onDefend: () => void;
+}) {
+  return (
+    <View style={styles.conquest}>
+      <ThemedText type="small">{territoryAlertLabel(alerts)}</ThemedText>
+      <ThemedText type="small" themeColor="textSecondary">
+        {active
+          ? 'Contour plein : reprises par d’autres. Pointillés : à vous, bientôt libérées.'
+          : `La boucle les reprendra si vous avez fait ${formatNumber(CONQUEST_UNLOCK_STEPS)} pas à l’arrivée.`}
+      </ThemedText>
+      {note ? <ErrorText message={note} /> : null}
+      <Button
+        title="Défendre mon territoire"
+        variant="secondary"
+        loading={loading}
+        onPress={onDefend}
+      />
+    </View>
+  );
 }
 
 /** Conquête : active à 10 000 pas, sinon ce qu'il reste à faire pour la débloquer. */
