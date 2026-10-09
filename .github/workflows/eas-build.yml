@@ -1,0 +1,41 @@
+name: Build bêta
+
+# Lancé à la main depuis l'onglet Actions : construit l'app installable (iPhone ou Android)
+# sur les serveurs EAS. Pour iPhone, « envoyer » la transmet ensuite à TestFlight.
+# Prérequis iPhone : certificats Apple créés une première fois avec `eas build -p ios`.
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Plateforme
+        type: choice
+        options: [ios, android]
+        default: ios
+      submit:
+        description: Envoyer sur TestFlight après le build (iPhone)
+        type: boolean
+        default: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - run: npm ci
+      - name: Build
+        run: |
+          if [ "${{ inputs.platform }}" = "ios" ]; then
+            eas build --platform ios --profile production --non-interactive --no-wait \
+              ${{ inputs.submit && '--auto-submit' || '' }}
+          else
+            # APK à installer directement, sans Play Store.
+            eas build --platform android --profile preview --non-interactive --no-wait
+          fi
