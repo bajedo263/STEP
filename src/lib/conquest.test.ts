@@ -4,6 +4,7 @@ import { test } from 'node:test';
 
 import {
   capturedCells,
+  conquestUnlocked,
   cellOf,
   cellPolygon,
   cellRangeOf,
@@ -49,4 +50,10 @@ test('capturedCells ignore aussi la fin et les trajets trop courts', () => {
   assert.ok(cells.length >= 5 && cells.length <= 8, String(cells.length));
   assert.ok(!cells.some((c) => c.x === cellOf(east(600)).x));
   assert.deepEqual(capturedCells([start, east(350)]), []);
+});
+
+test('conquestUnlocked à partir de 10 000 pas', () => {
+  assert.equal(conquestUnlocked(null), false);
+  assert.equal(conquestUnlocked(9999), false);
+  assert.equal(conquestUnlocked(10000), true);
 });

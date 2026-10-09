@@ -79,3 +79,10 @@ export function capturedCells(points: LatLng[]): Cell[] {
   for (let i = 1; i < points.length; i++) total += distanceM(points[i - 1], points[i]);
   return total < CONQUEST_MIN_WALK_M ? [] : cellsAlongTrack(points, CONQUEST_SKIP_M, CONQUEST_SKIP_M);
 }
+
+/** Pas du jour à partir desquels la Conquête s'active : les trajets colorent alors la carte. */
+export const CONQUEST_UNLOCK_STEPS = 10_000;
+
+export function conquestUnlocked(todaySteps: number | null | undefined): boolean {
+  return (todaySteps ?? 0) >= CONQUEST_UNLOCK_STEPS;
+}

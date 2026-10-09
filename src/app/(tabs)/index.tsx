@@ -11,6 +11,7 @@ import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useProfile } from '@/hooks/use-profile';
 import { useSyncDailySteps } from '@/hooks/use-sync-daily-steps';
 import { useTodaySteps } from '@/hooks/use-today-steps';
+import { CONQUEST_UNLOCK_STEPS, conquestUnlocked } from '@/lib/conquest';
 import { dailyProgress, formatDistance } from '@/lib/daily-progress';
 
 const formatNumber = (value: number) => Math.round(value).toLocaleString('fr-FR');
@@ -58,9 +59,11 @@ export default function HomeScreen() {
               </ProgressRing>
 
               <ThemedText style={styles.centered}>
-                {progress.goalReached
-                  ? 'Objectif atteint, bravo ! Passez en mode Conquête pour colorer la carte.'
-                  : `Encore ${formatNumber(progress.remainingSteps)} pas, soit environ ${formatDistance(progress.remainingDistanceM)}.`}
+                {conquestUnlocked(progress.steps)
+                  ? 'Conquête active, bravo ! Vos trajets du jour colorent la carte à votre nom.'
+                  : progress.goalReached
+                    ? `Objectif atteint, bravo ! La Conquête s’active à ${formatNumber(CONQUEST_UNLOCK_STEPS)} pas.`
+                    : `Encore ${formatNumber(progress.remainingSteps)} pas, soit environ ${formatDistance(progress.remainingDistanceM)}.`}
               </ThemedText>
 
               <View style={styles.stats}>

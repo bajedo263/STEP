@@ -39,4 +39,6 @@ test('walkRow', () => {
   assert.equal(row.mode, 'loop');
   assert.equal(row.started_at, '2026-10-08T10:00:00.000Z');
   assert.equal(row.distance_m, 1500);
+  assert.equal(row.conquers, false);
+  assert.equal(walkRow('u1', summarizeWalk({ ...base, pedometerSteps: null }), true).conquers, true);
 });

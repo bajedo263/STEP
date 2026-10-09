@@ -47,8 +47,11 @@ export function summarizeWalk(input: {
   };
 }
 
-/** Ligne à insérer dans la table `walks`. */
-export function walkRow(userId: string, summary: WalkSummary) {
+/**
+ * Ligne à insérer dans la table `walks`. `conquers` : la Conquête était active (10 000 pas
+ * atteints), le trajet colore donc les cases traversées.
+ */
+export function walkRow(userId: string, summary: WalkSummary, conquers = false) {
   return {
     user_id: userId,
     mode: summary.mode,
@@ -58,5 +61,6 @@ export function walkRow(userId: string, summary: WalkSummary) {
     steps: summary.steps,
     distance_m: summary.distanceM,
     calories_kcal: summary.calories,
+    conquers,
   };
 }
