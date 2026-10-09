@@ -8,27 +8,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: fix/lieux-wikipedia
+          ref: feat/anecdote-lieu
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Lieux Wikipédia sur un quartier réel
+      - name: Anecdotes réelles
         run: |
           cat > /tmp/try.mts <<'TS'
-          import { parseWikipediaPois, wikipediaBboxParams, zoneBbox, zoneOf, zonesAround, zoneKey } from '/home/runner/work/STEP/STEP/supabase/functions/_shared/pois.ts';
-          const center = { latitude: 48.8495, longitude: 2.3005 }; // départ de la boucle (15e)
-          let total = 0;
-          for (const zone of zonesAround(center)) {
-            const t = Date.now();
-            const r = await fetch('https://fr.wikipedia.org/w/api.php?' + new URLSearchParams(wikipediaBboxParams(zoneBbox(zone))), { headers: { 'User-Agent': 'STEP/1.0 (https://github.com/bajedo263/step)' } });
-            const json = await r.json();
-            const raw = json.query?.pages?.length ?? 0;
-            const pois = parseWikipediaPois(json).filter((p) => zoneKey(zoneOf(p.coords)) === zoneKey(zone));
-            total += pois.length;
-            console.log(zoneKey(zone), r.status, Date.now() - t, 'ms', raw, 'articles ->', pois.length, 'lieux', json.continue ? 'CONTINUE' : '');
-            for (const p of pois.slice(0, 6)) console.log('   ', p.kind, p.score, '|', p.title, '|', p.description);
+          import { shortStory } from '/home/runner/work/STEP/STEP/src/lib/poi-story.ts';
+          for (const t of ['Musée_Rodin', 'Rafle_du_Vélodrome_d\'Hiver', 'Mur_pour_la_Paix', 'Synagogue_Chasseloup-Laubat', 'Hôtel_de_Montesquiou', 'Square_Necker', 'Kinopanorama', 'Champ-de-Mars']) {
+            const r = await fetch('https://fr.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(t), { headers: { 'Api-User-Agent': 'STEP/1.0 (https://github.com/bajedo263/step)' } });
+            const j = await r.json();
+            console.log('##', t, r.status, (j.extract ?? '').length, 'car.');
+            console.log(shortStory(j.extract));
           }
-          console.log('total', total);
           TS
           node --experimental-strip-types /tmp/try.mts
-# relance 1791532170
