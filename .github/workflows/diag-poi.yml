@@ -5,62 +5,27 @@ on:
 jobs:
   diag:
     runs-on: ubuntu-latest
-    services:
-      db:
-        image: postgis/postgis:16-3.4
-        env:
-          POSTGRES_PASSWORD: postgres
-        ports: ['5432:5432']
-        options: --health-cmd pg_isready --health-interval 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: feat/conquete
-      - name: Migrations sur une base PostGIS locale (bouchons Supabase)
+          ref: main
+      - name: Fonction loop-route et OpenRouteService
         env:
-          PGPASSWORD: postgres
+          ORS_API_KEY: ${{ secrets.ORS_API_KEY }}
         run: |
-          P="psql -h localhost -U postgres -v ON_ERROR_STOP=1 -q"
-          $P <<'SQL'
-          drop extension if exists postgis_tiger_geocoder cascade;
-          drop extension if exists postgis_topology cascade;
-          drop extension if exists postgis cascade;
-          create schema extensions;
-          create schema auth;
-          create role authenticated; create role anon;
-          create table auth.users (id uuid primary key);
-          create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('test.uid', true), '')::uuid $$;
-          grant usage on schema auth, public, extensions to authenticated;
-          grant execute on function auth.uid() to authenticated;
-          SQL
-          for f in supabase/migrations/*.sql; do echo "== $f"; $P -f "$f"; done
-          echo "=== RÉSULTATS"
-          $P <<'SQL'
-          grant select, insert on all tables in schema public to authenticated;
-          insert into auth.users values ('11111111-1111-1111-1111-111111111111'), ('22222222-2222-2222-2222-222222222222');
-          -- Trajet de 1 km vers l'est (Paris 15e), puis un second marcheur qui recoupe la fin.
-          insert into public.walks (user_id, mode, path, started_at)
-          values ('11111111-1111-1111-1111-111111111111', 'free',
-            'SRID=4326;LINESTRING(2.3005 48.8495, 2.3141 48.8495)', now());
-          select count(*) as cases_marcheur_1 from public.conquest_cells;
-          insert into public.walks (user_id, mode, path, started_at)
-          values ('22222222-2222-2222-2222-222222222222', 'free',
-            'SRID=4326;LINESTRING(2.3100 48.8480, 2.3100 48.8530)', now());
-          select owner_id, count(*) from public.conquest_cells group by 1;
-          -- Trajet trop court : aucune case, mais le trajet est bien enregistré.
-          insert into public.walks (user_id, mode, path, started_at)
-          values ('22222222-2222-2222-2222-222222222222', 'free', 'SRID=4326;LINESTRING(2.35 48.85, 2.351 48.85)', now());
-          select count(*) as trajets from public.walks;
-          set role authenticated;
-          select set_config('test.uid', '11111111-1111-1111-1111-111111111111', false);
-          select public.my_conquest_count() as mes_cases;
-          select mine, count(*) from public.conquest_cells_in_box(265000, 180000, 265400, 180400) group by 1;
-          select count(*) as lignes_visibles_directement from public.conquest_cells;
-          select public.conquest_cell_x(2.3005) as x, public.conquest_cell_y(48.8495) as y;
-          reset role;
-          update public.conquest_cells set captured_at = now() - interval '8 days'
-            where owner_id = '11111111-1111-1111-1111-111111111111';
-          set role authenticated;
-          select public.my_conquest_count() as mes_cases_apres_8_jours;
-          SQL
-          node -e "const lat=48.8495,lon=2.3005,n=2**19,r=lat*Math.PI/180;console.log('JS', Math.floor((lon+180)/360*n), Math.floor((1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*n))"
+          set -a; . ./.env; set +a
+          F=https://nkrkxmieqdkugtpsoufc.supabase.co/functions/v1
+          for fn in loop-route destination pois; do
+            curl -sS -m 60 -w " -> $fn %{http_code} %{time_total}s\n" -X POST "$F/$fn" -H "apikey: $EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY" -H "Content-Type: application/json" -d '{}'
+          done
+          echo "--- ORS round_trip"
+          curl -sS -m 60 -o /tmp/r.json -w "%{http_code} %{time_total}s\n" -X POST https://api.openrouteservice.org/v2/directions/foot-walking/geojson \
+            -H "Authorization: $ORS_API_KEY" -H "Content-Type: application/json" \
+            -d '{"coordinates":[[2.2985,48.8490]],"options":{"round_trip":{"length":6000,"points":3,"seed":42}}}'
+          head -c 300 /tmp/r.json; echo
+          echo "--- ORS chemin par 2 points"
+          curl -sS -m 60 -o /tmp/p.json -w "%{http_code} %{time_total}s\n" -X POST https://api.openrouteservice.org/v2/directions/foot-walking/geojson \
+            -H "Authorization: $ORS_API_KEY" -H "Content-Type: application/json" \
+            -d '{"coordinates":[[2.2985,48.8490],[2.3155,48.8553],[2.3100,48.8420],[2.2985,48.8490]]}'
+          head -c 300 /tmp/p.json; echo
+          curl -sS -D - -o /dev/null -X POST https://api.openrouteservice.org/v2/directions/foot-walking/geojson -H "Authorization: $ORS_API_KEY" -H "Content-Type: application/json" -d '{"coordinates":[[2.2985,48.8490],[2.30,48.85]]}' | grep -i "ratelimit\|x-ratelimit"
