@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Animated, Linking, Pressable, Share, StyleSheet, View } from 'react-native';
-import MapView, { Marker, Polygon, type LatLng } from 'react-native-maps';
+import MapView, { Marker, Polygon } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HeadingCone } from '@/components/heading-cone';
@@ -122,10 +122,9 @@ function ActiveWalk({ walk, onFinish }: { walk: Walk; onFinish: () => void }) {
   const [followHeading, setFollowHeading] = useState(true);
   // Orientation actuelle de la carte : le cône tourne de l'écart entre le téléphone et la carte.
   const [mapHeading, setMapHeading] = useState(0);
-  // Le cône et la caméra suivent le point bleu affiché par la carte, pas la trace lissée :
-  // celle-ci est filtrée et posée sur l'itinéraire, donc décalée de quelques dizaines de mètres.
-  const [userCoord, setUserCoord] = useState<LatLng | null>(null);
-  const position = userCoord ?? tracker.track.points.at(-1) ?? null;
+  // Le point bleu et le cône sont dessinés ensemble, à la position GPS brute : la trace lissée
+  // est posée sur l'itinéraire, et le point natif de la carte ne s'aligne pas avec un marqueur.
+  const position = tracker.position ?? tracker.track.points.at(-1) ?? null;
   const panel = useCollapsiblePanel();
   // Ce qu'il reste à marcher (trajet prévu) ou ce qu'on a marché (marche libre).
   const mainDistance = plannedRoute
@@ -134,10 +133,13 @@ function ActiveWalk({ walk, onFinish }: { walk: Walk; onFinish: () => void }) {
   const latitude = position?.latitude;
   const longitude = position?.longitude;
 
+  // La carte suit la position ; en suivi du cap, elle tourne aussi avec le téléphone.
   useEffect(() => {
-    if (!followHeading || latitude === undefined || longitude === undefined) return;
+    if (latitude === undefined || longitude === undefined) return;
     mapRef.current?.animateCamera(
-      { center: { latitude, longitude }, heading: heading ?? 0 },
+      followHeading
+        ? { center: { latitude, longitude }, heading: heading ?? 0 }
+        : { center: { latitude, longitude } },
       { duration: 400 }
     );
   }, [followHeading, heading, latitude, longitude]);
@@ -188,15 +190,8 @@ function ActiveWalk({ walk, onFinish }: { walk: Walk; onFinish: () => void }) {
           ref={mapRef}
           style={StyleSheet.absoluteFill}
           initialRegion={{ ...start, latitudeDelta: 0.01, longitudeDelta: 0.01 }}
-          showsUserLocation
-          followsUserLocation={!followHeading}
           showsCompass={false}
           showsPointsOfInterests={false}
-          onUserLocationChange={({ nativeEvent: { coordinate } }) => {
-            if (coordinate) {
-              setUserCoord({ latitude: coordinate.latitude, longitude: coordinate.longitude });
-            }
-          }}
           // Déplacer la carte à la main suspend le suivi du cap.
           onPanDrag={() => setFollowHeading(false)}
           onRegionChangeComplete={() => {
@@ -233,11 +228,18 @@ function ActiveWalk({ walk, onFinish }: { walk: Walk; onFinish: () => void }) {
               strokeWidth={0}
             />
           ))}
-          {position && heading !== null ? (
-            // Le cône est dessiné centré sur la position et tourné dans la vue elle-même :
-            // la rotation des marqueurs n'est pas prise en charge partout (Apple Plans).
+          {position ? (
+            // Point bleu et cône dans le même marqueur : ils ne peuvent plus se décaler.
+            // Le cône est tourné dans la vue elle-même : Apple Plans ignore la rotation des marqueurs.
             <Marker coordinate={position} anchor={{ x: 0.5, y: 0.5 }} zIndex={10}>
-              <HeadingCone color={theme.tint} rotation={heading - shownMapHeading} />
+              <View style={styles.userMarker} pointerEvents="none">
+                {heading !== null ? (
+                  <View style={styles.userCone}>
+                    <HeadingCone color={theme.tint} rotation={heading - shownMapHeading} />
+                  </View>
+                ) : null}
+                <View style={styles.userDot} />
+              </View>
             </Marker>
           ) : null}
           {tracker.track.points.length > 1 ? (
@@ -299,7 +301,7 @@ function ActiveWalk({ walk, onFinish }: { walk: Walk; onFinish: () => void }) {
               accessibilityLabel={panel.collapsed ? 'Déplier le panneau' : 'Replier le panneau'}
               hitSlop={Spacing.three}
               onPress={panel.toggle}
-              style={styles.grabberArea}>
+              style={panel.collapsed ? styles.grabberAreaCollapsed : styles.grabberArea}>
               <View style={[styles.grabber, { backgroundColor: theme.backgroundSelected }]} />
             </Pressable>
             {panel.collapsed ? (
@@ -307,10 +309,10 @@ function ActiveWalk({ walk, onFinish }: { walk: Walk; onFinish: () => void }) {
                 accessibilityRole="button"
                 onPress={panel.expand}
                 style={styles.collapsedRow}>
-                <ThemedText type="smallBold">
+                <ThemedText type="smallBold" numberOfLines={1} style={styles.flex}>
                   {`${mainDistance} ${plannedRoute ? 'restants' : 'parcourus'}`}
                 </ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
                   {`${formatElapsed(elapsed)} · ${formatNumber(estimatedSteps)} pas`}
                 </ThemedText>
               </Pressable>
@@ -563,9 +565,42 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: MaxContentWidth,
   },
+  // Replié : pas de marges négatives autour de la poignée, qui rognaient la ligne de texte.
   cardCollapsed: {
     gap: Spacing.two,
-    paddingVertical: Spacing.three,
+    paddingTop: Spacing.two,
+    paddingBottom: Spacing.three,
+  },
+  grabberAreaCollapsed: {
+    alignSelf: 'center',
+    paddingVertical: Spacing.one,
+  },
+  flex: {
+    flex: 1,
+  },
+  userMarker: {
+    width: 120,
+    height: 120,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  userCone: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+  },
+  userDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+    backgroundColor: '#0A84FF',
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 3,
   },
   grabberArea: {
     alignSelf: 'center',
