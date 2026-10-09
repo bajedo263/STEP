@@ -1,6 +1,6 @@
 import { useKeepAwake } from 'expo-keep-awake';
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, BackHandler, Linking, Pressable, StyleSheet, View } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,11 +12,12 @@ import { MaxContentWidth, PoiColor, Spacing, VisitedPoiColor } from '@/constants
 import { usePlannedWalk } from '@/hooks/use-planned-walk';
 import { usePoiDiscovery } from '@/hooks/use-poi-discovery';
 import { useProfile } from '@/hooks/use-profile';
+import { useRoutePois } from '@/hooks/use-route-pois';
 import { useTheme } from '@/hooks/use-theme';
 import { useElapsedSeconds, useWalkTracker } from '@/hooks/use-walk-tracker';
 import { formatDistance } from '@/lib/daily-progress';
 import { formatDuration } from '@/lib/loop';
-import { POI_KIND_LABELS, type RoutePoi } from '@/lib/pois';
+import { mergePois, POI_KIND_LABELS, type RoutePoi } from '@/lib/pois';
 import { strideLengthMeters } from '@/lib/steps';
 import { supabase } from '@/lib/supabase';
 import { formatElapsed } from '@/lib/track';
@@ -36,10 +37,13 @@ export default function WalkScreen() {
   const profile = useProfile();
   const planned = usePlannedWalk();
   const tracker = useWalkTracker();
-  const discovery = usePoiDiscovery(
-    planned.mode === 'free' ? NO_POIS : planned.pois,
-    summary ? null : tracker.track.points.at(-1)
+  // Si l'on est parti avant que les lieux du trajet soient arrivés sur la carte, on les charge ici.
+  const routePois = useRoutePois(planned.mode === 'free' ? null : planned.route.coordinates);
+  const plannedPois = useMemo(
+    () => (planned.mode === 'free' ? NO_POIS : mergePois(routePois, planned.pois)),
+    [planned, routePois]
   );
+  const discovery = usePoiDiscovery(plannedPois, summary ? null : tracker.track.points.at(-1));
 
   const strideM = strideLengthMeters(profile?.height_cm ?? 170, profile?.sex ?? 'unspecified');
 
@@ -88,6 +92,7 @@ export default function WalkScreen() {
     <ActiveWalk
       tracker={tracker}
       planned={planned}
+      plannedPois={plannedPois}
       discovery={discovery}
       estimatedSteps={tracker.steps ?? tracker.track.distanceM / strideM}
       onFinish={() =>
@@ -103,12 +108,14 @@ export default function WalkScreen() {
 function ActiveWalk({
   tracker,
   planned,
+  plannedPois: pois,
   discovery,
   estimatedSteps,
   onFinish,
 }: {
   tracker: ReturnType<typeof useWalkTracker>;
   planned: ReturnType<typeof usePlannedWalk>;
+  plannedPois: RoutePoi[];
   discovery: ReturnType<typeof usePoiDiscovery>;
   estimatedSteps: number;
   onFinish: () => void;
@@ -117,7 +124,6 @@ function ActiveWalk({
   const theme = useTheme();
   const elapsed = useElapsedSeconds(tracker.startedAt, true);
   const plannedRoute = planned.mode === 'free' ? null : planned.route;
-  const pois = planned.mode === 'free' ? NO_POIS : planned.pois;
   // Lieux du trajet prévu, plus ceux découverts en chemin hors du trajet.
   const shown = [...pois, ...discovery.discovered.filter((d) => !pois.some((p) => p.id === d.id))];
   const start = plannedRoute ? plannedRoute.coordinates[0] : tracker.track.points[0];

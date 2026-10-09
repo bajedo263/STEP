@@ -1,28 +1,27 @@
 // Points d'intérêt le long d'un tracé (boucle, itinéraire) ou autour d'une position (marche),
-// issus d'OpenStreetMap. Chaque quartier est chargé une seule fois puis gardé en base, avec
+// issus des articles Wikipédia géolocalisés. Chaque quartier est chargé une seule fois puis gardé en base, avec
 // son nombre de lieux : c'est ce total qui sert aux statistiques « vus sur le total ».
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 
 import { parsePoint } from '../_shared/destination.ts';
 import type { LatLng } from '../_shared/loop.ts';
-import { fetchOverpassPois, fetchOverpassPoisOrNull } from '../_shared/overpass.ts';
 import {
-  overpassQueryBbox,
   poisAlongPath,
+  wikipediaBboxParams,
   zoneBbox,
   zoneKey,
   zoneOf,
   zonesAlongPath,
   zonesAround,
-  zonesBbox,
   type Poi,
   type PoiKind,
   type Zone,
 } from '../_shared/pois.ts';
+import { fetchWikipediaPoisOrNull } from '../_shared/wikipedia.ts';
 
 const MAX_PATH_POINTS = 5_000;
-/** Quartiers chargés par requête Overpass : au-delà, la requête devient trop lourde. */
-const ZONES_PER_QUERY = 6;
+/** Quartiers chargés en même temps auprès de Wikipédia. */
+const PARALLEL_ZONES = 6;
 const MAX_ZONES = 60;
 
 type StoredPoi = Poi & { dbId: number | null; visited: boolean };
@@ -59,52 +58,53 @@ function polygonWkt(zone: Zone): string {
   return `SRID=4326;POLYGON((${west} ${south},${east} ${south},${east} ${north},${west} ${north},${west} ${south}))`;
 }
 
-/** Charge depuis OpenStreetMap les quartiers pas encore en base. */
+/** Lieux d'un quartier, gardés seulement s'ils sont bien dedans ; null si Wikipédia n'a pas répondu. */
+async function fetchZone(zone: Zone): Promise<Poi[] | null> {
+  const found = await fetchWikipediaPoisOrNull(wikipediaBboxParams(zoneBbox(zone)));
+  return found && found.filter((poi) => zoneKey(zoneOf(poi.coords)) === zoneKey(zone));
+}
+
+/** Charge depuis Wikipédia les quartiers pas encore en base. */
 async function ensureZones(admin: SupabaseClient, zones: Zone[]): Promise<void> {
   const { data: known, error } = await admin.from('poi_zones').select('x, y').or(zonesFilter(zones));
   if (error) throw error;
   const knownKeys = new Set((known ?? []).map(zoneKey));
   const missing = zones.filter((zone) => !knownKeys.has(zoneKey(zone)));
 
-  for (let i = 0; i < missing.length; i += ZONES_PER_QUERY) {
-    const chunk = missing.slice(i, i + ZONES_PER_QUERY);
-    const found = await fetchOverpassPoisOrNull(overpassQueryBbox(zonesBbox(chunk)), 20_000);
-    // Aucun serveur n'a répondu : on réessaiera la prochaine fois plutôt que d'enregistrer un quartier vide.
-    if (!found) continue;
-
-    const chunkKeys = new Set(chunk.map(zoneKey));
-    const counts = new Map<string, number>();
-    const rows = found.flatMap((poi) => {
-      const zone = zoneOf(poi.coords);
-      const key = zoneKey(zone);
-      if (!chunkKeys.has(key)) return [];
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-      return [
-        {
-          osm_id: poi.id,
-          name: poi.title,
-          category: poi.kind,
-          description: poi.description,
-          wikipedia_url: poi.wikipediaUrl,
-          score: poi.score,
-          latitude: poi.coords.latitude,
-          longitude: poi.coords.longitude,
-          zone_x: zone.x,
-          zone_y: zone.y,
-          location: `SRID=4326;POINT(${poi.coords.longitude} ${poi.coords.latitude})`,
-        },
-      ];
+  for (let i = 0; i < missing.length; i += PARALLEL_ZONES) {
+    const chunk = missing.slice(i, i + PARALLEL_ZONES);
+    const results = await Promise.all(chunk.map(fetchZone));
+    // Un quartier sans réponse sera réessayé la prochaine fois plutôt qu'enregistré vide.
+    const loaded = chunk.flatMap((zone, index) => {
+      const pois = results[index];
+      return pois ? [{ zone, pois }] : [];
     });
+    if (loaded.length === 0) continue;
 
+    const rows = loaded.flatMap(({ zone, pois }) =>
+      pois.map((poi) => ({
+        osm_id: poi.id,
+        name: poi.title,
+        category: poi.kind,
+        description: poi.description,
+        wikipedia_url: poi.wikipediaUrl,
+        score: poi.score,
+        latitude: poi.coords.latitude,
+        longitude: poi.coords.longitude,
+        zone_x: zone.x,
+        zone_y: zone.y,
+        location: `SRID=4326;POINT(${poi.coords.longitude} ${poi.coords.latitude})`,
+      }))
+    );
     if (rows.length > 0) {
       const { error: poisError } = await admin.from('pois').upsert(rows, { onConflict: 'osm_id' });
       if (poisError) throw poisError;
     }
     const { error: zonesError } = await admin.from('poi_zones').upsert(
-      chunk.map((zone) => ({
+      loaded.map(({ zone, pois }) => ({
         x: zone.x,
         y: zone.y,
-        poi_count: counts.get(zoneKey(zone)) ?? 0,
+        poi_count: pois.length,
         bbox: polygonWkt(zone),
       })),
       { onConflict: 'x,y' }
@@ -176,9 +176,9 @@ Deno.serve(async (req) => {
     await ensureZones(admin, zones);
     return json({ pois: pick(await storedPois(admin, zones, userId)) });
   } catch (error) {
-    // Base pas encore à jour (migration non appliquée) ou indisponible : lieux en direct, sans visites.
+    // Base indisponible : lieux en direct, sans visites.
     console.error('Cache des points d’intérêt', error);
-    const live = await fetchOverpassPois(overpassQueryBbox(zonesBbox(zones)));
+    const live = (await Promise.all(zones.map(fetchZone))).flatMap((pois) => pois ?? []);
     return json({ pois: pick(live.map((poi) => ({ ...poi, dbId: null, visited: false }))) });
   }
 });

@@ -1,4 +1,4 @@
-// Points d'intérêt issus d'OpenStreetMap (via l'API Overpass), partagés entre les fonctions
+// Points d'intérêt issus des articles Wikipédia géolocalisés, partagés entre les fonctions
 // Edge (Deno) et les tests (Node). Aucun import extérieur.
 import type { LatLng } from './loop.ts';
 
@@ -14,14 +14,14 @@ export type PoiKind =
   | 'attraction';
 
 export type Poi = {
-  /** Identifiant OSM, ex. « node/123 ». */
+  /** Identifiant de la page Wikipédia, ex. « wiki/123 ». */
   id: string;
   kind: PoiKind;
   title: string;
-  /** Texte affiché sous le titre : inscription de la plaque, description… */
+  /** Texte affiché sous le titre : courte description de l'article. */
   description: string | null;
   coords: LatLng;
-  /** Lien Wikipédia en français quand OSM en donne un. */
+  /** Lien vers l'article Wikipédia en français. */
   wikipediaUrl: string | null;
   /** Plus c'est haut, plus le lieu vaut le détour. */
   score: number;
@@ -39,17 +39,14 @@ export const POI_KIND_LABELS: Record<PoiKind, string> = {
   attraction: 'À voir',
 };
 
-/** Distance maximale au tracé : le lieu doit être visible depuis le chemin. */
-export const ROUTE_CORRIDOR_M = 35;
+/**
+ * Distance maximale au tracé : le lieu doit être visible depuis le chemin. La position d'un
+ * article Wikipédia est souvent le centre du bâtiment, d'où un peu de marge.
+ */
+export const ROUTE_CORRIDOR_M = 50;
 export const MAX_ROUTE_POIS = 25;
 
 const EARTH_RADIUS_M = 6_371_008.8;
-const OVERPASS_SELECTORS = [
-  'nwr["historic"="memorial"]',
-  'nwr["memorial"="plaque"]',
-  'nwr["historic"]["name"]',
-  'nwr["tourism"~"^(artwork|attraction|museum|viewpoint)$"]["name"]',
-];
 
 export function distanceM(a: LatLng, b: LatLng): number {
   const cosLat = Math.cos((((a.latitude + b.latitude) / 2) * Math.PI) / 180);
@@ -59,7 +56,7 @@ export function distanceM(a: LatLng, b: LatLng): number {
 }
 
 /**
- * Allège un tracé pour la requête Overpass : un point tous les `spacingM` mètres au moins,
+ * Allège un tracé : un point tous les `spacingM` mètres au moins,
  * en gardant toujours le premier et le dernier.
  */
 export function samplePath(points: LatLng[], spacingM = 20, maxPoints = 400): LatLng[] {
@@ -76,49 +73,31 @@ export function samplePath(points: LatLng[], spacingM = 20, maxPoints = 400): La
   }
 }
 
-const coordList = (points: LatLng[]) =>
-  points.map((p) => `${p.latitude.toFixed(6)},${p.longitude.toFixed(6)}`).join(',');
-
-/** Requête Overpass des lieux remarquables à moins de `radiusM` d'un tracé ou d'un point. */
-export function overpassQuery(points: LatLng[], radiusM: number): string {
-  const around = `(around:${Math.round(radiusM)},${coordList(points)})`;
-  const selectors = OVERPASS_SELECTORS.map((selector) => `  ${selector}${around};`).join('\n');
-  return `[out:json][timeout:20];\n(\n${selectors}\n);\nout center tags 300;`;
-}
-
-/** Requête Overpass des lieux remarquables dans un cercle de `radiusM` autour de chaque point. */
-export function overpassQueryNear(points: LatLng[], radiusM: number): string {
-  const statements = points.flatMap((point) =>
-    OVERPASS_SELECTORS.map((selector) => `  ${selector}(around:${Math.round(radiusM)},${coordList([point])});`)
-  );
-  return `[out:json][timeout:20];\n(\n${statements.join('\n')}\n);\nout center tags 300;`;
-}
-
-type OverpassElement = {
-  type?: unknown;
-  id?: unknown;
-  lat?: unknown;
-  lon?: unknown;
-  center?: { lat?: unknown; lon?: unknown };
-  tags?: Record<string, unknown>;
+type WikipediaPage = {
+  pageid?: unknown;
+  title?: unknown;
+  description?: unknown;
+  fullurl?: unknown;
+  coordinates?: { lat?: unknown; lon?: unknown }[];
 };
 
 const text = (value: unknown): string | null =>
   typeof value === 'string' && value.trim() ? value.trim() : null;
 
-function kindOf(tags: Record<string, unknown>): PoiKind {
-  const historic = text(tags.historic);
-  const tourism = text(tags.tourism);
-  if (tags.memorial === 'plaque' || tags['memorial:type'] === 'plaque') return 'plaque';
-  if (historic === 'memorial') return 'memorial';
-  if (historic === 'monument') return 'monument';
-  if (historic === 'castle' || historic === 'manor' || historic === 'fort') return 'castle';
-  if (tourism === 'museum') return 'museum';
-  if (tourism === 'artwork') return 'artwork';
-  if (tourism === 'viewpoint') return 'viewpoint';
-  if (historic) return 'heritage';
-  return 'attraction';
-}
+// Articles géolocalisés qui ne sont pas des lieux à voir en passant : découpages administratifs,
+// rues (le point est au milieu de la rue), organismes logés dans un bâtiment quelconque, métro.
+const SKIPPED_DESCRIPTION =
+  /^(ancienne )?(arrondissement|région|département|commune|quartier|circonscription|canton|ville|capitale|pays|rue|avenue|boulevard|voie|impasse|passage|allée|villa|cité|quai|chemin|route|agence|autorité|institution|organisme|organisation|entreprise|société|association|parti|syndicat|fondation|ministère|commission|commissariat|établissement|administration|station)\b|station (du|de) métro/i;
+
+const KIND_RULES: [RegExp, PoiKind][] = [
+  [/musée|galerie|muséum/i, 'museum'],
+  [/mémorial|monument aux morts|plaque/i, 'memorial'],
+  [/statue|sculpture|fresque|œuvre|oeuvre/i, 'artwork'],
+  [/château|palais|hôtel particulier|manoir/i, 'castle'],
+  [/monument|tour |arc de triomphe|obélisque|colonne|fontaine/i, 'monument'],
+  [/belvédère|point de vue|panorama/i, 'viewpoint'],
+  [/église|cathédrale|basilique|chapelle|temple|synagogue|mosquée|abbaye|couvent|historique|siècle|patrimoine/i, 'heritage'],
+];
 
 const KIND_SCORES: Record<PoiKind, number> = {
   plaque: 3,
@@ -128,55 +107,75 @@ const KIND_SCORES: Record<PoiKind, number> = {
   memorial: 2,
   artwork: 2,
   viewpoint: 2,
-  heritage: 1,
+  heritage: 2,
   attraction: 1,
 };
 
-function wikipediaUrl(tags: Record<string, unknown>): string | null {
-  const value = text(tags.wikipedia);
-  const match = value?.match(/^fr:(.+)$/);
-  if (!match) return null;
-  return `https://fr.wikipedia.org/wiki/${encodeURIComponent(match[1].replace(/ /g, '_'))}`;
+function kindOf(description: string | null, title: string): PoiKind {
+  const subject = `${description ?? ''} ${title}`;
+  return KIND_RULES.find(([pattern]) => pattern.test(subject))?.[1] ?? 'attraction';
 }
 
 const truncate = (value: string, max: number) =>
   value.length <= max ? value : `${value.slice(0, max - 1).trimEnd()}…`;
 
-/** Lieux lus dans une réponse Overpass ; ceux sans nom ni inscription sont ignorés. */
-export function parseOverpassPois(json: unknown): Poi[] {
-  const elements = (json as { elements?: unknown[] } | null)?.elements;
-  if (!Array.isArray(elements)) return [];
+const capitalize = (value: string) => value.charAt(0).toLocaleUpperCase('fr-FR') + value.slice(1);
 
-  const pois = new Map<string, Poi>();
-  for (const raw of elements) {
-    const element = (raw ?? {}) as OverpassElement;
-    const tags = element.tags ?? {};
-    const latitude = element.lat ?? element.center?.lat;
-    const longitude = element.lon ?? element.center?.lon;
-    if (typeof latitude !== 'number' || typeof longitude !== 'number') continue;
-    if (typeof element.type !== 'string' || typeof element.id !== 'number') continue;
+/** Paramètres de recherche Wikipédia des articles situés dans un rectangle. */
+export function wikipediaBboxParams({ south, west, north, east }: Bbox): Record<string, string> {
+  const box = [north, west, south, east].map((value) => value.toFixed(6)).join('|');
+  return { ...WIKIPEDIA_BASE_PARAMS, ggsbbox: box };
+}
 
-    const name = text(tags['name:fr']) ?? text(tags.name);
-    const inscription = text(tags['inscription:fr']) ?? text(tags.inscription);
-    const description = inscription ?? text(tags['description:fr']) ?? text(tags.description);
-    if (!name && !inscription) continue;
+/** Paramètres de recherche Wikipédia des articles dans un cercle (rayon plafonné à 10 km). */
+export function wikipediaNearParams(point: LatLng, radiusM: number): Record<string, string> {
+  return {
+    ...WIKIPEDIA_BASE_PARAMS,
+    ggscoord: `${point.latitude.toFixed(6)}|${point.longitude.toFixed(6)}`,
+    ggsradius: String(Math.round(Math.min(10_000, Math.max(10, radiusM)))),
+  };
+}
 
-    const kind = kindOf(tags);
-    const link = wikipediaUrl(tags);
-    const id = `${element.type}/${element.id}`;
-    // Une plaque sans nom prend son inscription pour titre : pas besoin de la répéter.
-    const title = name ?? truncate(inscription!, 70);
-    pois.set(id, {
-      id,
+const WIKIPEDIA_BASE_PARAMS = {
+  action: 'query',
+  format: 'json',
+  formatversion: '2',
+  generator: 'geosearch',
+  ggslimit: '500',
+  prop: 'coordinates|description|info',
+  inprop: 'url',
+  colimit: 'max',
+};
+
+/** Lieux lus dans une réponse de l'API Wikipédia ; les articles qui ne se visitent pas sont ignorés. */
+export function parseWikipediaPois(json: unknown): Poi[] {
+  const query = (json as { query?: { pages?: unknown } } | null)?.query;
+  const pages = Array.isArray(query?.pages) ? query.pages : Object.values(query?.pages ?? {});
+
+  const pois: Poi[] = [];
+  for (const raw of pages) {
+    const page = (raw ?? {}) as WikipediaPage;
+    const coords = page.coordinates?.[0];
+    const title = text(page.title);
+    if (typeof page.pageid !== 'number' || !title) continue;
+    if (typeof coords?.lat !== 'number' || typeof coords?.lon !== 'number') continue;
+    const description = text(page.description);
+    if (description && SKIPPED_DESCRIPTION.test(description)) continue;
+    if (/^\d+(e|er) arrondissement/i.test(title)) continue;
+
+    const kind = kindOf(description, title);
+    pois.push({
+      id: `wiki/${page.pageid}`,
       kind,
-      title,
-      description: description && description !== title ? truncate(description, 280) : null,
-      coords: { latitude, longitude },
-      wikipediaUrl: link,
-      score: KIND_SCORES[kind] + (inscription ? 1 : 0) + (link || tags.wikidata ? 1 : 0),
+      // « Musée Rodin (Paris) » : la précision entre parenthèses n'apporte rien sur place.
+      title: title.replace(/\s*\([^)]*\)$/, ''),
+      description: description ? truncate(capitalize(description), 280) : null,
+      coords: { latitude: coords.lat, longitude: coords.lon },
+      wikipediaUrl: text(page.fullurl),
+      score: KIND_SCORES[kind] + (description ? 1 : 0),
     });
   }
-  return [...pois.values()];
+  return pois;
 }
 
 /** Distance d'un point au segment [a, b], en projection locale. */
@@ -289,22 +288,4 @@ export function zonesAround(point: LatLng): Zone[] {
   const zones: Zone[] = [];
   for (const dx of [-1, 0, 1]) for (const dy of [-1, 0, 1]) zones.push({ x: x + dx, y: y + dy });
   return zones;
-}
-
-/** Requête Overpass de tous les lieux remarquables d'un rectangle (pour remplir un quartier). */
-export function overpassQueryBbox({ south, west, north, east }: Bbox): string {
-  const box = `(${south.toFixed(6)},${west.toFixed(6)},${north.toFixed(6)},${east.toFixed(6)})`;
-  const selectors = OVERPASS_SELECTORS.map((selector) => `  ${selector}${box};`).join('\n');
-  return `[out:json][timeout:25];\n(\n${selectors}\n);\nout center tags 3000;`;
-}
-
-/** Rectangle englobant des quartiers. */
-export function zonesBbox(zones: Zone[]): Bbox {
-  const boxes = zones.map(zoneBbox);
-  return {
-    south: Math.min(...boxes.map((b) => b.south)),
-    west: Math.min(...boxes.map((b) => b.west)),
-    north: Math.max(...boxes.map((b) => b.north)),
-    east: Math.max(...boxes.map((b) => b.east)),
-  };
 }

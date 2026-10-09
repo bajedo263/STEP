@@ -13,7 +13,7 @@ export { POI_KIND_LABELS, type Poi };
 export type RoutePoi = Poi & { dbId: number | null; visited: boolean };
 
 /** Distance à laquelle on signale un lieu pendant la marche. */
-export const POI_NEARBY_M = 40;
+export const POI_NEARBY_M = 50;
 
 /** Lieu le plus proche de la position, s'il est à portée de vue. */
 export function nearbyPoi<T extends Poi>(pois: T[], position: LatLng | null | undefined): T | null {

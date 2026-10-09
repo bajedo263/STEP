@@ -21,8 +21,8 @@ import {
   parseOrsResponse,
   type LoopRoute,
 } from '../_shared/loop.ts';
-import { fetchOverpassPois } from '../_shared/overpass.ts';
-import { bestPoiNear, overpassQuery, type Poi } from '../_shared/pois.ts';
+import { bestPoiNear, type Poi } from '../_shared/pois.ts';
+import { fetchWikipediaPoisNear } from '../_shared/wikipedia.ts';
 
 const ORS = 'https://api.openrouteservice.org';
 const NOT_FOUND = 'Aucun itinéraire à pied trouvé vers ce lieu.';
@@ -100,8 +100,9 @@ Deno.serve(async (req) => {
   const side = seed % 2 === 0 ? 1 : -1;
   let requested = targetM / ROUTE_DETOUR_FACTOR;
   const snapRadiusM = Math.min(600, Math.max(200, requested * 0.1));
-  const candidates = await fetchOverpassPois(
-    overpassQuery([detourWaypoint(start, end, requested, side)], snapRadiusM * 1.5)
+  const candidates = await fetchWikipediaPoisNear(
+    [detourWaypoint(start, end, requested, side)],
+    snapRadiusM * 1.5
   );
 
   const routes: (LoopRoute & { via: Poi | null })[] = [];
