@@ -336,9 +336,11 @@ export default function MapScreen() {
                     ) : (
                       <>
                         <ThemedText themeColor="textSecondary">
-                          {goalReached
-                            ? `Objectif atteint ! Une boucle bonus de ${formatDistance(targetM)} ?`
-                            : `Une boucle d’environ ${formatDistance(targetM)} depuis votre position pour finir votre objectif.`}
+                          {loop.status === 'loading'
+                            ? `Calcul d’une boucle d’environ ${formatDistance(targetM)} autour de vous…`
+                            : goalReached
+                              ? `Objectif atteint ! Une boucle bonus de ${formatDistance(targetM)} ?`
+                              : `Une boucle d’environ ${formatDistance(targetM)} depuis votre position pour finir votre objectif.`}
                         </ThemedText>
                         {loop.status === 'error' ? <ErrorText message={loop.message} /> : null}
                         <Button

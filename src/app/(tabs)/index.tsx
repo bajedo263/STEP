@@ -4,14 +4,16 @@ import { ActivityIndicator, Platform, ScrollView, StyleSheet, View } from 'react
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { NextBadge } from '@/components/badges-card';
+import { Celebration } from '@/components/celebration';
 import { ProgressRing } from '@/components/progress-ring';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useBadges } from '@/hooks/use-badges';
 import { useTerritoryAlerts, type TerritoryAlerts } from '@/hooks/use-conquest';
 import { useDailyChallenge } from '@/hooks/use-daily-challenge';
+import { celebratedKey, setLocalFlag, useLocalFlag } from '@/hooks/use-local-flag';
 import { useProfile } from '@/hooks/use-profile';
 import { useStepHistory } from '@/hooks/use-step-history';
 import { useSyncDailySteps } from '@/hooks/use-sync-daily-steps';
@@ -20,8 +22,9 @@ import { useTodaySteps } from '@/hooks/use-today-steps';
 import { nextBadges } from '@/lib/badges';
 import type { Challenge } from '@/lib/challenge';
 import { CONQUEST_UNLOCK_STEPS, conquestUnlocked, territoryAlertLabel } from '@/lib/conquest';
-import { dailyProgress, formatDistance } from '@/lib/daily-progress';
+import { dailyProgress, formatDistance, localDay } from '@/lib/daily-progress';
 import { DEFAULT_DAILY_GOAL } from '@/lib/steps';
+import { useAuth } from '@/providers/auth-provider';
 import { milestoneToday, protectedStreak, type ProtectedStreak } from '@/lib/streak';
 
 const formatNumber = (value: number) => Math.round(value).toLocaleString('fr-FR');
@@ -62,6 +65,14 @@ export default function HomeScreen() {
   const badges = useBadges(steps, goal);
   const nextBadge = useMemo(() => (badges ? (nextBadges(badges)[0] ?? null) : null), [badges]);
 
+  // L'objectif atteint se fête une fois par jour, au premier passage sur l'accueil.
+  const { session } = useAuth();
+  const flagKey = session ? celebratedKey(session.user.id) : null;
+  const celebratedDay = useLocalFlag(flagKey);
+  const todayKey = localDay(new Date());
+  const celebrate = Boolean(progress?.goalReached && flagKey && celebratedDay !== todayKey);
+  const territoryAlert = territory && territory.lost.length + territory.expiring.length > 0;
+
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -76,7 +87,7 @@ export default function HomeScreen() {
 
           {progress ? (
             <>
-              <ProgressRing progress={progress.ratio}>
+              <ProgressRing progress={progress.ratio} size={220}>
                 <ThemedText type="title">{formatNumber(progress.steps)}</ThemedText>
                 <ThemedText type="small" themeColor="textSecondary">
                   sur {formatNumber(progress.goal)} pas
@@ -85,24 +96,32 @@ export default function HomeScreen() {
 
               <ThemedText style={styles.centered}>
                 {conquestUnlocked(progress.steps)
-                  ? 'Conquête active, bravo ! Vos trajets du jour colorent la carte à votre nom.'
+                  ? 'Conquête active : vos trajets du jour colorent la carte à votre nom.'
                   : progress.goalReached
-                    ? `Objectif atteint, bravo ! La Conquête s’active à ${formatNumber(CONQUEST_UNLOCK_STEPS)} pas.`
-                    : `Encore ${formatNumber(progress.remainingSteps)} pas, soit environ ${formatDistance(progress.remainingDistanceM)}.`}
+                    ? `Objectif atteint ! La Conquête s’active à ${formatNumber(CONQUEST_UNLOCK_STEPS)} pas.`
+                    : `Encore ${formatNumber(progress.remainingSteps)} pas pour l’objectif.`}
               </ThemedText>
 
-              <View style={styles.stats}>
+              {/* L'action principale reste visible sans faire défiler. */}
+              <Button
+                title={
+                  progress.goalReached
+                    ? 'Partir pour une boucle bonus'
+                    : `Partir · ${formatDistance(progress.remainingDistanceM)}`
+                }
+                onPress={() => router.navigate('/carte')}
+              />
+
+              <ThemedView type="backgroundElement" style={styles.stats}>
                 <Stat value={formatDistance(progress.distanceM)} label="parcourus" />
                 <Stat value={`${formatNumber(progress.calories)} kcal`} label="dépensées" />
                 <Stat value={`${Math.round(progress.ratio * 100)} %`} label="de l’objectif" />
-              </View>
+              </ThemedView>
 
+              {territoryAlert ? <TerritoryCard alerts={territory} /> : null}
               {streak ? <StreakBanner streak={streak} /> : null}
               {challenge ? <ChallengeCard challenge={challenge} /> : null}
               {nextBadge ? <NextBadge badge={nextBadge} /> : null}
-              {territory && territory.lost.length + territory.expiring.length > 0 ? (
-                <TerritoryCard alerts={territory} />
-              ) : null}
 
               {isPartial ? (
                 <ThemedText type="small" themeColor="textSecondary" style={styles.centered}>
@@ -112,12 +131,19 @@ export default function HomeScreen() {
               ) : null}
             </>
           ) : (
-            <StepsUnavailable status={today.status} />
+            <>
+              <StepsUnavailable status={today.status} />
+              <Button title="Partir en boucle" onPress={() => router.navigate('/carte')} />
+            </>
           )}
-
-          <Button title="Partir en boucle" onPress={() => router.navigate('/carte')} />
         </ScrollView>
       </SafeAreaView>
+      <Celebration
+        visible={celebrate}
+        title="Objectif atteint !"
+        message={`${formatNumber(progress?.goal ?? goal)} pas aujourd’hui. Votre série continue.`}
+        onClose={() => flagKey && setLocalFlag(flagKey, todayKey)}
+      />
     </ThemedView>
   );
 }
@@ -153,9 +179,6 @@ function StreakBanner({ streak }: { streak: ProtectedStreak }) {
           {`🎉 ${milestone} jours d’affilée, bravo !`}
         </ThemedText>
       ) : null}
-      <ThemedText type="small" themeColor="textSecondary">
-        Tous les 7 jours d’affilée, un gel (2 au plus) sauve automatiquement un jour raté.
-      </ThemedText>
     </ThemedView>
   );
 }
@@ -217,12 +240,12 @@ function TerritoryCard({ alerts }: { alerts: TerritoryAlerts }) {
 
 function Stat({ value, label }: { value: string; label: string }) {
   return (
-    <ThemedView type="backgroundElement" style={styles.stat}>
-      <ThemedText type="stat">{value}</ThemedText>
+    <View style={styles.stat}>
+      <ThemedText type="smallBold">{value}</ThemedText>
       <ThemedText type="small" themeColor="textSecondary">
         {label}
       </ThemedText>
-    </ThemedView>
+    </View>
   );
 }
 
@@ -255,7 +278,7 @@ const styles = StyleSheet.create({
   },
   content: {
     alignItems: 'center',
-    gap: Spacing.four,
+    gap: Spacing.three,
     padding: Spacing.four,
     paddingTop: Platform.select({ web: Spacing.six + Spacing.four, default: Spacing.four }),
     paddingBottom: BottomTabInset + Spacing.four,
@@ -265,20 +288,19 @@ const styles = StyleSheet.create({
   },
   stats: {
     flexDirection: 'row',
-    gap: Spacing.two,
     alignSelf: 'stretch',
+    paddingVertical: Spacing.two,
+    borderRadius: Radius.tile,
   },
   stat: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: Spacing.three,
-    borderRadius: Spacing.three,
   },
   card: {
     alignSelf: 'stretch',
     gap: Spacing.two,
     padding: Spacing.three,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.tile,
   },
   row: {
     flexDirection: 'row',

@@ -14,7 +14,21 @@ export type LoopState =
 /** Boucle renvoyée par le serveur, avec les lieux remarquables par lesquels elle passe. */
 export type LoopResult = LoopRoute & { via: Poi[] };
 
-const GENERIC_ERROR = 'Impossible de calculer une boucle pour le moment. Réessayez dans un instant.';
+const GENERIC_ERROR = 'Le calcul de la boucle n’a pas abouti. Réessayez.';
+
+/** Panne réseau ou serveur : vaut une seconde tentative. Une demande refusée (4xx), non. */
+function isTransient(error: unknown): boolean {
+  if (error instanceof FunctionsHttpError) return error.context.status >= 500;
+  return true;
+}
+
+/** Appelle la fonction loop-route, avec un nouvel essai automatique après une panne passagère. */
+async function invokeLoop(body: Record<string, unknown>) {
+  const first = await supabase!.functions.invoke<LoopResult>('loop-route', { body });
+  if (!first.error || !isTransient(first.error)) return first;
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+  return supabase!.functions.invoke<LoopResult>('loop-route', { body });
+}
 
 async function errorMessage(error: unknown): Promise<string> {
   if (error instanceof FunctionsHttpError) {
@@ -35,8 +49,10 @@ export function useLoopRoute() {
     }
     setState({ status: 'loading' });
 
-    const { data, error } = await supabase.functions.invoke<LoopResult>('loop-route', {
-      body: { start, distanceM, seed: Math.floor(Math.random() * 1_000_000) },
+    const { data, error } = await invokeLoop({
+      start,
+      distanceM,
+      seed: Math.floor(Math.random() * 1_000_000),
     });
     if (error || !data) {
       setState({ status: 'error', message: await errorMessage(error) });
@@ -53,10 +69,8 @@ export function useLoopRoute() {
     }
     setState({ status: 'loading' });
 
-    const { data, error } = await supabase.functions.invoke<LoopResult>('loop-route', {
-      // La distance est imposée par les points de passage ; le serveur l'exige quand même.
-      body: { start, through, distanceM: 5_000, seed: 0 },
-    });
+    // La distance est imposée par les points de passage ; le serveur l'exige quand même.
+    const { data, error } = await invokeLoop({ start, through, distanceM: 5_000, seed: 0 });
     if (error || !data) {
       setState({ status: 'error', message: await errorMessage(error) });
       return;
