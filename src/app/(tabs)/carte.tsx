@@ -123,6 +123,9 @@ export default function MapScreen() {
       (loopRoute ? (loopRoute.through ?? loopHandles(loopRoute.coordinates)) : null),
     [droppedHandles, loopRoute]
   );
+  // Le glisser natif d'un marqueur est capricieux (appui long, conflit avec l'appui long de la
+  // carte) : on peut aussi toucher une poignée, puis l'endroit où la boucle doit passer.
+  const [movingHandle, setMovingHandle] = useState<number | null>(null);
   const destinationRoute = destination.status === 'ready' ? destination.route : null;
   const route = mode === 'loop' ? loopRoute : destinationRoute;
   const [region, setRegion] = useState<Region | null>(null);
@@ -235,6 +238,14 @@ export default function MapScreen() {
   }
 
   const start = location.coords;
+  const moveHandleTo = async (index: number, point: LatLng) => {
+    setMovingHandle(null);
+    if (!handles) return;
+    const next = moveHandle(handles, index, point);
+    setDroppedHandles(next);
+    await loop.refine(start, next);
+    setDroppedHandles(null);
+  };
   const go = (walk: Parameters<typeof setPlannedWalk>[0]) => {
     setPlannedWalk(walk);
     router.push('/trajet');
@@ -269,9 +280,18 @@ export default function MapScreen() {
         showsMyLocationButton={false}
         showsPointsOfInterests={false}
         onPress={(event) => {
-          if (event.nativeEvent.action !== 'marker-press') setSelectedId(null);
+          if (event.nativeEvent.action === 'marker-press') return;
+          if (movingHandle !== null && handles && !loop.refining) {
+            void moveHandleTo(movingHandle, event.nativeEvent.coordinate);
+            return;
+          }
+          setSelectedId(null);
         }}
         onLongPress={(event) => {
+          if (movingHandle !== null && handles) {
+            if (!loop.refining) void moveHandleTo(movingHandle, event.nativeEvent.coordinate);
+            return;
+          }
           setPin(event.nativeEvent.coordinate);
           setSelectedId(null);
           panel.expand();
@@ -326,21 +346,25 @@ export default function MapScreen() {
         {mode === 'loop' && loopRoute && handles
           ? handles.map((handle, index) => (
               <Marker
-                key={`poignee-${index}-${handle.latitude}-${handle.longitude}`}
+                key={`poignee-${index}-${handle.latitude}-${handle.longitude}-${movingHandle === index}`}
                 coordinate={handle}
                 anchor={{ x: 0.5, y: 0.5 }}
                 draggable={!loop.refining}
                 tracksViewChanges={false}
-                onDragEnd={async (event) => {
-                  const next = moveHandle(handles, index, event.nativeEvent.coordinate);
-                  setDroppedHandles(next);
-                  await loop.refine(start, next);
-                  setDroppedHandles(null);
+                onPress={() => {
+                  if (!loop.refining) setMovingHandle(movingHandle === index ? null : index);
+                }}
+                onDragEnd={(event) => {
+                  void moveHandleTo(index, event.nativeEvent.coordinate);
                 }}>
                 <View
-                  style={[styles.handle, { borderColor: theme.tint }]}
+                  style={[
+                    styles.handle,
+                    { borderColor: theme.tint },
+                    movingHandle === index && [styles.handleMoving, { backgroundColor: theme.tint }],
+                  ]}
                   accessible
-                  accessibilityLabel="Point de passage, à faire glisser vers une autre rue"
+                  accessibilityLabel="Point de passage : touchez-le, puis l'endroit où la boucle doit passer"
                 />
               </Marker>
             ))
@@ -438,7 +462,9 @@ export default function MapScreen() {
                         <ThemedText type="small" themeColor="textSecondary">
                           {loop.refining
                             ? 'Recalcul de la boucle par ce point…'
-                            : 'Faites glisser les points ronds du tracé vers les rues où vous voulez passer.'}
+                            : movingHandle !== null
+                              ? 'Touchez maintenant la rue où la boucle doit passer.'
+                              : 'Touchez un point rond du tracé, puis la rue où vous voulez passer.'}
                         </ThemedText>
                         {loop.refineError ? <ErrorText message={loop.refineError} /> : null}
                         <PoiSummary pois={pois} via={loopRoute?.via ?? []} />
@@ -842,6 +868,12 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     borderWidth: 4,
     backgroundColor: '#FFFFFF',
+  },
+  handleMoving: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderColor: '#FFFFFF',
   },
   container: {
     flex: 1,
