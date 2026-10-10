@@ -1,6 +1,15 @@
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Linking, Pressable, Share, StyleSheet, View } from 'react-native';
+import {
+  Alert,
+  Animated,
+  Linking,
+  Pressable,
+  Share,
+  StyleSheet,
+  View,
+  type GestureResponderEvent,
+} from 'react-native';
 import MapView, { Marker, Polygon } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -10,7 +19,14 @@ import { PoiSheet, PoiStory } from '@/components/poi-sheet';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
-import { ConquestMineColor, MaxContentWidth, PoiColor, Radius, Spacing, VisitedPoiColor } from '@/constants/theme';
+import {
+  ConquestMineColor,
+  MaxContentWidth,
+  PoiColor,
+  Radius,
+  Spacing,
+  VisitedPoiColor,
+} from '@/constants/theme';
 import { useCollapsiblePanel } from '@/hooks/use-collapsible-panel';
 import { useTheme } from '@/hooks/use-theme';
 import { useHeading } from '@/hooks/use-heading';
@@ -105,7 +121,10 @@ function ActiveWalk({ walk, onFinish }: { walk: Walk; onFinish: () => void }) {
         plannedRoute.coordinates,
         lastPoint
       )
-    : nearestPois(discovery.all.filter((poi) => !discovery.isVisited(poi)), lastPoint);
+    : nearestPois(
+        discovery.all.filter((poi) => !discovery.isVisited(poi)),
+        lastPoint
+      );
   const shown = [
     ...next,
     ...pois.filter((poi) => discovery.isVisited(poi) && !next.some((n) => n.id === poi.id)),
@@ -119,7 +138,12 @@ function ActiveWalk({ walk, onFinish }: { walk: Walk; onFinish: () => void }) {
   const mapRef = useRef<MapView>(null);
   // Boussole : la carte pivote avec le téléphone pour montrer droit devant ce qui est en face.
   const heading = useHeading();
-  const [followHeading, setFollowHeading] = useState(true);
+  // Suivi de la carte : avec le cap, nord en haut, ou libre quand on l'a déplacée au doigt.
+  const [follow, setFollow] = useState<'heading' | 'north' | 'free'>('heading');
+  // Mode de suivi à retrouver en appuyant sur « Me recentrer ».
+  const resumeFollow = useRef<'heading' | 'north'>('heading');
+  const followHeading = follow === 'heading';
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
   // Orientation actuelle de la carte : le cône tourne de l'écart entre le téléphone et la carte.
   const [mapHeading, setMapHeading] = useState(0);
   // Le point bleu et le cône sont dessinés ensemble, à la position GPS brute : la trace lissée
@@ -134,26 +158,46 @@ function ActiveWalk({ walk, onFinish }: { walk: Walk; onFinish: () => void }) {
   const longitude = position?.longitude;
 
   // La carte suit la position ; en suivi du cap, elle tourne aussi avec le téléphone.
+  // Déplacée à la main, elle reste où on l'a mise jusqu'à « Me recentrer ».
   useEffect(() => {
-    if (latitude === undefined || longitude === undefined) return;
+    if (follow === 'free' || latitude === undefined || longitude === undefined) return;
     mapRef.current?.animateCamera(
       followHeading
         ? { center: { latitude, longitude }, heading: heading ?? 0 }
         : { center: { latitude, longitude } },
       { duration: 400 }
     );
-  }, [followHeading, heading, latitude, longitude]);
+  }, [follow, followHeading, heading, latitude, longitude]);
 
   // En suivi du cap, la carte est tournée comme le téléphone : le cône pointe vers le haut.
   const shownMapHeading = followHeading ? (heading ?? 0) : mapHeading;
 
   const toggleFollow = () => {
+    if (follow === 'free') {
+      setFollow(resumeFollow.current);
+      return;
+    }
     if (followHeading) {
       // Retour au nord en haut.
       mapRef.current?.animateCamera({ heading: 0 }, { duration: 400 });
       setMapHeading(0);
     }
-    setFollowHeading(!followHeading);
+    setFollow(followHeading ? 'north' : 'heading');
+  };
+
+  // Un glissé ou un pincement libère la carte ; un simple appui (sur un lieu) ne compte pas.
+  // Les gestes sont lus sur la vue qui entoure la carte : sur iPhone, onPanDrag ne se déclenche
+  // que si le défilement de la carte est désactivé.
+  const releaseMap = () => {
+    if (follow === 'free') return;
+    resumeFollow.current = follow;
+    setFollow('free');
+  };
+  const onMapTouchMove = (event: GestureResponderEvent) => {
+    const { touches, pageX, pageY } = event.nativeEvent;
+    const from = touchStart.current;
+    const moved = from ? Math.hypot(pageX - from.x, pageY - from.y) > 12 : false;
+    if (touches.length > 1 || moved) releaseMap();
   };
   const selected = shown.find((poi) => poi.id === selectedId) ?? null;
   // Cases prises en marchant (le départ ne compte pas, pour ne pas montrer l'adresse).
@@ -186,66 +230,75 @@ function ActiveWalk({ walk, onFinish }: { walk: Walk; onFinish: () => void }) {
   return (
     <View style={styles.container}>
       {start ? (
-        <MapView
-          ref={mapRef}
+        <View
           style={StyleSheet.absoluteFill}
-          initialRegion={{ ...start, latitudeDelta: 0.01, longitudeDelta: 0.01 }}
-          showsCompass={false}
-          showsPointsOfInterests={false}
-          // Déplacer la carte à la main suspend le suivi du cap.
-          onPanDrag={() => setFollowHeading(false)}
-          onRegionChangeComplete={() => {
-            if (followHeading) return;
-            // La carte a pu être tournée au doigt : on relit son orientation.
-            mapRef.current
-              ?.getCamera()
-              .then((camera) => setMapHeading(camera.heading ?? 0))
-              .catch(() => {});
+          onTouchStart={(event) => {
+            touchStart.current = { x: event.nativeEvent.pageX, y: event.nativeEvent.pageY };
           }}
-          onPress={(event) => {
-            if (event.nativeEvent.action !== 'marker-press') setSelectedId(null);
-          }}>
-          {plannedRoute ? <RouteLine coordinates={plannedRoute.coordinates} faded /> : null}
-          {planned.mode === 'destination' ? (
-            <Marker coordinate={planned.route.coordinates.at(-1)!} title={planned.label} pinColor={theme.tint} />
-          ) : null}
-          {shown.map((poi) => {
-            const visited = discovery.isVisited(poi);
-            return (
-              <PoiMarker
-                key={`${poi.id}-${visited}`}
-                poi={poi}
-                visited={visited}
-                onPress={() => setSelectedId(poi.id)}
+          onTouchMove={onMapTouchMove}>
+          <MapView
+            ref={mapRef}
+            style={StyleSheet.absoluteFill}
+            initialRegion={{ ...start, latitudeDelta: 0.01, longitudeDelta: 0.01 }}
+            showsCompass={false}
+            showsPointsOfInterests={false}
+            onRegionChangeComplete={() => {
+              if (followHeading) return;
+              // La carte a pu être tournée au doigt : on relit son orientation.
+              mapRef.current
+                ?.getCamera()
+                .then((camera) => setMapHeading(camera.heading ?? 0))
+                .catch(() => {});
+            }}
+            onPress={(event) => {
+              if (event.nativeEvent.action !== 'marker-press') setSelectedId(null);
+            }}>
+            {plannedRoute ? <RouteLine coordinates={plannedRoute.coordinates} faded /> : null}
+            {planned.mode === 'destination' ? (
+              <Marker
+                coordinate={planned.route.coordinates.at(-1)!}
+                title={planned.label}
+                pinColor={theme.tint}
               />
-            );
-          })}
-          {cells.map((cell) => (
-            <Polygon
-              key={cellKey(cell)}
-              coordinates={cellPolygon(cell)}
-              fillColor={`${ConquestMineColor}40`}
-              strokeWidth={0}
-            />
-          ))}
-          {position ? (
-            // Point bleu et cône dans le même marqueur : ils ne peuvent plus se décaler.
-            // Le cône est tourné dans la vue elle-même : Apple Plans ignore la rotation des marqueurs.
-            <Marker coordinate={position} anchor={{ x: 0.5, y: 0.5 }} zIndex={10}>
-              <View style={styles.userMarker} pointerEvents="none">
-                {heading !== null ? (
-                  <View style={styles.userCone}>
-                    <HeadingCone color={theme.tint} rotation={heading - shownMapHeading} />
-                  </View>
-                ) : null}
-                <View style={styles.userDot} />
-              </View>
-            </Marker>
-          ) : null}
-          {tracker.track.points.length > 1 ? (
-            <RouteLine coordinates={tracker.track.points} width={7} />
-          ) : null}
-        </MapView>
+            ) : null}
+            {shown.map((poi) => {
+              const visited = discovery.isVisited(poi);
+              return (
+                <PoiMarker
+                  key={`${poi.id}-${visited}`}
+                  poi={poi}
+                  visited={visited}
+                  onPress={() => setSelectedId(poi.id)}
+                />
+              );
+            })}
+            {cells.map((cell) => (
+              <Polygon
+                key={cellKey(cell)}
+                coordinates={cellPolygon(cell)}
+                fillColor={`${ConquestMineColor}40`}
+                strokeWidth={0}
+              />
+            ))}
+            {position ? (
+              // Point bleu et cône dans le même marqueur : ils ne peuvent plus se décaler.
+              // Le cône est tourné dans la vue elle-même : Apple Plans ignore la rotation des marqueurs.
+              <Marker coordinate={position} anchor={{ x: 0.5, y: 0.5 }} zIndex={10}>
+                <View style={styles.userMarker} pointerEvents="none">
+                  {heading !== null ? (
+                    <View style={styles.userCone}>
+                      <HeadingCone color={theme.tint} rotation={heading - shownMapHeading} />
+                    </View>
+                  ) : null}
+                  <View style={styles.userDot} />
+                </View>
+              </Marker>
+            ) : null}
+            {tracker.track.points.length > 1 ? (
+              <RouteLine coordinates={tracker.track.points} width={7} />
+            ) : null}
+          </MapView>
+        </View>
       ) : (
         <ThemedView style={[StyleSheet.absoluteFill, styles.centeredScreen]}>
           <ThemedText themeColor="textSecondary">Recherche du signal GPS…</ThemedText>
@@ -277,7 +330,7 @@ function ActiveWalk({ walk, onFinish }: { walk: Walk; onFinish: () => void }) {
             pressed && styles.pressed,
           ]}>
           <ThemedText type="smallBold" style={{ color: theme.tint }}>
-            {followHeading ? 'Nord en haut' : 'Suivre mon cap'}
+            {follow === 'free' ? 'Me recentrer' : followHeading ? 'Nord en haut' : 'Suivre mon cap'}
           </ThemedText>
         </Pressable>
       ) : null}
@@ -424,7 +477,9 @@ function WalkDone({
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={[styles.centeredScreen, styles.done]}>
-        <ThemedText type="subtitle">{saveState === 'too-short' ? 'Trajet terminé' : 'Bravo !'}</ThemedText>
+        <ThemedText type="subtitle">
+          {saveState === 'too-short' ? 'Trajet terminé' : 'Bravo !'}
+        </ThemedText>
         {region ? (
           // Aperçu fixe du chemin parcouru.
           <View style={styles.recap}>
@@ -467,7 +522,9 @@ function WalkDone({
           themeColor="textSecondary">
           {message}
         </ThemedText>
-        {saveState === 'error' ? <Button title="Réessayer" variant="secondary" onPress={onRetry} /> : null}
+        {saveState === 'error' ? (
+          <Button title="Réessayer" variant="secondary" onPress={onRetry} />
+        ) : null}
         {saveState === 'saved' ? (
           <Button
             title="Partager"
@@ -494,12 +551,21 @@ function WalkDone({
 }
 
 /** Texte partagé à la fin d'un trajet : les chiffres, puis ce qui le rend unique. */
-function shareMessage(summary: WalkSummary, seconds: number, places: number, cells: number): string {
+function shareMessage(
+  summary: WalkSummary,
+  seconds: number,
+  places: number,
+  cells: number
+): string {
   const parts = [
     `${formatDistance(summary.distanceM)} et ${formatNumber(summary.steps)} pas en ${formatDuration(seconds)} avec STEP`,
   ];
-  if (places > 0) parts.push(`${places} lieu${places > 1 ? 'x' : ''} découvert${places > 1 ? 's' : ''}`);
-  if (cells > 0) parts.push(`${formatNumber(cells)} case${cells > 1 ? 's' : ''} conquise${cells > 1 ? 's' : ''}`);
+  if (places > 0)
+    parts.push(`${places} lieu${places > 1 ? 'x' : ''} découvert${places > 1 ? 's' : ''}`);
+  if (cells > 0)
+    parts.push(
+      `${formatNumber(cells)} case${cells > 1 ? 's' : ''} conquise${cells > 1 ? 's' : ''}`
+    );
   return `${parts.join(', ')} !`;
 }
 
