@@ -4,6 +4,8 @@ import { useColorScheme } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { onboardedKey, useLocalFlag } from '@/hooks/use-local-flag';
+// Déclare la tâche de suivi GPS dès le chargement, comme l'exige expo-task-manager.
+import '@/lib/walk-location-task';
 import { AuthProvider, useAuth } from '@/providers/auth-provider';
 import { WalkHost } from '@/providers/walk-provider';
 

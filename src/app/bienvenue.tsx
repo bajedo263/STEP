@@ -12,6 +12,7 @@ import { MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { onboardedKey, setLocalFlag } from '@/hooks/use-local-flag';
 import { useTheme } from '@/hooks/use-theme';
 import { feedback } from '@/lib/feedback';
+import { requestHealthAccess } from '@/lib/health';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/auth-provider';
 
@@ -56,6 +57,8 @@ export default function WelcomeScreen() {
     if (Platform.OS !== 'web') {
       await Pedometer.requestPermissionsAsync().catch(() => null);
       await Location.requestForegroundPermissionsAsync().catch(() => null);
+      // Version installée seulement : Apple Santé ou Health Connect, pour compter la montre aussi.
+      await requestHealthAccess();
     }
     setAsking(false);
     feedback.success();

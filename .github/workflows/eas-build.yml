@@ -2,7 +2,9 @@ name: Build bêta
 
 # Lancé à la main depuis l'onglet Actions : construit l'app installable (iPhone ou Android)
 # sur les serveurs EAS. Pour iPhone, « envoyer » la transmet ensuite à TestFlight.
-# Prérequis iPhone : certificats Apple créés une première fois avec `eas build -p ios`.
+# Prérequis iPhone : une clé d'API App Store Connect dans les secrets GitHub (voir
+# docs/build-natif.md). EAS s'en sert pour créer les certificats et envoyer sur TestFlight,
+# sans ordinateur. À défaut, lancer une première fois `eas build -p ios` depuis un ordinateur.
 on:
   workflow_dispatch:
     inputs:
@@ -19,6 +21,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      HAS_ASC_KEY: ${{ secrets.ASC_API_KEY_P8 != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -30,7 +34,19 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
       - run: npm ci
+      - name: Clé App Store Connect
+        if: inputs.platform == 'ios' && env.HAS_ASC_KEY == 'true'
+        env:
+          ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
+        run: |
+          printf '%s' "$ASC_API_KEY_P8" > "$RUNNER_TEMP/asc-api-key.p8"
+          echo "EXPO_ASC_API_KEY_PATH=$RUNNER_TEMP/asc-api-key.p8" >> "$GITHUB_ENV"
       - name: Build
+        env:
+          EXPO_ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          EXPO_ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          EXPO_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          EXPO_APPLE_TEAM_TYPE: INDIVIDUAL
         run: |
           if [ "${{ inputs.platform }}" = "ios" ]; then
             eas build --platform ios --profile production --non-interactive --no-wait \
