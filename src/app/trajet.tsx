@@ -13,6 +13,7 @@ import {
 import MapView, { Marker, Polygon } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Celebration } from '@/components/celebration';
 import { HeadingCone } from '@/components/heading-cone';
 import { PoiMarker, RouteLine } from '@/components/map-route';
 import { PoiSheet, PoiStory } from '@/components/poi-sheet';
@@ -103,6 +104,12 @@ export default function WalkScreen() {
     />
   );
 }
+
+/**
+ * Conquête déjà active au début de chaque trajet (par heure de départ) : survit à la réduction
+ * de l'écran, pour ne fêter les 10 000 pas que s'ils sont franchis en marchant.
+ */
+const conquestAtStart = new Map<number, boolean>();
 
 function ActiveWalk({ walk, onFinish }: { walk: Walk; onFinish: () => void }) {
   const { tracker, planned, plannedPois: pois, discovery, estimatedSteps, conquering } = walk;
@@ -205,6 +212,17 @@ function ActiveWalk({ walk, onFinish }: { walk: Walk; onFinish: () => void }) {
     () => (conquering ? cellsAlongTrack(tracker.track.points) : []),
     [conquering, tracker.track.points]
   );
+
+  // Les 10 000 pas franchis pendant ce trajet se fêtent, une seule fois.
+  const startedTime = tracker.startedAt.getTime();
+  if (!conquestAtStart.has(startedTime)) conquestAtStart.set(startedTime, conquering);
+  const [celebrating, setCelebrating] = useState(false);
+  useEffect(() => {
+    if (!conquering || conquestAtStart.get(startedTime) !== false) return;
+    conquestAtStart.set(startedTime, true);
+    const timer = setTimeout(() => setCelebrating(true), 0);
+    return () => clearTimeout(timer);
+  }, [conquering, startedTime]);
 
   const failed = tracker.status === 'denied' || tracker.status === 'error';
 
@@ -414,6 +432,12 @@ function ActiveWalk({ walk, onFinish }: { walk: Walk; onFinish: () => void }) {
           topOffset={TOP_BUTTONS_HEIGHT}
         />
       ) : null}
+      <Celebration
+        visible={celebrating}
+        title="10 000 pas !"
+        message="La Conquête est active : les rues que vous traversez se colorent maintenant à votre nom."
+        onClose={() => setCelebrating(false)}
+      />
     </View>
   );
 }
