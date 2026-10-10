@@ -35,6 +35,7 @@ import {
 } from '@/lib/stats';
 import { goalOn, type GoalRule } from '@/lib/steps';
 import { protectedStreak } from '@/lib/streak';
+import { useGiftDays } from '@/hooks/use-comeback';
 
 const formatNumber = (value: number) => Math.round(value).toLocaleString('fr-FR');
 
@@ -167,8 +168,9 @@ function StreakCard({
   rule,
 }: HistoryProps & { goal: number; rule: GoalRule }) {
   const theme = useTheme();
+  const gifts = useGiftDays();
   // Même série protégée que sur l'accueil : un gel sauve un jour raté.
-  const streak = protectedStreak(days, new Date(), todaySteps, rule);
+  const streak = protectedStreak(days, new Date(), todaySteps, rule, gifts);
   const message = [
     streak.current === 0
       ? `Atteignez ${formatNumber(goal)} pas aujourd’hui pour lancer une série.`

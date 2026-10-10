@@ -61,6 +61,7 @@ import {
   type Cell,
 } from '@/lib/conquest';
 import { missingPlacesPoints } from '@/lib/collection';
+import { FIRST_WALK_STEPS, firstWalkDistance } from '@/lib/comeback';
 import { loopHandles, moveHandle } from '@/lib/loop-handles';
 import { dailyProgress, formatDistance } from '@/lib/daily-progress';
 import {
@@ -165,10 +166,12 @@ export default function MapScreen() {
     defend: defendRequest,
     boucle: loopRequest,
     quartier: zoneRequest,
+    premiere: firstRequest,
   } = useLocalSearchParams<{
     defend?: string;
     boucle?: string;
     quartier?: string;
+    premiere?: string;
   }>();
   const handledDefend = useRef<string | undefined>(undefined);
   const here = location.status === 'ready' ? location.coords : null;
@@ -190,6 +193,21 @@ export default function MapScreen() {
 
   // Depuis la collection, une boucle vers les lieux pas encore découverts d'un quartier.
   const [collectionNote, setCollectionNote] = useState<string | null>(null);
+
+  // Depuis l'accueil, la première marche guidée : une boucle courte qui passe par un lieu.
+  const handledFirst = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!firstRequest || !here || handledFirst.current === firstRequest) return;
+    handledFirst.current = firstRequest;
+    setTimeout(() => {
+      setMode('loop');
+      setPin(null);
+      setCollectionNote(
+        `Votre première marche : environ ${FIRST_WALK_STEPS.toLocaleString('fr-FR')} pas. Elle vous rapporte vos premières cases de Conquête.`
+      );
+    }, 0);
+    loop.generate(here, firstWalkDistance(strideM));
+  }, [firstRequest, here, loop, strideM]);
   const handledZone = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (!zoneRequest || !here || handledZone.current === zoneRequest) return;
