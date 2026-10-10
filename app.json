@@ -54,7 +54,8 @@
         {
           "locationWhenInUsePermission": "STEP utilise votre position pour tracer des boucles de marche autour de vous."
         }
-      ]
+      ],
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true,

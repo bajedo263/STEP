@@ -111,5 +111,5 @@ export function planReminders({
 
 /** Clé qui ne change que si les rappels doivent être reprogrammés (pas à chaque pas). */
 export function reminderKey(reminders: Reminder[]): string {
-  return reminders.map((r) => `${r.id}@${r.date.getTime()}:${r.title}`).join('|');
+  return reminders.map((r) => `${r.id}@${r.date.getTime()}:${r.title}:${r.body}`).join('|');
 }

@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef } from 'react';
 
+import { useRainDays } from '@/hooks/use-weather';
+
 import { adaptivePlan, type AdaptivePlan } from '@/lib/adaptive-goal';
 import { localDay } from '@/lib/daily-progress';
 import type { Profile } from '@/lib/profile';
 import type { DailyStepsRow } from '@/lib/stats';
-import { DEFAULT_DAILY_GOAL, type GoalRule } from '@/lib/steps';
+import { DEFAULT_DAILY_GOAL, goalOn, type GoalRule } from '@/lib/steps';
 import { supabase } from '@/lib/supabase';
+import { withRainDays } from '@/lib/weather';
 import { useAuth } from '@/providers/auth-provider';
 
 export type DailyGoal = {
@@ -16,6 +19,8 @@ export type DailyGoal = {
   /** Avancement de l'objectif adaptatif, null s'il n'est pas activé ou pas encore calculé. */
   plan: AdaptivePlan | null;
   adaptive: boolean;
+  /** Vrai si l'objectif du jour est réduit pour cause de pluie. */
+  rainy: boolean;
 };
 
 /** Jour d'activation de l'objectif adaptatif, gardé dans les métadonnées du compte. */
@@ -67,6 +72,12 @@ export function useDailyGoal(
       );
   }, [plan, profileId, profileGoal]);
 
-  const goal = plan?.goal ?? profile?.daily_goal ?? DEFAULT_DAILY_GOAL;
-  return { goal, rule: plan ? plan.goalFor : goal, plan, adaptive: since !== null };
+  // Les jours de pluie, l'objectif est réduit, pour la série comme pour les statistiques.
+  const rainDays = useRainDays();
+  const base = plan?.goal ?? profile?.daily_goal ?? DEFAULT_DAILY_GOAL;
+  const baseRule: GoalRule = plan ? plan.goalFor : base;
+  const rule = useMemo(() => withRainDays(baseRule, rainDays), [baseRule, rainDays]);
+  const today = localDay(new Date());
+  const goal = goalOn(rule, today);
+  return { goal, rule, plan, adaptive: since !== null, rainy: rainDays.includes(today) };
 }
