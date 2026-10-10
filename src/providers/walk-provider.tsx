@@ -181,10 +181,10 @@ function WalkSession({ planned }: { planned: PlannedWalk }) {
     emit();
   });
 
-  return summary ? null : <KeepAwake />;
+  return summary || tracker.background ? null : <KeepAwake />;
 }
 
-/** L'écran reste allumé pendant la marche : Expo Go ne suit pas la position en arrière-plan. */
+/** Sans suivi en arrière-plan (Expo Go), l'écran reste allumé pendant la marche. */
 function KeepAwake() {
   useKeepAwake();
   return null;

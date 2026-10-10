@@ -12,7 +12,8 @@
       "bundleIdentifier": "com.bajedo263.step",
       "config": {
         "usesNonExemptEncryption": false
-      }
+      },
+      "usesAppleSignIn": true
     },
     "android": {
       "adaptiveIcon": {
@@ -24,7 +25,8 @@
       "predictiveBackGestureEnabled": false,
       "package": "com.bajedo263.step",
       "permissions": [
-        "android.permission.ACTIVITY_RECOGNITION"
+        "android.permission.ACTIVITY_RECOGNITION",
+        "android.permission.health.READ_STEPS"
       ]
     },
     "web": {
@@ -52,9 +54,31 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "STEP utilise votre position pour tracer des boucles de marche autour de vous."
+          "locationWhenInUsePermission": "STEP utilise votre position pour tracer des boucles de marche autour de vous.",
+          "locationAlwaysAndWhenInUsePermission": "STEP suit votre trajet de marche, même téléphone en poche, tant que vous ne l’avez pas terminé.",
+          "locationAlwaysPermission": "STEP suit votre trajet de marche, même téléphone en poche, tant que vous ne l’avez pas terminé.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
-      ]
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26
+          }
+        }
+      ],
+      [
+        "@kingstinct/react-native-healthkit",
+        {
+          "NSHealthShareUsageDescription": "STEP lit vos pas dans Santé pour compter aussi ceux de votre montre.",
+          "NSHealthUpdateUsageDescription": false,
+          "background": false
+        }
+      ],
+      "react-native-health-connect",
+      "expo-apple-authentication"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -340,7 +340,9 @@ function ActiveWalk({ walk, onFinish }: { walk: Walk; onFinish: () => void }) {
                 </View>
                 {showAwakeHint ? (
                   <ThemedText type="small" themeColor="textSecondary" style={styles.centered}>
-                    Gardez STEP ouvert pendant la marche : l’écran reste allumé.
+                    {tracker.background
+                      ? 'Rangez votre téléphone : STEP suit la marche même écran éteint.'
+                      : 'Gardez STEP ouvert pendant la marche : l’écran reste allumé.'}
                   </ThemedText>
                 ) : null}
                 <Button title="Terminer" onPress={onFinish} />

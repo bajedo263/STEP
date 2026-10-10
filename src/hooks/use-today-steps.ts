@@ -3,6 +3,23 @@ import { useEffect, useState } from 'react';
 import { AppState, Platform } from 'react-native';
 
 import { startOfDay } from '@/lib/daily-progress';
+import { healthAvailable, healthStepsBetween } from '@/lib/health';
+import { mergeTodaySteps, type HealthReading } from '@/lib/step-sources';
+
+/** Intervalle entre deux lectures de Santé, app ouverte. */
+const HEALTH_REFRESH_MS = 60_000;
+
+let lastHealth: { day: number; at: number; steps: Promise<number | null> } | null = null;
+
+/** Pas du jour dans Santé ; une lecture récente est partagée par tous les écrans. */
+function healthStepsToday(): Promise<number | null> {
+  const now = new Date();
+  const day = startOfDay(now).getTime();
+  if (!lastHealth || lastHealth.day !== day || Date.now() - lastHealth.at > HEALTH_REFRESH_MS / 2) {
+    lastHealth = { day, at: Date.now(), steps: healthStepsBetween(new Date(day), now) };
+  }
+  return lastHealth.steps;
+}
 
 export type TodaySteps =
   | { status: 'loading' }
@@ -11,14 +28,15 @@ export type TodaySteps =
   | {
       status: 'ready';
       steps: number;
-      /** Vrai sur Android : seuls les pas faits app ouverte sont comptés (pas d'historique). */
+      /** Vrai sur Android sans Health Connect : seuls les pas faits app ouverte sont comptés. */
       partial: boolean;
     };
 
 /**
- * Pas du jour lus depuis le podomètre du téléphone.
- * iOS fournit l'historique depuis minuit ; Android seulement les pas comptés pendant
- * que l'app est ouverte, en attendant Health Connect.
+ * Pas du jour : Apple Santé ou Health Connect dans la version installée (montre comprise, hors
+ * saisies manuelles), complétés en direct par le podomètre du téléphone.
+ * Dans Expo Go, podomètre seul : iOS fournit l'historique depuis minuit ; Android seulement les
+ * pas comptés pendant que l'app est ouverte.
  */
 export function useTodaySteps(): TodaySteps {
   const [state, setState] = useState<TodaySteps>({ status: 'loading' });
@@ -31,11 +49,26 @@ export function useTodaySteps(): TodaySteps {
     let baseSteps = 0;
     let watchedSteps = 0;
     let baseDay = -1;
+    let health: (HealthReading & { day: number }) | null = null;
+    let healthTimer: ReturnType<typeof setInterval> | null = null;
 
     const publish = () => {
-      if (!cancelled) {
-        setState({ status: 'ready', steps: baseSteps + watchedSteps, partial: !hasHistory });
-      }
+      if (cancelled) return;
+      const pedometer = baseSteps + watchedSteps;
+      const reading = health?.day === baseDay ? health : null;
+      setState({
+        status: 'ready',
+        steps: mergeTodaySteps(pedometer, reading),
+        partial: !hasHistory && !reading,
+      });
+    };
+
+    const refreshHealth = async () => {
+      if (!healthAvailable) return;
+      const steps = await healthStepsToday();
+      if (cancelled || steps === null) return;
+      health = { steps, pedometerAtRead: baseSteps + watchedSteps, day: baseDay };
+      publish();
     };
 
     const onWatch = ({ steps }: { steps: number }) => {
@@ -67,21 +100,35 @@ export function useTodaySteps(): TodaySteps {
       publish();
     };
 
+    // Sans podomètre, Santé peut encore donner le total du jour (sans suivi en direct).
+    const withoutPedometer = async (status: 'unavailable' | 'denied') => {
+      const steps = healthAvailable ? await healthStepsToday() : null;
+      if (cancelled) return;
+      setState(steps === null ? { status } : { status: 'ready', steps, partial: false });
+    };
+
     async function start() {
       try {
         if (!(await Pedometer.isAvailableAsync())) {
-          if (!cancelled) setState({ status: 'unavailable' });
+          await withoutPedometer('unavailable');
           return;
         }
         const permission = await Pedometer.requestPermissionsAsync();
         if (!permission.granted) {
-          if (!cancelled) setState({ status: 'denied' });
+          await withoutPedometer('denied');
           return;
         }
         if (cancelled) return;
         await refreshBase();
+        refreshHealth().catch(() => {});
+        healthTimer = healthAvailable
+          ? setInterval(() => refreshHealth().catch(() => {}), HEALTH_REFRESH_MS)
+          : null;
         appStateSubscription = AppState.addEventListener('change', (next) => {
-          if (next === 'active') refreshBase().catch(() => {});
+          if (next !== 'active') return;
+          refreshBase()
+            .then(refreshHealth)
+            .catch(() => {});
         });
       } catch {
         if (!cancelled) setState({ status: 'unavailable' });
@@ -94,6 +141,7 @@ export function useTodaySteps(): TodaySteps {
       cancelled = true;
       subscription?.remove();
       appStateSubscription?.remove();
+      if (healthTimer) clearInterval(healthTimer);
     };
   }, []);
 
