@@ -10,10 +10,14 @@ import { localFlag, setLocalFlag, useLocalFlag } from '@/hooks/use-local-flag';
 import { useProfile } from '@/hooks/use-profile';
 import { useStepHistory } from '@/hooks/use-step-history';
 import { useTodaySteps } from '@/hooks/use-today-steps';
+import { useForecast } from '@/hooks/use-weather';
 import { comebackReminders } from '@/lib/comeback';
-import { DEFAULT_REMINDER_HOUR, planReminders, reminderKey } from '@/lib/reminders';
+import { localDay } from '@/lib/daily-progress';
+import { eventReminder } from '@/lib/events';
+import { DEFAULT_REMINDER_HOUR, planReminders, reminderKey, walkMinutes } from '@/lib/reminders';
 import { strideLengthMeters } from '@/lib/steps';
 import { protectedStreak } from '@/lib/streak';
+import { weatherSentence, weatherTip } from '@/lib/weather';
 import { weeklyReviewReminder } from '@/lib/weekly-review';
 
 /** Réglage des rappels sur ce téléphone : une heure (« 18 ») ou « off ». */
@@ -71,22 +75,34 @@ export function useDailyReminders() {
   const hour = useReminderHour();
   const gifts = useGiftDays();
   const cells = useMyConquestCount();
+  const forecast = useForecast();
 
   const steps = today.status === 'ready' ? today.steps : null;
-  const { goal, rule } = useDailyGoal(profile, history, steps);
+  const { goal, rule, rainy } = useDailyGoal(profile, history, steps);
   const reminders = useMemo(() => {
     if (steps === null || !history) return null;
     const streak = protectedStreak(history, new Date(), steps, rule, gifts);
     const now = new Date();
-    const daily = planReminders({
+    const strideM = strideLengthMeters(profile?.height_cm ?? 170, profile?.sex ?? 'unspecified');
+    const reliable = today.status === 'ready' && !today.partial;
+    // Arrondi à 500 pas : on ne reprogramme pas à chaque pas.
+    const rounded = Math.floor(steps / 500) * 500;
+    const planned = planReminders({
       now,
       hour,
-      // Arrondi à 500 pas : on ne reprogramme pas à chaque pas.
-      todaySteps: Math.floor(steps / 500) * 500,
+      todaySteps: rounded,
       goal,
       streak: streak.current,
-      strideM: strideLengthMeters(profile?.height_cm ?? 170, profile?.sex ?? 'unspecified'),
-      reliable: today.status === 'ready' && !today.partial,
+      strideM,
+      reliable,
+    });
+    // Le rappel du jour donne le créneau sans pluie quand la météo est connue.
+    const daily = planned.map((reminder) => {
+      if (reminder.id !== 'step-today' || !forecast || !reliable) return reminder;
+      const tip = weatherTip(forecast, localDay(reminder.date), reminder.date.getHours());
+      if (!tip) return reminder;
+      const minutes = walkMinutes(Math.max(0, goal - rounded), strideM);
+      return { ...reminder, body: weatherSentence(tip, minutes, rainy ? goal : null) };
     });
     // Le bilan de la semaine s'annonce le lundi matin, et les rappels de retour à J+3 et J+7
     // ne sonnent que si l'app n'est pas rouverte d'ici là ; rien si les rappels sont coupés.
@@ -98,8 +114,9 @@ export function useDailyReminders() {
       best: streak.best,
       cells,
     });
-    return [...daily, weeklyReviewReminder(now), ...comeback];
-  }, [steps, history, goal, rule, hour, profile, today, gifts, cells]);
+    const event = eventReminder(now, localDay(now));
+    return [...daily, weeklyReviewReminder(now), ...comeback, ...(event ? [event] : [])];
+  }, [steps, history, goal, rule, hour, profile, today, gifts, cells, forecast, rainy]);
   const key = reminders ? reminderKey(reminders) : null;
 
   useEffect(() => {

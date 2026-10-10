@@ -11,8 +11,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BadgesCard } from '@/components/badges-card';
+import { ShareSheet } from '@/components/share-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { Button } from '@/components/ui/button';
 import { BottomTabInset, MaxContentWidth, Spacing, VisitedPoiColor } from '@/constants/theme';
 import { useBadges } from '@/hooks/use-badges';
 import { useDailyGoal } from '@/hooks/use-daily-goal';
@@ -217,6 +219,7 @@ function StreakCard({
 
 /** Mois en cours : totaux et comparaison au mois précédent à la même date. */
 function MonthCard({ days, todaySteps, goal }: HistoryProps & { goal: GoalRule }) {
+  const [sharing, setSharing] = useState(false);
   const today = new Date();
   const { current, previous } = monthTotals(days, today, todaySteps, goal);
   const month = today.toLocaleDateString('fr-FR', { month: 'long' });
@@ -233,8 +236,30 @@ function MonthCard({ days, todaySteps, goal }: HistoryProps & { goal: GoalRule }
         {`${current.daysAtGoal} jour${current.daysAtGoal > 1 ? 's' : ''} à l’objectif sur ${current.days}. `}
         {comparison(current, previous)}
       </ThemedText>
+      <View style={styles.shareRow}>
+        <Button title="Partager mon mois" variant="secondary" onPress={() => setSharing(true)} />
+        <Button title="Souvenirs" variant="secondary" onPress={() => router.push('/souvenirs')} />
+      </View>
+      <ShareSheet
+        visible={sharing}
+        onClose={() => setSharing(false)}
+        since={new Date(today.getFullYear(), today.getMonth(), 1).toISOString()}
+        title={`Mon mois ${monthOf(today)}`}
+        subtitle={`${current.daysAtGoal} jour${current.daysAtGoal > 1 ? 's' : ''} à l’objectif sur ${current.days}`}
+        stats={[
+          { value: formatNumber(current.steps), label: 'pas' },
+          { value: formatDistance(current.distanceM), label: 'parcourus' },
+          { value: formatNumber(current.calories), label: 'kcal' },
+        ]}
+      />
     </ThemedView>
   );
+}
+
+/** « d’octobre », « de mars ». */
+function monthOf(date: Date): string {
+  const month = date.toLocaleDateString('fr-FR', { month: 'long' });
+  return /^[aeiouéè]/.test(month) ? `d’${month}` : `de ${month}`;
 }
 
 function comparison(current: PeriodTotals, previous: PeriodTotals): string {
@@ -431,6 +456,11 @@ function Stat({ value, label }: { value: string; label: string }) {
 }
 
 const styles = StyleSheet.create({
+  shareRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+  },
   container: {
     flex: 1,
     flexDirection: 'row',
