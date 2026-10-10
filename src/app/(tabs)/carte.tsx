@@ -35,7 +35,6 @@ import {
 } from '@/constants/theme';
 import {
   useConquestCells,
-  useConquestSeason,
   useMyConquestCount,
   useTerritoryAlerts,
   type TerritoryAlerts,
@@ -72,7 +71,6 @@ import {
 } from '@/lib/loop';
 import { clusterByRegion, FAN_OUT_DELTA, fanOut } from '@/lib/map-declutter';
 import { type Poi } from '@/lib/pois';
-import { rankLabel, seasonEndLabel, seasonName } from '@/lib/season';
 import { strideLengthMeters } from '@/lib/steps';
 import { startWalk, walkInProgress } from '@/providers/walk-provider';
 
@@ -528,22 +526,31 @@ export default function MapScreen() {
                       </>
                     ) : (
                       <>
-                        <ThemedText themeColor="textSecondary">
-                          {loop.status === 'loading'
-                            ? `Calcul d’une boucle d’environ ${formatDistance(targetM)} autour de vous…`
-                            : goalReached
-                              ? `Objectif atteint ! Une boucle bonus de ${formatDistance(targetM)} ?`
-                              : `Une boucle d’environ ${formatDistance(targetM)} depuis votre position pour finir votre objectif.`}
-                        </ThemedText>
-                        {loop.status === 'error' ? <ErrorText message={loop.message} /> : null}
-                        <Button
-                          title="Proposer une boucle"
-                          loading={loop.status === 'loading'}
-                          onPress={() => {
-                            setCollectionNote(null);
-                            loop.generate(start, targetM);
-                          }}
-                        />
+                        {loop.status === 'loading' ? (
+                          // Pendant le calcul, un simple indicateur à la place du bouton.
+                          <View style={styles.loadingRow}>
+                            <ActivityIndicator color={theme.tint} />
+                            <ThemedText themeColor="textSecondary" style={styles.flex}>
+                              {`Calcul d’une boucle d’environ ${formatDistance(targetM)} autour de vous…`}
+                            </ThemedText>
+                          </View>
+                        ) : (
+                          <>
+                            <ThemedText themeColor="textSecondary">
+                              {goalReached
+                                ? `Objectif atteint ! Une boucle bonus de ${formatDistance(targetM)} ?`
+                                : `Une boucle d’environ ${formatDistance(targetM)} depuis votre position pour finir votre objectif.`}
+                            </ThemedText>
+                            {loop.status === 'error' ? <ErrorText message={loop.message} /> : null}
+                            <Button
+                              title="Proposer une boucle"
+                              onPress={() => {
+                                setCollectionNote(null);
+                                loop.generate(start, targetM);
+                              }}
+                            />
+                          </>
+                        )}
                         <Button
                           title="Marcher librement"
                           variant="secondary"
@@ -731,11 +738,6 @@ function ConquestStatus({
   zoomedOut: boolean;
 }) {
   const count = useMyConquestCount();
-  const season = useConquestSeason();
-  // « Saison d'octobre, jusqu'au 31 octobre : 2e sur 15 conquérants. »
-  const seasonLine = season
-    ? `${seasonName(new Date(season.season_start))}, ${seasonEndLabel(new Date(season.season_end), new Date())} : ${rankLabel(season.rank, season.players)}.`
-    : null;
   if (!active) {
     return (
       <View style={styles.conquest}>
@@ -744,11 +746,6 @@ function ConquestStatus({
             ? `Conquête : se débloque à ${formatNumber(CONQUEST_UNLOCK_STEPS)} pas dans la journée.`
             : `Conquête : encore ${formatNumber(CONQUEST_UNLOCK_STEPS - steps)} pas pour colorer la carte à votre nom.`}
         </ThemedText>
-        {seasonLine ? (
-          <ThemedText type="small" themeColor="textSecondary">
-            {seasonLine}
-          </ThemedText>
-        ) : null}
       </View>
     );
   }
@@ -771,11 +768,6 @@ function ConquestStatus({
           ? 'Rapprochez la carte pour voir les cases.'
           : 'Vos trajets du jour colorent les cases traversées pendant 7 jours, sauf le début et la fin.'}
       </ThemedText>
-      {seasonLine ? (
-        <ThemedText type="small" themeColor="textSecondary">
-          {`${seasonLine} Toutes les cases repartent de zéro à la fin du mois.`}
-        </ThemedText>
-      ) : null}
     </View>
   );
 }
