@@ -507,15 +507,24 @@ export default function MapScreen() {
                         {loop.refineError ? <ErrorText message={loop.refineError} /> : null}
                         <PoiSummary pois={pois} via={loopRoute?.via ?? []} />
                         <Button title="Partir" onPress={() => go({ mode: 'loop', route, pois })} />
-                        <Button
-                          title="Autre boucle"
-                          variant="secondary"
-                          onPress={() => {
-                            setDefenseNote(null);
-                            setCollectionNote(null);
-                            loop.generate(start, targetM);
-                          }}
-                        />
+                        <View style={styles.buttonRow}>
+                          <Button
+                            title="Autre boucle"
+                            variant="secondary"
+                            style={styles.flex}
+                            onPress={() => {
+                              setDefenseNote(null);
+                              setCollectionNote(null);
+                              loop.generate(start, targetM);
+                            }}
+                          />
+                          <Button
+                            title="Marcher librement"
+                            variant="secondary"
+                            style={styles.flex}
+                            onPress={() => go({ mode: 'free' })}
+                          />
+                        </View>
                       </>
                     ) : (
                       <>
@@ -851,6 +860,10 @@ function LocationUnavailable({ location }: { location: ReturnType<typeof useCurr
 }
 
 const styles = StyleSheet.create({
+  buttonRow: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+  },
   handle: {
     width: 22,
     height: 22,
