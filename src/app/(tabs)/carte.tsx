@@ -16,6 +16,10 @@ import {
 import MapView, { Marker, Polygon, Polyline, type LatLng, type Region } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import {
+  LoopHandlesOverlay,
+  type LoopHandlesOverlayHandle,
+} from '@/components/loop-handles-overlay';
 import { PoiClusterMarker, PoiMarker, RouteLine } from '@/components/map-route';
 import { PoiSheet } from '@/components/poi-sheet';
 import { ThemedText } from '@/components/themed-text';
@@ -95,6 +99,7 @@ export default function MapScreen() {
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const mapRef = useRef<MapView>(null);
+  const handlesOverlay = useRef<LoopHandlesOverlayHandle>(null);
   const [mode, setMode] = useState<MapMode>('loop');
   const [query, setQuery] = useState('');
   const search = usePlaceSearch(query, location.status === 'ready' ? location.coords : null);
@@ -311,7 +316,11 @@ export default function MapScreen() {
           setSelectedId(null);
           panel.expand();
         }}
-        onRegionChangeComplete={setRegion}>
+        onRegionChange={() => handlesOverlay.current?.update()}
+        onRegionChangeComplete={(next) => {
+          setRegion(next);
+          handlesOverlay.current?.update();
+        }}>
         {conquestActive
           ? cells.map((cell) => (
               <Polygon
@@ -386,27 +395,6 @@ export default function MapScreen() {
             />
           );
         })}
-        {mode === 'loop' && loopRoute && handles
-          ? handles.map((handle, index) => (
-              <Marker
-                key={`poignee-${index}-${handle.latitude}-${handle.longitude}`}
-                coordinate={handle}
-                anchor={{ x: 0.5, y: 0.5 }}
-                draggable={!loop.refining}
-                tracksViewChanges={false}
-                onDragEnd={(event) => {
-                  void moveHandleTo(index, event.nativeEvent.coordinate);
-                }}>
-                {/* Zone tactile bien plus large que le rond, pour l'attraper au doigt. */}
-                <View
-                  style={styles.handleHitArea}
-                  accessible
-                  accessibilityLabel="Point de passage : appuyez longuement puis faites-le glisser vers une autre rue">
-                  <View style={[styles.handle, { borderColor: theme.tint }]} />
-                </View>
-              </Marker>
-            ))
-          : null}
         {mode === 'loop' && loopRoute ? (
           <Marker
             coordinate={loopRoute.coordinates[0]}
@@ -423,6 +411,16 @@ export default function MapScreen() {
           />
         ) : null}
       </MapView>
+      {mode === 'loop' && loopRoute && handles ? (
+        <LoopHandlesOverlay
+          ref={handlesOverlay}
+          mapRef={mapRef}
+          handles={handles}
+          disabled={loop.refining}
+          color={theme.tint}
+          onDrop={(index, coordinate) => void moveHandleTo(index, coordinate)}
+        />
+      ) : null}
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -500,7 +498,7 @@ export default function MapScreen() {
                         <ThemedText type="small" themeColor="textSecondary">
                           {loop.refining
                             ? 'Recalcul de la boucle par ce point…'
-                            : 'Appuyez longuement sur un point rond du tracé, puis faites-le glisser vers la rue où vous voulez passer.'}
+                            : 'Faites glisser un point rond du tracé vers la rue où vous voulez passer.'}
                         </ThemedText>
                         {loop.refineError ? <ErrorText message={loop.refineError} /> : null}
                         <PoiSummary pois={pois} via={loopRoute?.via ?? []} />
@@ -855,21 +853,6 @@ const styles = StyleSheet.create({
   buttonRow: {
     flexDirection: 'row',
     gap: Spacing.two,
-  },
-  handle: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 4,
-    backgroundColor: '#FFFFFF',
-  },
-  handleHitArea: {
-    width: 96,
-    height: 96,
-    alignItems: 'center',
-    justifyContent: 'center',
-    // Fond presque invisible : une vue entièrement transparente peut ne pas capter le doigt.
-    backgroundColor: 'rgba(255, 255, 255, 0.01)',
   },
   container: {
     flex: 1,
