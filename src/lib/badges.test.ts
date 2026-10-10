@@ -12,6 +12,7 @@ const none: BadgeStats = {
   friends: 0,
   zonesExplored: 0,
   zonesComplete: 0,
+  events: 0,
 };
 
 test('badgesFor débloque les paliers atteints', () => {
@@ -33,11 +34,13 @@ test('les descriptions sont accordées', () => {
   assert.equal(text('streak-7'), '7 jours d’affilée à l’objectif');
   assert.equal(text('zones-explored-1'), 'La moitié des lieux d’un quartier découverte');
   assert.equal(text('zones-complete-3'), 'Tous les lieux de 3 quartiers découverts');
+  assert.equal(text('events-1'), '1 événement réussi');
+  assert.equal(text('events-5'), '5 événements réussis');
 });
 
 test('nextBadges donne un badge par famille, le plus avancé d’abord', () => {
   const next = nextBadges(badgesFor({ ...none, challenges: 9, cells: 10 }));
-  assert.equal(next.length, 8);
+  assert.equal(next.length, 9);
   assert.equal(next[0].id, 'challenges-10');
   assert.equal(next[1].id, 'cells-50');
 });

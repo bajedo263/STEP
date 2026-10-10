@@ -78,7 +78,8 @@
         }
       ],
       "react-native-health-connect",
-      "expo-apple-authentication"
+      "expo-apple-authentication",
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true,

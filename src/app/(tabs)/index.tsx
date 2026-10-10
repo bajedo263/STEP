@@ -16,6 +16,9 @@ import { useBadges } from '@/hooks/use-badges';
 import { useComebackBanner, useGiftDays, useHasWalked } from '@/hooks/use-comeback';
 import { useTerritoryAlerts, type TerritoryAlerts } from '@/hooks/use-conquest';
 import { useDailyChallenge } from '@/hooks/use-daily-challenge';
+import { useEvents, type ActiveEvent } from '@/hooks/use-events';
+import { useMemoryData } from '@/hooks/use-memories';
+import { useForecast } from '@/hooks/use-weather';
 import { useCheers } from '@/hooks/use-duels';
 import { setAdaptiveGoal, useDailyGoal } from '@/hooks/use-daily-goal';
 import {
@@ -36,6 +39,11 @@ import { adaptiveLabel, suggestAdaptive } from '@/lib/adaptive-goal';
 import { nextBadges } from '@/lib/badges';
 import { TROPHY_COLORS } from '@/lib/season-rewards';
 import { FIRST_WALK_STEPS } from '@/lib/comeback';
+import { daysLeftLabel, type StepEvent } from '@/lib/events';
+import { memoriesFor, type Memory } from '@/lib/memories';
+import { walkMinutes } from '@/lib/reminders';
+import { strideLengthMeters } from '@/lib/steps';
+import { weatherAdvice, weatherTip, weatherTitle, type WeatherTip } from '@/lib/weather';
 import { cheersLabel } from '@/lib/duels';
 import type { Challenge } from '@/lib/challenge';
 import { CONQUEST_UNLOCK_STEPS, conquestUnlocked, territoryAlertLabel } from '@/lib/conquest';
@@ -50,6 +58,7 @@ import {
 } from '@/lib/weekly-review';
 
 const formatNumber = (value: number) => Math.round(value).toLocaleString('fr-FR');
+const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 export default function HomeScreen() {
   const today = useTodaySteps();
@@ -57,7 +66,7 @@ export default function HomeScreen() {
 
   const steps = today.status === 'ready' ? today.steps : null;
   const history = useStepHistory();
-  const { goal, rule, plan, adaptive } = useDailyGoal(profile, history, steps);
+  const { goal, rule, plan, adaptive, rainy } = useDailyGoal(profile, history, steps);
   const progress = useMemo(
     () =>
       steps === null
@@ -89,6 +98,13 @@ export default function HomeScreen() {
   const trophies = useTrophies();
   const cheersText = cheersLabel(cheers.names);
   const comeback = useComebackBanner();
+  const forecast = useForecast();
+  const events = useEvents(history, steps);
+  const memoryData = useMemoryData();
+  const memory = useMemo(
+    () => (memoryData ? (memoriesFor(new Date(), memoryData.visits, memoryData.walks)[0] ?? null) : null),
+    [memoryData]
+  );
   const hasWalked = useHasWalked();
   const badges = useBadges(steps, rule);
   const nextBadge = useMemo(() => (badges ? (nextBadges(badges)[0] ?? null) : null), [badges]);
@@ -118,6 +134,18 @@ export default function HomeScreen() {
   const weeklyKey = session ? weeklySeenKey(session.user.id) : null;
   const weeklySeen = useLocalFlag(weeklyKey);
   const showWeekly = Boolean(weekly && weeklyKey && weeklySeen !== weekly.review.week);
+
+  // Créneau météo pour marcher, tant que l'objectif n'est pas atteint.
+  const tip =
+    forecast && progress && !progress.goalReached
+      ? weatherTip(forecast, todayKey, new Date().getHours())
+      : null;
+  const walkMin = progress
+    ? walkMinutes(
+        progress.remainingSteps,
+        strideLengthMeters(profile?.height_cm ?? 170, profile?.sex ?? 'unspecified')
+      )
+    : 0;
 
   return (
     <ThemedView style={styles.container}>
@@ -165,6 +193,11 @@ export default function HomeScreen() {
                   {adaptiveLabel(plan)}
                 </ThemedText>
               ) : null}
+              {rainy ? (
+                <ThemedText type="small" themeColor="textSecondary" style={styles.centered}>
+                  Jour de pluie : objectif réduit, votre série ne risque rien.
+                </ThemedText>
+              ) : null}
 
               {/* L'action principale reste visible sans faire défiler. */}
               <Button
@@ -202,6 +235,9 @@ export default function HomeScreen() {
                 </Pressable>
               ) : null}
               {hasWalked === false ? <FirstWalkCard /> : null}
+              {tip ? (
+                <WeatherCard tip={tip} minutes={walkMin} reducedGoal={rainy ? goal : null} />
+              ) : null}
               {cheersText ? (
                 <Pressable
                   accessibilityRole="button"
@@ -227,6 +263,10 @@ export default function HomeScreen() {
               {territoryAlert ? <TerritoryCard alerts={territory} /> : null}
               {streak ? <StreakBanner streak={streak} /> : null}
               {challenge ? <ChallengeCard challenge={challenge} /> : null}
+              {events.active.length > 0 || events.upcoming ? (
+                <EventsCard active={events.active} upcoming={events.upcoming} today={todayKey} />
+              ) : null}
+              {memory ? <MemoryCard memory={memory} /> : null}
               {nextBadge ? <NextBadge badge={nextBadge} /> : null}
 
               {isPartial ? (
@@ -407,6 +447,114 @@ function ChallengeCard({ challenge }: { challenge: Challenge }) {
   );
 }
 
+/** Météo : le créneau sec du jour et la boucle qui va avec. */
+function WeatherCard({
+  tip,
+  minutes,
+  reducedGoal,
+}: {
+  tip: WeatherTip;
+  minutes: number;
+  reducedGoal: number | null;
+}) {
+  const icon =
+    tip.kind === 'rain'
+      ? ({ ios: 'cloud.rain.fill', fallback: '🌧️' } as const)
+      : tip.kind === 'clearing'
+        ? ({ ios: 'cloud.sun.fill', fallback: '🌤️' } as const)
+        : tip.sunny
+          ? ({ ios: 'sun.max.fill', fallback: '☀️' } as const)
+          : ({ ios: 'cloud.fill', fallback: '☁️' } as const);
+  return (
+    <ThemedView type="backgroundElement" style={styles.card}>
+      <View style={styles.row}>
+        <Icon ios={icon.ios} fallback={icon.fallback} color={PoiColor} size={22} />
+        <View style={styles.flex}>
+          <ThemedText type="smallBold">{weatherTitle(tip)}</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            {capitalize(weatherAdvice(tip, minutes, reducedGoal))}
+          </ThemedText>
+        </View>
+      </View>
+      {tip.kind !== 'rain' || reducedGoal === null ? (
+        <Button
+          title="Préparer ma boucle"
+          variant="secondary"
+          onPress={() => router.push(`/carte?boucle=${Date.now()}`)}
+        />
+      ) : null}
+    </ThemedView>
+  );
+}
+
+/** Événements en cours (week-end explorateur, défi de saison…) et le prochain à venir. */
+function EventsCard({
+  active,
+  upcoming,
+  today,
+}: {
+  active: ActiveEvent[];
+  upcoming: StepEvent | null;
+  today: string;
+}) {
+  const theme = useTheme();
+  return (
+    <ThemedView type="backgroundElement" style={styles.card}>
+      {active.map(({ event, progress }) => (
+        <View key={event.id} style={styles.event}>
+          <View style={styles.row}>
+            <ThemedText type="smallBold" style={styles.flex}>
+              {`${event.emoji} ${event.title}`}
+            </ThemedText>
+            <ThemedText
+              type="small"
+              style={progress.done ? { color: theme.success } : undefined}
+              themeColor={progress.done ? undefined : 'textSecondary'}>
+              {progress.done ? 'Réussi !' : daysLeftLabel(event, today)}
+            </ThemedText>
+          </View>
+          <ThemedText type="small">{event.description}</ThemedText>
+          <View style={[styles.progressTrack, { backgroundColor: theme.backgroundSelected }]}>
+            <View
+              style={[
+                styles.progressFill,
+                {
+                  width: `${Math.max(2, progress.progress * 100)}%`,
+                  backgroundColor: progress.done ? theme.success : theme.tint,
+                },
+              ]}
+            />
+          </View>
+          <ThemedText type="small" themeColor="textSecondary">
+            {progress.label}
+          </ThemedText>
+        </View>
+      ))}
+      {upcoming ? (
+        <ThemedText type="small" themeColor="textSecondary">
+          {`Bientôt : ${upcoming.emoji} ${upcoming.title}, à partir du ${new Date(`${upcoming.start}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric' })}.`}
+        </ThemedText>
+      ) : null}
+    </ThemedView>
+  );
+}
+
+/** Souvenir du jour : un lieu ou une belle marche, à la même date. */
+function MemoryCard({ memory }: { memory: Memory }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityHint="Ouvre vos souvenirs"
+      onPress={() => router.push('/souvenirs')}
+      style={styles.cardPressable}>
+      <ThemedView type="backgroundElement" style={styles.card}>
+        <ThemedText type="smallBold">{`📸 ${memory.when}`}</ThemedText>
+        <ThemedText type="small">{capitalize(memory.text)}</ThemedText>
+      </ThemedView>
+    </Pressable>
+  );
+}
+
 /** Territoire vivant : cases reprises ou bientôt libérées, et une boucle pour les défendre. */
 function TerritoryCard({ alerts }: { alerts: TerritoryAlerts }) {
   const theme = useTheme();
@@ -490,6 +638,9 @@ const styles = StyleSheet.create({
   stat: {
     flex: 1,
     alignItems: 'center',
+  },
+  event: {
+    gap: Spacing.one,
   },
   cardPressable: {
     alignSelf: 'stretch',

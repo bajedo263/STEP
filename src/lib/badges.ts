@@ -10,6 +10,8 @@ export type BadgeStats = {
   /** Cases à soi en ce moment. */
   cells: number;
   friends: number;
+  /** Événements à durée limitée réussis. */
+  events: number;
   /** Quartiers dont on a découvert au moins la moitié des lieux. */
   zonesExplored: number;
   /** Quartiers dont on a découvert tous les lieux. */
@@ -24,7 +26,8 @@ export type BadgeFamily =
   | 'zones-complete'
   | 'distance'
   | 'cells'
-  | 'friends';
+  | 'friends'
+  | 'events';
 
 export type Badge = {
   id: string;
@@ -128,6 +131,16 @@ const FAMILIES: FamilyDefinition[] = [
       target,
       title: ['En bonne compagnie', 'Bande de marcheurs'][index],
       description: `${plural(target, 'ami')} sur STEP`,
+    })),
+  },
+  {
+    family: 'events',
+    emoji: '🎪',
+    value: (stats) => stats.events,
+    tiers: [1, 5, 20].map((target, index) => ({
+      target,
+      title: ['De la partie', 'Habitué des événements', 'Toujours là'][index],
+      description: `${plural(target, 'événement')} ${target > 1 ? 'réussis' : 'réussi'}`,
     })),
   },
 ];
