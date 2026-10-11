@@ -66,6 +66,55 @@ export function orsAutocompleteParams(query: string, near: LatLng | null): URLSe
   return params;
 }
 
+/** Villes découpées en arrondissements, reconnus au code postal. */
+const DISTRICT_CITIES: { city: string; prefix: string; max: number }[] = [
+  { city: 'Paris', prefix: '750', max: 20 },
+  { city: 'Lyon', prefix: '6900', max: 9 },
+  { city: 'Marseille', prefix: '130', max: 16 },
+];
+
+/**
+ * Ville suivie de son arrondissement quand on peut le lire au code postal : « Paris 15e »,
+ * « Lyon 1er », « Marseille 8e ». Ailleurs, la ville seule.
+ */
+export function cityWithDistrict(city: string | null, postcode: string | null): string | null {
+  if (!city) return null;
+  const district = districtNumber(city, postcode?.trim() ?? '');
+  if (district === null) return city;
+  return `${city} ${district === 1 ? '1er' : `${district}e`}`;
+}
+
+function districtNumber(city: string, code: string): number | null {
+  // Le 16e arrondissement de Paris a aussi le code 75116.
+  if (city === 'Paris' && code === '75116') return 16;
+  const match = DISTRICT_CITIES.find((d) => d.city === city && code.startsWith(d.prefix));
+  if (!match || code.length !== 5) return null;
+  const value = Number(code.slice(match.prefix.length));
+  return value >= 1 && value <= match.max ? value : null;
+}
+
+const text = (value: unknown) => (typeof value === 'string' && value.trim() ? value.trim() : null);
+
+/**
+ * Libellé d'un lieu : « Nom, numéro rue, Ville arrondissement ». Deux magasins d'une même
+ * enseigne se distinguent ainsi par leur rue et leur quartier. Null sans nom ni rue.
+ */
+export function placeLabel(parts: {
+  name?: unknown;
+  housenumber?: unknown;
+  street?: unknown;
+  postcode?: unknown;
+  city?: unknown;
+}): string | null {
+  const name = text(parts.name);
+  const street = [text(parts.housenumber), text(parts.street)].filter(Boolean).join(' ') || null;
+  const city = cityWithDistrict(text(parts.city), text(parts.postcode));
+  const pieces = [name, street && !name?.includes(street) ? street : null, city].filter(
+    (piece, index, all): piece is string => piece !== null && all.indexOf(piece) === index
+  );
+  return name || street ? pieces.join(', ') : null;
+}
+
 /** Lieux lus dans une réponse GeoJSON de l'autocomplétion. */
 export function parseOrsPlaces(json: unknown): Place[] {
   const features = (json as { features?: unknown[] } | null)?.features;
@@ -75,10 +124,26 @@ export function parseOrsPlaces(json: unknown): Place[] {
   for (const feature of features) {
     const { geometry, properties } = (feature ?? {}) as {
       geometry?: { coordinates?: unknown };
-      properties?: { id?: unknown; gid?: unknown; label?: unknown };
+      properties?: {
+        id?: unknown;
+        gid?: unknown;
+        label?: unknown;
+        name?: unknown;
+        housenumber?: unknown;
+        street?: unknown;
+        postalcode?: unknown;
+        locality?: unknown;
+      };
     };
     const coordinates = geometry?.coordinates;
-    const label = properties?.label;
+    const label =
+      placeLabel({
+        name: properties?.name,
+        housenumber: properties?.housenumber,
+        street: properties?.street,
+        postcode: properties?.postalcode,
+        city: properties?.locality,
+      }) ?? properties?.label;
     if (!Array.isArray(coordinates) || typeof label !== 'string') continue;
     const [longitude, latitude] = coordinates;
     if (!isFiniteNumber(latitude) || !isFiniteNumber(longitude)) continue;

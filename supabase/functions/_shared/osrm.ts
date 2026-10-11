@@ -1,7 +1,7 @@
 // Itinéraires et recherche de lieux de secours, quand OpenRouteService ne répond pas :
 // OSRM piéton de l'association FOSSGIS (OpenStreetMap) et Photon (Komoot).
 // Logique pure, partagée entre les fonctions Edge (Deno) et les tests (Node).
-import type { Place } from './destination.ts';
+import { placeLabel, type Place } from './destination.ts';
 import type { LatLng, LoopRoute } from './loop.ts';
 
 const isFiniteNumber = (value: unknown): value is number =>
@@ -57,7 +57,6 @@ type PhotonProperties = {
   city?: unknown;
 };
 
-const text = (value: unknown) => (typeof value === 'string' && value.trim() ? value.trim() : null);
 
 /** Lieux lus dans une réponse Photon, avec un libellé « Nom, numéro rue, ville ». */
 export function parsePhotonPlaces(json: unknown): Place[] {
@@ -75,15 +74,11 @@ export function parsePhotonPlaces(json: unknown): Place[] {
     const [longitude, latitude] = coordinates;
     if (!isFiniteNumber(latitude) || !isFiniteNumber(longitude)) continue;
 
-    const street = [text(properties.housenumber), text(properties.street)].filter(Boolean).join(' ');
-    const city = text(properties.city);
-    const parts = [text(properties.name), street || null, city].filter(
-      (part, index, all): part is string => part !== null && all.indexOf(part) === index
-    );
-    if (parts.length === 0) continue;
+    const label = placeLabel(properties);
+    if (!label) continue;
     places.push({
       id: `photon/${String(properties.osm_type ?? '')}${String(properties.osm_id ?? `${latitude},${longitude}`)}`,
-      label: parts.join(', '),
+      label,
       coords: { latitude, longitude },
     });
   }

@@ -7,6 +7,7 @@ import {
   orsAutocompleteParams,
   parseDestinationRequest,
   parseOrsPlaces,
+  cityWithDistrict,
   straightDistanceM,
 } from '../../supabase/functions/_shared/destination.ts';
 
@@ -78,4 +79,42 @@ test('detourWaypoint sans écart possible ou au même endroit', () => {
   assert.ok(straightDistanceM(via, { latitude: 48.8545, longitude: 2.35 }) < 1);
   const same = detourWaypoint(paris, paris, 2000, 1);
   assert.ok(Math.abs(straightDistanceM(paris, same) - 1000) < 1);
+});
+
+test('cityWithDistrict lit l’arrondissement au code postal', () => {
+  assert.equal(cityWithDistrict('Paris', '75015'), 'Paris 15e');
+  assert.equal(cityWithDistrict('Paris', '75001'), 'Paris 1er');
+  assert.equal(cityWithDistrict('Paris', '75116'), 'Paris 16e');
+  assert.equal(cityWithDistrict('Lyon', '69003'), 'Lyon 3e');
+  assert.equal(cityWithDistrict('Marseille', '13008'), 'Marseille 8e');
+  assert.equal(cityWithDistrict('Boulogne-Billancourt', '92100'), 'Boulogne-Billancourt');
+  assert.equal(cityWithDistrict('Paris', null), 'Paris');
+  assert.equal(cityWithDistrict(null, '75015'), null);
+});
+
+test('parseOrsPlaces distingue deux magasins par leur rue et leur arrondissement', () => {
+  const places = parseOrsPlaces({
+    features: [
+      {
+        geometry: { coordinates: [2.29, 48.84] },
+        properties: {
+          gid: 'osm:venue:2',
+          label: 'Lidl, Paris, France',
+          name: 'Lidl',
+          housenumber: '28',
+          street: 'Rue de la Croix-Nivert',
+          postalcode: '75015',
+          locality: 'Paris',
+        },
+      },
+      {
+        geometry: { coordinates: [2.27, 48.85] },
+        properties: { gid: 'osm:address:3', name: '12 Rue de Passy', street: 'Rue de Passy', housenumber: '12', postalcode: '75016', locality: 'Paris' },
+      },
+    ],
+  });
+  assert.deepEqual(
+    places.map((p) => p.label),
+    ['Lidl, 28 Rue de la Croix-Nivert, Paris 15e', '12 Rue de Passy, Paris 16e']
+  );
 });
