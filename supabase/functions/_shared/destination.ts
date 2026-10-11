@@ -148,6 +148,58 @@ export function placeLabel(parts: {
   return name || street ? pieces.join(', ') : null;
 }
 
+/** Libellé sans adresse : seulement le nom et la ville (« Monoprix, Paris »). */
+export function labelMissingStreet(label: string): boolean {
+  return label.replace(/, France$/, '').split(', ').length <= 2;
+}
+
+export type Address = {
+  housenumber: string | null;
+  street: string | null;
+  postcode: string | null;
+  city: string | null;
+  citycode: string | null;
+};
+
+/** Distance (m) au-delà de laquelle l'adresse la plus proche n'est plus celle du lieu. */
+const ADDRESS_MAX_DISTANCE_M = 80;
+
+/** Adresse la plus proche lue dans une réponse du géocodage inverse de la Géoplateforme (IGN). */
+export function parseReverseAddress(json: unknown): Address | null {
+  const features = (json as { features?: unknown[] } | null)?.features;
+  const props = (Array.isArray(features) ? features[0] : null) as { properties?: Record<string, unknown> } | null;
+  const p = props?.properties;
+  if (!p) return null;
+  if (typeof p.distance === 'number' && p.distance > ADDRESS_MAX_DISTANCE_M) return null;
+  // Une adresse précise porte un numéro et sa rue ; une rue seule n'a que son nom.
+  const street = text(p.street) ?? (p.type === 'street' ? text(p.name) : null);
+  if (!street) return null;
+  return {
+    housenumber: p.type === 'housenumber' ? text(p.housenumber) : null,
+    street,
+    postcode: text(p.postcode),
+    city: text(p.city),
+    citycode: text(p.citycode),
+  };
+}
+
+/** Libellé complété de la rue : « Monoprix, Paris » → « Monoprix, 12 Rue X, Paris 15e ». */
+export function labelWithAddress(label: string, address: Address): string {
+  const [name, rest] = label.replace(/, France$/, '').split(', ');
+  const district = districtFromInseeCode(address.citycode);
+  const city = address.city ?? rest ?? null;
+  const withStreet = placeLabel({
+    name,
+    housenumber: address.housenumber,
+    street: address.street,
+    postcode: address.postcode,
+    city,
+  });
+  if (!withStreet) return label;
+  // Code postal sans arrondissement (rare) : le code INSEE le donne.
+  return district && cityMissingDistrict(withStreet) ? labelWithDistrict(withStreet, district) : withStreet;
+}
+
 /** Lieux lus dans une réponse GeoJSON de l'autocomplétion. */
 export function parseOrsPlaces(json: unknown): Place[] {
   const features = (json as { features?: unknown[] } | null)?.features;

@@ -3,7 +3,11 @@
 import {
   cityMissingDistrict,
   districtFromInseeCode,
+  labelMissingStreet,
+  labelWithAddress,
   labelWithDistrict,
+  parseReverseAddress,
+  type Address,
   orsAutocompleteParams,
   parseOrsPlaces,
   type Place,
@@ -105,19 +109,43 @@ export async function searchPlaces(query: string, near: LatLng | null, apiKey: s
 }
 
 /**
- * Ajoute l'arrondissement aux lieux de Paris, Lyon et Marseille qui n'en ont pas : les services
- * de recherche ne donnent souvent ni code postal ni quartier pour un magasin. On le demande à
- * l'API Découpage administratif de l'État, d'après les coordonnées ; en cas d'échec, le libellé
- * reste tel quel.
+ * Complète les libellés sans adresse : les services de recherche ne donnent souvent ni rue ni
+ * code postal pour un magasin. La rue et l'arrondissement viennent du géocodage inverse de
+ * l'IGN ; à défaut, l'arrondissement seul vient de l'API Découpage administratif de l'État.
+ * En cas d'échec, le libellé reste tel quel.
  */
 async function withDistricts(places: Place[]): Promise<Place[]> {
   return await Promise.all(
     places.map(async (place) => {
+      // Comme sur un plan, la rue avant le quartier : « Monoprix, 12 Rue X, Paris 15e ».
+      if (labelMissingStreet(place.label)) {
+        const address = await addressAt(place.coords);
+        if (address) return { ...place, label: labelWithAddress(place.label, address) };
+      }
       if (!cityMissingDistrict(place.label)) return place;
       const district = await districtAt(place.coords);
       return district ? { ...place, label: labelWithDistrict(place.label, district) } : place;
     })
   );
+}
+
+/** Adresse la plus proche, par le géocodage inverse de la Géoplateforme (IGN), en France. */
+async function addressAt({ latitude, longitude }: LatLng): Promise<Address | null> {
+  const params = new URLSearchParams({
+    lon: String(longitude),
+    lat: String(latitude),
+    index: 'address',
+    limit: '1',
+  });
+  try {
+    const response = await fetch(`https://data.geopf.fr/geocodage/reverse?${params}`, {
+      headers: { 'User-Agent': USER_AGENT },
+      signal: AbortSignal.timeout(3000),
+    });
+    return response.ok ? parseReverseAddress(await response.json()) : null;
+  } catch {
+    return null;
+  }
 }
 
 async function districtAt({ latitude, longitude }: LatLng): Promise<number | null> {
