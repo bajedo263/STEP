@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, usePathname } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -10,10 +10,14 @@ import { formatDistance } from '@/lib/daily-progress';
 import { formatElapsed } from '@/lib/track';
 import { useActiveWalk, type ActiveWalk } from '@/providers/walk-provider';
 
-/** Bandeau en haut des onglets tant qu'un trajet tourne : un appui pour y revenir. */
+/** Bandeau en haut des onglets tant qu'un trajet tourne : un appui pour y revenir (onglet Carte). */
 export function WalkBanner() {
   const walk = useActiveWalk();
-  return walk ? <Banner walk={walk} /> : null;
+  const pathname = usePathname();
+  if (!walk) return null;
+  // L'onglet Carte affiche déjà le trajet en cours.
+  if (pathname === '/carte' && !walk.summary) return null;
+  return <Banner walk={walk} />;
 }
 
 function Banner({ walk }: { walk: ActiveWalk }) {
@@ -29,7 +33,8 @@ function Banner({ walk }: { walk: ActiveWalk }) {
       <Pressable
         accessibilityRole="button"
         accessibilityHint="Revenir à l’écran du trajet"
-        onPress={() => router.push('/trajet')}
+        // En cours, le trajet se suit dans l'onglet Carte ; terminé, le bilan s'ouvre.
+        onPress={() => (walk.summary ? router.push('/trajet') : router.navigate('/carte'))}
         style={({ pressed }) => [
           styles.pill,
           { backgroundColor: theme.tint },
