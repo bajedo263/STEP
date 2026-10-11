@@ -157,3 +157,110 @@ export function territoryAlertLabel({
   }
   return parts.length > 0 ? `${parts.join(', ')}.` : 'Votre territoire est en sécurité.';
 }
+
+/** Coin de la grille des cases (coordonnées de tuile entières, y vers le sud). */
+type Corner = { x: number; y: number };
+
+/** Un bloc de cases voisines dessiné d'un seul tenant : son contour et ses trous éventuels. */
+export type Territory = { outline: LatLng[]; holes: LatLng[][]; cellCount: number };
+
+/**
+ * Fusionne les cases voisines (par un côté) en blocs : on garde les côtés qu'aucune case du
+ * bloc ne partage, puis on les enchaîne en anneaux. Le plus grand anneau d'un bloc est son
+ * contour, les autres sont ses trous. Plus de damier ni de joints entre les cases.
+ */
+export function territories(cells: Cell[]): Territory[] {
+  const keys = new Set(cells.map(cellKey));
+  const seen = new Set<string>();
+  const result: Territory[] = [];
+  for (const start of cells) {
+    if (seen.has(cellKey(start))) continue;
+    // Le bloc : les cases reliées par un côté.
+    const block: Cell[] = [];
+    const queue = [start];
+    seen.add(cellKey(start));
+    while (queue.length > 0) {
+      const cell = queue.pop()!;
+      block.push(cell);
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const next = { x: cell.x + dx, y: cell.y + dy };
+        const key = cellKey(next);
+        if (keys.has(key) && !seen.has(key)) {
+          seen.add(key);
+          queue.push(next);
+        }
+      }
+    }
+    const rings = blockRings(block, keys).sort((a, b) => Math.abs(ringArea(b)) - Math.abs(ringArea(a)));
+    if (rings.length === 0) continue;
+    result.push({
+      outline: rings[0].map(cornerToLatLng),
+      holes: rings.slice(1).map((ring) => ring.map(cornerToLatLng)),
+      cellCount: block.length,
+    });
+  }
+  return result;
+}
+
+/** Anneaux du bord d'un bloc, côtés orientés dans le sens des aiguilles d'une montre. */
+function blockRings(block: Cell[], keys: Set<string>): Corner[][] {
+  const edges = new Map<string, Corner[]>();
+  const add = (from: Corner, to: Corner) => {
+    const key = cellKey(from);
+    edges.set(key, [...(edges.get(key) ?? []), to]);
+  };
+  for (const { x, y } of block) {
+    if (!keys.has(cellKey({ x, y: y - 1 }))) add({ x, y }, { x: x + 1, y });
+    if (!keys.has(cellKey({ x: x + 1, y }))) add({ x: x + 1, y }, { x: x + 1, y: y + 1 });
+    if (!keys.has(cellKey({ x, y: y + 1 }))) add({ x: x + 1, y: y + 1 }, { x, y: y + 1 });
+    if (!keys.has(cellKey({ x: x - 1, y }))) add({ x, y: y + 1 }, { x, y });
+  }
+  const rings: Corner[][] = [];
+  for (const [startKey, targets] of edges) {
+    while (targets.length > 0) {
+      const [sx, sy] = startKey.split('/').map(Number);
+      const ring: Corner[] = [{ x: sx, y: sy }];
+      let previous: Corner = { x: sx, y: sy };
+      let current = targets.shift()!;
+      while (cellKey(current) !== startKey) {
+        ring.push(current);
+        const options = edges.get(cellKey(current)) ?? [];
+        if (options.length === 0) break;
+        // Deux côtés partent d'un même coin (trou touché en diagonale) : on tourne à droite.
+        const dx = current.x - previous.x;
+        const dy = current.y - previous.y;
+        const right = options.findIndex((o) => o.x - current.x === -dy && o.y - current.y === dx);
+        const index = options.length > 1 && right >= 0 ? right : 0;
+        const next = options.splice(index, 1)[0];
+        previous = current;
+        current = next;
+      }
+      rings.push(withoutStraightCorners(ring));
+    }
+  }
+  return rings;
+}
+
+/** Retire les coins au milieu d'un côté droit : un bloc de 3 cases alignées garde 4 coins. */
+function withoutStraightCorners(ring: Corner[]): Corner[] {
+  return ring.filter((corner, i) => {
+    const before = ring[(i - 1 + ring.length) % ring.length];
+    const after = ring[(i + 1) % ring.length];
+    return (corner.x - before.x) * (after.y - corner.y) !== (corner.y - before.y) * (after.x - corner.x);
+  });
+}
+
+function ringArea(ring: Corner[]): number {
+  let area = 0;
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i];
+    const b = ring[(i + 1) % ring.length];
+    area += a.x * b.y - b.x * a.y;
+  }
+  return area / 2;
+}
+
+function cornerToLatLng({ x, y }: Corner): LatLng {
+  const { north, west } = zoneBbox({ x, y }, CONQUEST_ZOOM);
+  return { latitude: north, longitude: west };
+}

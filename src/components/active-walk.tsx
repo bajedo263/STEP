@@ -19,13 +19,19 @@ import { PhotoZoomOverlay } from '@/components/zoomable-photo';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
-import { BottomTabInset, ConquestMineColor, MaxContentWidth, Spacing } from '@/constants/theme';
+import {
+  BottomTabInset,
+  ConquestMineColor,
+  MaxContentWidth,
+  Spacing,
+  withAlpha,
+} from '@/constants/theme';
 import { useCollapsiblePanel } from '@/hooks/use-collapsible-panel';
 import { useTheme } from '@/hooks/use-theme';
 import { useHeading } from '@/hooks/use-heading';
 import { localFlag, setLocalFlag } from '@/hooks/use-local-flag';
 import { useElapsedSeconds } from '@/hooks/use-walk-tracker';
-import { cellKey, cellPolygon, cellsAlongTrack } from '@/lib/conquest';
+import { cellsAlongTrack, territories } from '@/lib/conquest';
 import { formatDistance } from '@/lib/daily-progress';
 import { distanceM, nearestPois } from '@/lib/pois';
 import {
@@ -254,12 +260,15 @@ export function ActiveWalkView({ walk, onFinish }: { walk: Walk; onFinish: () =>
                 />
               );
             })}
-            {cells.map((cell) => (
+            {territories(cells).map((territory, index) => (
+              // Couleurs explicites en rgba() : sans contour, Apple Maps dessinait les cases en noir.
               <Polygon
-                key={cellKey(cell)}
-                coordinates={cellPolygon(cell)}
-                fillColor={`${ConquestMineColor}40`}
-                strokeWidth={0}
+                key={`${index}-${territory.cellCount}`}
+                coordinates={territory.outline}
+                holes={territory.holes}
+                fillColor={withAlpha(ConquestMineColor, 0.3)}
+                strokeColor={withAlpha(ConquestMineColor, 1)}
+                strokeWidth={2}
               />
             ))}
             {position ? (
