@@ -78,6 +78,7 @@ import {
 import { clusterByRegion, FAN_OUT_DELTA, fanOut } from '@/lib/map-declutter';
 import { type Poi } from '@/lib/pois';
 import { strideLengthMeters } from '@/lib/steps';
+import { haversineMeters } from '@/lib/track';
 import { startWalk, useActiveWalk, walkInProgress } from '@/providers/walk-provider';
 
 const formatNumber = (value: number) => Math.round(value).toLocaleString('fr-FR');
@@ -680,8 +681,12 @@ function PlanMap() {
                                 { backgroundColor: theme.backgroundElement },
                                 pressed && styles.pressed,
                               ]}>
-                              <ThemedText type="small" numberOfLines={2}>
+                              <ThemedText type="small" numberOfLines={2} style={styles.flex}>
                                 {place.label}
+                              </ThemedText>
+                              {/* À vol d'oiseau depuis la position actuelle. */}
+                              <ThemedText type="small" themeColor="textSecondary">
+                                {formatDistance(haversineMeters(start, place.coords))}
                               </ThemedText>
                             </Pressable>
                           ))
@@ -913,6 +918,9 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   place: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
     padding: Spacing.three,
     borderRadius: Spacing.three,
   },
