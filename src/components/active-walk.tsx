@@ -7,7 +7,7 @@ import {
   View,
   type GestureResponderEvent,
 } from 'react-native';
-import MapView, { Marker, Polygon } from 'react-native-maps';
+import MapView, { Marker } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Celebration } from '@/components/celebration';
@@ -16,16 +16,11 @@ import { PoiMarker, RouteLine } from '@/components/map-route';
 import { PoiBanner } from '@/components/poi-banner';
 import { PoiSheet } from '@/components/poi-sheet';
 import { PhotoZoomOverlay } from '@/components/zoomable-photo';
+import { TerritoryShape, territoryKey } from '@/components/territory-shape';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
-import {
-  BottomTabInset,
-  ConquestMineColor,
-  MaxContentWidth,
-  Spacing,
-  withAlpha,
-} from '@/constants/theme';
+import { BottomTabInset, ConquestMineColor, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useCollapsiblePanel } from '@/hooks/use-collapsible-panel';
 import { useTheme } from '@/hooks/use-theme';
 import { useHeading } from '@/hooks/use-heading';
@@ -260,15 +255,12 @@ export function ActiveWalkView({ walk, onFinish }: { walk: Walk; onFinish: () =>
                 />
               );
             })}
-            {territories(cells).map((territory, index) => (
-              // Couleurs explicites en rgba() : sans contour, Apple Maps dessinait les cases en noir.
-              <Polygon
-                key={`${index}-${territory.cellCount}`}
-                coordinates={territory.outline}
-                holes={territory.holes}
-                fillColor={withAlpha(ConquestMineColor, 0.3)}
-                strokeColor={withAlpha(ConquestMineColor, 1)}
-                strokeWidth={2}
+            {territories(cells).map((territory) => (
+              <TerritoryShape
+                key={territoryKey('mine', territory)}
+                territory={territory}
+                color={ConquestMineColor}
+                fill={0.3}
               />
             ))}
             {position ? (

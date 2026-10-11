@@ -115,6 +115,14 @@ test('territories : cases voisines fusionnées, diagonales séparées, trou', ()
   // En L : 6 coins.
   assert.equal(territories([{ x: 0, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }])[0].outline.length, 6);
 
+  // Rangée de 4 et 2 cases au-dessus de la 4e, décalées d'une case : 8 coins, contour fermé.
+  const steps = territories([
+    { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 1 }, { x: 3, y: 0 }, { x: 4, y: 0 },
+  ]);
+  assert.equal(steps.length, 1);
+  assert.equal(steps[0].outline.length, 8);
+  assert.equal(steps[0].cellCount, 6);
+
   // Deux cases qui ne se touchent que par un coin : deux blocs.
   assert.equal(territories([{ x: 0, y: 0 }, { x: 1, y: 1 }]).length, 2);
 
