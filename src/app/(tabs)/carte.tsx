@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -21,6 +21,7 @@ import {
   type LoopHandlesOverlayHandle,
 } from '@/components/loop-handles-overlay';
 import { PoiClusterMarker, PoiMarker, RouteLine } from '@/components/map-route';
+import { ActiveWalkView, confirmFinish } from '@/components/active-walk';
 import { PoiSheet } from '@/components/poi-sheet';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -76,7 +77,7 @@ import {
 import { clusterByRegion, FAN_OUT_DELTA, fanOut } from '@/lib/map-declutter';
 import { type Poi } from '@/lib/pois';
 import { strideLengthMeters } from '@/lib/steps';
-import { startWalk, walkInProgress } from '@/providers/walk-provider';
+import { startWalk, useActiveWalk, walkInProgress } from '@/providers/walk-provider';
 
 const formatNumber = (value: number) => Math.round(value).toLocaleString('fr-FR');
 
@@ -89,7 +90,29 @@ const MODE_OPTIONS: { value: MapMode; label: string }[] = [
 
 /** Glissé vertical à partir duquel le panneau se replie ou se déplie. */
 
+/**
+ * Onglet Carte : pendant un trajet (écran du trajet réduit), le trajet en cours prend la place
+ * de la préparation des boucles ; une fois terminé, le bilan s'ouvre.
+ */
 export default function MapScreen() {
+  const walk = useActiveWalk();
+  const focused = useIsFocused();
+  if (walk && !walk.summary) {
+    // Sous l'écran du trajet ouvert, inutile de dessiner une seconde carte qui suit la marche.
+    if (!focused) return <View style={styles.container} />;
+    return (
+      <ActiveWalkView
+        walk={walk}
+        embedded
+        onFinish={() => confirmFinish(walk, () => router.push('/trajet'))}
+      />
+    );
+  }
+  return <PlanMap />;
+}
+
+/** Préparation d'un trajet : boucle ou destination, lieux à voir, Conquête. */
+function PlanMap() {
   const theme = useTheme();
   const location = useCurrentLocation();
   const loop = useLoopRoute();
