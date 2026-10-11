@@ -10,7 +10,10 @@ import {
   cityMissingDistrict,
   cityWithDistrict,
   districtFromInseeCode,
+  labelMissingStreet,
+  labelWithAddress,
   labelWithDistrict,
+  parseReverseAddress,
   straightDistanceM,
 } from '../../supabase/functions/_shared/destination.ts';
 
@@ -135,4 +138,28 @@ test('arrondissement ajouté d’après le code INSEE', () => {
   assert.equal(labelWithDistrict('Lidl, Paris', 15), 'Lidl, Paris 15e');
   assert.equal(labelWithDistrict('Lidl, Paris, France', 1), 'Lidl, Paris 1er');
   assert.equal(labelWithDistrict('Lidl, Paris 15e', 16), 'Lidl, Paris 15e');
+});
+
+test('labelMissingStreet : nom et ville seulement', () => {
+  assert.equal(labelMissingStreet('Monoprix, Paris'), true);
+  assert.equal(labelMissingStreet('Monoprix, Paris, France'), true);
+  assert.equal(labelMissingStreet('Monoprix, 49 Rue d\'Auteuil, Paris 16e'), false);
+});
+
+const reverse = (properties: Record<string, unknown>) => ({ type: 'FeatureCollection', features: [{ properties }] });
+
+test('parseReverseAddress : adresse proche, rue seule, trop loin', () => {
+  assert.deepEqual(
+    parseReverseAddress(reverse({ type: 'housenumber', housenumber: '12', street: 'Rue du Commerce', name: '12 Rue du Commerce', postcode: '75015', city: 'Paris', citycode: '75115', distance: 14 })),
+    { housenumber: '12', street: 'Rue du Commerce', postcode: '75015', city: 'Paris', citycode: '75115' }
+  );
+  assert.equal(parseReverseAddress(reverse({ type: 'street', name: 'Rue Linois', city: 'Paris' }))?.street, 'Rue Linois');
+  assert.equal(parseReverseAddress(reverse({ type: 'housenumber', street: 'Rue X', distance: 300 })), null);
+  assert.equal(parseReverseAddress({ features: [] }), null);
+});
+
+test('labelWithAddress : la rue avant l\'arrondissement', () => {
+  const address = { housenumber: '12', street: 'Rue du Commerce', postcode: '75015', city: 'Paris', citycode: '75115' };
+  assert.equal(labelWithAddress('Monoprix, Paris', address), 'Monoprix, 12 Rue du Commerce, Paris 15e');
+  assert.equal(labelWithAddress('Monoprix, Paris 15e', { ...address, postcode: null }), 'Monoprix, 12 Rue du Commerce, Paris 15e');
 });
