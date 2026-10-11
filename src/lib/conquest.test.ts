@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
+  CONQUEST_MAX_SPEED_MS,
   capturedCells,
   conquestUnlocked,
   cellOf,
@@ -127,4 +128,15 @@ test('territories : cases voisines fusionnées, diagonales séparées, trou', ()
   assert.equal(donut[0].holes.length, 1);
   assert.equal(donut[0].holes[0].length, 4);
   assert.equal(territories([]).length, 0);
+});
+
+test('capturedCells : rien au-delà de 15 km/h de moyenne', () => {
+  // 1 km vers le nord, en points tous les ~50 m.
+  const points = Array.from({ length: 21 }, (_, i) => ({ latitude: 48.85 + i * 0.00045, longitude: 2.35 }));
+  const timed = (seconds: number) =>
+    points.map((p, i) => ({ ...p, timestamp: (i * seconds * 1000) / (points.length - 1) }));
+  assert.ok(capturedCells(timed(600)).length > 0); // 6 km/h à pied
+  assert.equal(capturedCells(timed(120)).length, 0); // 30 km/h à vélo
+  assert.ok(capturedCells(points).length > 0); // sans horodatage : pas de contrôle
+  assert.ok(CONQUEST_MAX_SPEED_MS > 4 && CONQUEST_MAX_SPEED_MS < 4.2);
 });

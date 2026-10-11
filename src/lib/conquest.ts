@@ -74,11 +74,18 @@ export function cellRangeOf(region: Region): { minX: number; minY: number; maxX:
   return range;
 }
 
+/** Au-delà de cette vitesse (vélo, voiture, transports), on ne conquiert rien ; la course passe. */
+export const CONQUEST_MAX_SPEED_MS = 15 / 3.6;
+
 /** Cases qu'un trajet terminé prend à son enregistrement (même règle que la base). */
-export function capturedCells(points: LatLng[]): Cell[] {
+export function capturedCells(points: (LatLng & { timestamp?: number })[]): Cell[] {
   let total = 0;
   for (let i = 1; i < points.length; i++) total += distanceM(points[i - 1], points[i]);
-  return total < CONQUEST_MIN_WALK_M ? [] : cellsAlongTrack(points, CONQUEST_SKIP_M, CONQUEST_SKIP_M);
+  if (total < CONQUEST_MIN_WALK_M) return [];
+  // Trop rapide en moyenne : la base ne prend aucune case non plus.
+  const seconds = ((points.at(-1)?.timestamp ?? 0) - (points[0]?.timestamp ?? 0)) / 1000;
+  if (seconds > 0 && total / seconds > CONQUEST_MAX_SPEED_MS) return [];
+  return cellsAlongTrack(points, CONQUEST_SKIP_M, CONQUEST_SKIP_M);
 }
 
 /** Pas du jour à partir desquels la Conquête s'active : les trajets colorent alors la carte. */
