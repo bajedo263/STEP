@@ -17,6 +17,7 @@ import { HeadingCone } from '@/components/heading-cone';
 import { PoiMarker, RouteLine } from '@/components/map-route';
 import { PoiBanner } from '@/components/poi-banner';
 import { PoiSheet } from '@/components/poi-sheet';
+import { PhotoZoomOverlay } from '@/components/zoomable-photo';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
@@ -144,7 +145,11 @@ function ActiveWalk({ walk, onFinish }: { walk: Walk; onFinish: () => void }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // Fiche du lieu fermée d'un geste : elle ne revient qu'au lieu suivant.
   const [closedPoiId, setClosedPoiId] = useState<string | null>(null);
-  const banner = discovery.here && discovery.here.id !== closedPoiId ? discovery.here : null;
+  // Un lieu déjà ouvert en haut de l'écran ne s'affiche pas une seconde fois en bas.
+  const banner =
+    discovery.here && discovery.here.id !== closedPoiId && discovery.here.id !== selectedId
+      ? discovery.here
+      : null;
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
   // Boussole : la carte pivote avec le téléphone pour montrer droit devant ce qui est en face.
@@ -439,6 +444,7 @@ function ActiveWalk({ walk, onFinish }: { walk: Walk; onFinish: () => void }) {
           topOffset={TOP_BUTTONS_HEIGHT}
         />
       ) : null}
+      <PhotoZoomOverlay />
       <Celebration
         visible={celebrating}
         title="10 000 pas !"
