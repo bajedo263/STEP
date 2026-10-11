@@ -64,17 +64,14 @@ export function WalkDone({
           {saveState === 'too-short' ? 'Trajet terminé' : 'Bravo !'}
         </ThemedText>
         {region ? (
-          // Aperçu fixe du chemin parcouru.
-          <View style={styles.recap}>
+          // Aperçu fixe du chemin parcouru. Les gestes sont bloqués par la vue qui l'entoure : iOS
+          // réutilise la vue native de cette carte pour la suivante (celle de l'onglet Carte), et un
+          // pointerEvents="none" posé sur la carte y restait, la rendant impossible à déplacer.
+          <View style={styles.recap} pointerEvents="none">
             <MapView
               style={StyleSheet.absoluteFill}
               initialRegion={region}
-              scrollEnabled={false}
-              zoomEnabled={false}
-              rotateEnabled={false}
-              pitchEnabled={false}
-              showsPointsOfInterests={false}
-              pointerEvents="none">
+              showsPointsOfInterests={false}>
               <RouteLine coordinates={points} width={5} />
             </MapView>
           </View>
