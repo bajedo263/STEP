@@ -1,4 +1,3 @@
-import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -67,18 +66,9 @@ const conquestAtStart = new Map<number, boolean>();
 
 /**
  * Trajet en cours : la carte qui suit la position, les lieux à venir et le panneau des stats.
- * Affiché dans l'écran du trajet, et dans l'onglet Carte quand on a réduit cet écran
- * (`embedded` : sans bouton « Réduire », au-dessus de la barre d'onglets).
+ * Affiché dans l'onglet Carte tant que le trajet dure, au-dessus de la barre d'onglets.
  */
-export function ActiveWalkView({
-  walk,
-  onFinish,
-  embedded = false,
-}: {
-  walk: Walk;
-  onFinish: () => void;
-  embedded?: boolean;
-}) {
+export function ActiveWalkView({ walk, onFinish }: { walk: Walk; onFinish: () => void }) {
   const { tracker, planned, plannedPois: pois, discovery, estimatedSteps, conquering } = walk;
   const theme = useTheme();
   const elapsed = useElapsedSeconds(tracker.startedAt, true);
@@ -211,13 +201,7 @@ export function ActiveWalkView({
             ? 'STEP a besoin de votre position pour suivre le trajet.'
             : 'Le suivi de position n’a pas pu démarrer.'}
         </ThemedText>
-        <Button
-          title="Retour"
-          onPress={() => {
-            if (!embedded) router.back();
-            endWalk();
-          }}
-        />
+        <Button title="Retour" onPress={endWalk} />
       </ThemedView>
     );
   }
@@ -303,27 +287,6 @@ export function ActiveWalkView({
         </ThemedView>
       )}
 
-      {embedded ? null : (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityHint="Le trajet continue pendant que vous consultez le reste de l’app"
-          // Le trajet continue dans l'onglet Carte, d'où l'on consulte aussi le reste de l'app.
-          onPress={() => {
-            router.back();
-            router.navigate('/carte');
-          }}
-          style={({ pressed }) => [
-            styles.compassButton,
-            styles.minimizeButton,
-            { top: insets.top + Spacing.three, backgroundColor: theme.background },
-            pressed && styles.pressed,
-          ]}>
-          <ThemedText type="smallBold" style={{ color: theme.tint }}>
-            Réduire
-          </ThemedText>
-        </Pressable>
-      )}
-
       {start ? (
         <Pressable
           accessibilityRole="button"
@@ -340,12 +303,9 @@ export function ActiveWalkView({
       ) : null}
 
       <SafeAreaView
-        edges={embedded ? ['left', 'right'] : ['bottom', 'left', 'right']}
+        edges={['left', 'right']}
         // Dans l'onglet Carte, le panneau se pose au-dessus de la barre d'onglets.
-        style={[
-          styles.overlay,
-          embedded && { paddingBottom: insets.bottom + BottomTabInset + Spacing.two },
-        ]}>
+        style={[styles.overlay, { paddingBottom: insets.bottom + BottomTabInset + Spacing.two }]}>
         {banner ? (
           <PoiBanner
             key={banner.id}
@@ -420,7 +380,7 @@ export function ActiveWalkView({
           poi={selected}
           visited={discovery.isVisited(selected)}
           onClose={() => setSelectedId(null)}
-          // Sous les boutons « Réduire » et « Suivre mon cap ».
+          // Sous le bouton « Suivre mon cap ».
           topOffset={TOP_BUTTONS_HEIGHT}
         />
       ) : null}
@@ -459,10 +419,6 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.6,
-  },
-  minimizeButton: {
-    right: undefined,
-    left: Spacing.three,
   },
   compassButton: {
     position: 'absolute',

@@ -15,8 +15,8 @@ export function WalkBanner() {
   const walk = useActiveWalk();
   const pathname = usePathname();
   if (!walk) return null;
-  // L'onglet Carte affiche déjà le trajet en cours.
-  if (pathname === '/carte' && !walk.summary) return null;
+  // L'onglet Carte affiche déjà le trajet en cours, ou son bilan.
+  if (pathname === '/carte') return null;
   return <Banner walk={walk} />;
 }
 
@@ -32,9 +32,8 @@ function Banner({ walk }: { walk: ActiveWalk }) {
     <View pointerEvents="box-none" style={[styles.wrapper, { top: insets.top + Spacing.one }]}>
       <Pressable
         accessibilityRole="button"
-        accessibilityHint="Revenir à l’écran du trajet"
-        // En cours, le trajet se suit dans l'onglet Carte ; terminé, le bilan s'ouvre.
-        onPress={() => (walk.summary ? router.push('/trajet') : router.navigate('/carte'))}
+        accessibilityHint="Revenir au trajet dans l’onglet Carte"
+        onPress={() => router.navigate('/carte')}
         style={({ pressed }) => [
           styles.pill,
           { backgroundColor: theme.tint },
