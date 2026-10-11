@@ -5,7 +5,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ZoomablePhoto } from '@/components/zoomable-photo';
 import { MaxContentWidth, PoiColor, Radius, Spacing, VisitedPoiColor } from '@/constants/theme';
-import { usePoiStory } from '@/hooks/use-poi-story';
+import { usePoiIntro, usePoiStory } from '@/hooks/use-poi-story';
 import { useTheme } from '@/hooks/use-theme';
 import { POI_KIND_LABELS, type Poi } from '@/lib/pois';
 
@@ -77,9 +77,21 @@ const PHOTO_SIZE = 76;
  * Anecdote du lieu, ou sa description courte en attendant (ou à défaut), avec sa photo
  * Wikipédia quand l'article en a une.
  */
-export function PoiStory({ poi, numberOfLines }: { poi: Poi; numberOfLines?: number }) {
+export function PoiStory({
+  poi,
+  numberOfLines,
+  long = false,
+}: {
+  poi: Poi;
+  numberOfLines?: number;
+  /** Fiche dépliée : toute l'introduction de l'article plutôt que quelques phrases. */
+  long?: boolean;
+}) {
   const story = usePoiStory(poi.wikipediaUrl);
-  const text = story.status === 'ready' ? (story.text ?? poi.description) : poi.description;
+  const intro = usePoiIntro(poi.wikipediaUrl, long);
+  const short = story.status === 'ready' ? (story.text ?? poi.description) : poi.description;
+  const text = long && intro.status === 'ready' && intro.text ? intro.text : short;
+  const loading = story.status === 'loading' || (long && intro.status === 'loading');
   return (
     <View style={styles.storyRow}>
       {story.image ? (
@@ -91,9 +103,7 @@ export function PoiStory({ poi, numberOfLines }: { poi: Poi; numberOfLines?: num
             {text}
           </ThemedText>
         ) : null}
-        {story.status === 'loading' ? (
-          <ActivityIndicator size="small" style={styles.loader} />
-        ) : null}
+        {loading ? <ActivityIndicator size="small" style={styles.loader} /> : null}
       </View>
     </View>
   );

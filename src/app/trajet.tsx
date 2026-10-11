@@ -3,7 +3,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
-  Linking,
   Pressable,
   Share,
   StyleSheet,
@@ -16,18 +15,12 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Celebration } from '@/components/celebration';
 import { HeadingCone } from '@/components/heading-cone';
 import { PoiMarker, RouteLine } from '@/components/map-route';
-import { PoiSheet, PoiStory } from '@/components/poi-sheet';
+import { PoiBanner } from '@/components/poi-banner';
+import { PoiSheet } from '@/components/poi-sheet';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
-import {
-  ConquestMineColor,
-  MaxContentWidth,
-  PoiColor,
-  Radius,
-  Spacing,
-  VisitedPoiColor,
-} from '@/constants/theme';
+import { ConquestMineColor, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useCollapsiblePanel } from '@/hooks/use-collapsible-panel';
 import { useTheme } from '@/hooks/use-theme';
 import { useHeading } from '@/hooks/use-heading';
@@ -37,7 +30,7 @@ import { feedback } from '@/lib/feedback';
 import { cellKey, cellPolygon, cellsAlongTrack } from '@/lib/conquest';
 import { formatDistance } from '@/lib/daily-progress';
 import { formatDuration, regionForCoordinates } from '@/lib/loop';
-import { distanceM, nearestPois, POI_KIND_LABELS, type RoutePoi } from '@/lib/pois';
+import { distanceM, nearestPois, type RoutePoi } from '@/lib/pois';
 import {
   formatElapsed,
   orientedPath,
@@ -149,6 +142,9 @@ function ActiveWalk({ walk, onFinish }: { walk: Walk; onFinish: () => void }) {
   ];
   const start = plannedRoute ? plannedRoute.coordinates[0] : tracker.track.points[0];
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Fiche du lieu fermée d'un geste : elle ne revient qu'au lieu suivant.
+  const [closedPoiId, setClosedPoiId] = useState<string | null>(null);
+  const banner = discovery.here && discovery.here.id !== closedPoiId ? discovery.here : null;
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
   // Boussole : la carte pivote avec le téléphone pour montrer droit devant ce qui est en face.
@@ -277,7 +273,10 @@ function ActiveWalk({ walk, onFinish }: { walk: Walk; onFinish: () => void }) {
                 .catch(() => {});
             }}
             onPress={(event) => {
-              if (event.nativeEvent.action !== 'marker-press') setSelectedId(null);
+              if (event.nativeEvent.action === 'marker-press') return;
+              setSelectedId(null);
+              // Toucher la carte à côté de la fiche du lieu la ferme.
+              if (banner) setClosedPoiId(banner.id);
             }}>
             {plannedRoute ? <RouteLine coordinates={plannedRoute.coordinates} faded /> : null}
             {planned.mode === 'destination' ? (
@@ -362,12 +361,12 @@ function ActiveWalk({ walk, onFinish }: { walk: Walk; onFinish: () => void }) {
       ) : null}
 
       <SafeAreaView edges={['bottom', 'left', 'right']} style={styles.overlay}>
-        {discovery.here ? (
+        {banner ? (
           <PoiBanner
-            poi={discovery.here}
-            status={
-              discovery.hereIsNew ? 'new' : discovery.isVisited(discovery.here) ? 'visited' : 'here'
-            }
+            key={banner.id}
+            poi={banner}
+            status={discovery.hereIsNew ? 'new' : discovery.isVisited(banner) ? 'visited' : 'here'}
+            onClose={() => setClosedPoiId(banner.id)}
           />
         ) : null}
         {/* Glisser vers le bas condense le panneau sur une ligne pour dégager la carte. */}
@@ -447,33 +446,6 @@ function ActiveWalk({ walk, onFinish }: { walk: Walk; onFinish: () => void }) {
         onClose={() => setCelebrating(false)}
       />
     </View>
-  );
-}
-
-/** Le lieu devant lequel on passe : c'est pour lui que le trajet passe par là. */
-function PoiBanner({ poi, status }: { poi: RoutePoi; status: 'new' | 'visited' | 'here' }) {
-  const theme = useTheme();
-  const color = status === 'here' ? PoiColor : VisitedPoiColor;
-  const heading = {
-    new: 'Nouveau lieu découvert !',
-    visited: 'Déjà découvert',
-    here: 'À voir ici',
-  }[status];
-  return (
-    <ThemedView style={[styles.card, styles.banner, { borderColor: color }]}>
-      <ThemedText type="small" style={{ color }}>
-        {`${heading} · ${POI_KIND_LABELS[poi.kind]}`}
-      </ThemedText>
-      <ThemedText type="smallBold">{poi.title}</ThemedText>
-      <PoiStory poi={poi} numberOfLines={4} />
-      {poi.wikipediaUrl ? (
-        <Pressable accessibilityRole="link" onPress={() => Linking.openURL(poi.wikipediaUrl!)}>
-          <ThemedText type="small" style={{ color: theme.tint }}>
-            En savoir plus sur Wikipédia
-          </ThemedText>
-        </Pressable>
-      ) : null}
-    </ThemedView>
   );
 }
 
@@ -731,12 +703,6 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
     elevation: 6,
-  },
-  banner: {
-    gap: Spacing.one,
-    padding: Spacing.three,
-    marginBottom: Spacing.two,
-    borderWidth: 2,
   },
   stats: {
     flexDirection: 'row',

@@ -45,3 +45,48 @@ export function usePoiStory(wikipediaUrl: string | null | undefined): Story {
   if (loaded?.title === title) return { status: 'ready', text: loaded.text, image: loaded.image };
   return { status: 'loading', image: null };
 }
+
+/** Longueur maximale du texte de la fiche dépliée. */
+const LONG_STORY_CHARS = 2000;
+
+// Introductions complètes déjà lues, le temps de la session.
+const introCache = new Map<string, string | null>();
+
+/**
+ * Introduction complète de l'article Wikipédia d'un lieu (plusieurs paragraphes), chargée
+ * seulement quand `enabled` : quand on déplie la fiche pour en lire davantage.
+ */
+export function usePoiIntro(
+  wikipediaUrl: string | null | undefined,
+  enabled: boolean
+): { status: 'loading' } | { status: 'ready'; text: string | null } {
+  const title = wikipediaTitleFromUrl(wikipediaUrl);
+  const [loaded, setLoaded] = useState<{ title: string; text: string | null } | null>(null);
+
+  useEffect(() => {
+    if (!enabled || !title || introCache.has(title)) return;
+    let cancelled = false;
+    const url =
+      'https://fr.wikipedia.org/w/api.php?action=query&format=json&formatversion=2' +
+      '&prop=extracts&exintro=1&explaintext=1&redirects=1&origin=*' +
+      `&titles=${encodeURIComponent(title)}`;
+    fetch(url, { headers: { 'Api-User-Agent': 'STEP/1.0 (https://github.com/bajedo263/step)' } })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((json: { query?: { pages?: { extract?: string }[] } } | null) =>
+        shortStory(json?.query?.pages?.[0]?.extract, LONG_STORY_CHARS)
+      )
+      .catch(() => null)
+      .then((text) => {
+        introCache.set(title, text);
+        if (!cancelled) setLoaded({ title, text });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, title]);
+
+  if (!title) return { status: 'ready', text: null };
+  if (introCache.has(title)) return { status: 'ready', text: introCache.get(title) ?? null };
+  if (loaded?.title === title) return { status: 'ready', text: loaded.text };
+  return { status: 'loading' };
+}
