@@ -1,12 +1,33 @@
 import { Image } from 'expo-image';
-import { useState } from 'react';
-import { Modal, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import {
+  createContext,
+  use,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react';
+import {
+  Modal,
+  Pressable,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
+  makeMutable,
+  measure,
+  useAnimatedRef,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
   withTiming,
+  type AnimatedRef,
+  type SharedValue,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
@@ -24,8 +45,165 @@ const DISMISS_DRAG = 120;
 const SPRING = { damping: 18, stiffness: 220 };
 
 /**
- * Petite photo qu'on agrandit en écartant deux doigts, comme sur Instagram : elle grossit
- * par-dessus la fiche et reprend sa place au lâcher. Un appui l'ouvre en plein écran.
+ * Zoom en cours, partagé entre la zone qu'on pince et la photo agrandie, dessinée tout en haut
+ * de l'écran par `PhotoZoomOverlay` (une seule photo se pince à la fois).
+ */
+const zoom = {
+  active: makeMutable(false),
+  /** Position de la petite photo à l'écran au début du geste. */
+  x: makeMutable(0),
+  y: makeMutable(0),
+  width: makeMutable(0),
+  height: makeMutable(0),
+  scale: makeMutable(1),
+  /** Point entre les doigts au début du geste, puis maintenant (coordonnées de l'écran). */
+  startX: makeMutable(0),
+  startY: makeMutable(0),
+  focalX: makeMutable(0),
+  focalY: makeMutable(0),
+};
+
+// Photo agrandie : côté JavaScript, pour que l'image s'affiche.
+let zoomedImage: PoiImage | null = null;
+const listeners = new Set<() => void>();
+function setZoomedImage(image: PoiImage | null) {
+  zoomedImage = image;
+  listeners.forEach((listener) => listener());
+}
+const subscribe = (listener: () => void) => {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+};
+
+const PinchContext = createContext<{
+  photoHandle: AnimatedRef<Animated.View>;
+  zooming: SharedValue<boolean>;
+} | null>(null);
+
+/**
+ * Zone qu'on pince pour agrandir la photo qu'elle contient, comme sur Instagram : toute la
+ * fiche, bien plus large que la photo. La photo suit les doigts (on l'écarte vers le centre
+ * de l'écran) et reprend sa place au lâcher.
+ */
+export function PinchZone({
+  image,
+  style,
+  children,
+}: {
+  image: PoiImage | null;
+  style?: StyleProp<ViewStyle>;
+  children: ReactNode;
+}) {
+  const photoHandle = useAnimatedRef<Animated.View>();
+  const zoneHandle = useAnimatedRef<Animated.View>();
+  const zoneX = useSharedValue(0);
+  const zoneY = useSharedValue(0);
+  const zooming = useSharedValue(false);
+
+  const pinch = Gesture.Pinch()
+    .enabled(image !== null)
+    // Les rappels du geste tournent sur le fil de l'interface pendant le pincement, jamais au
+    // rendu : la règle prend à tort la mesure des vues pour une lecture de ref.
+    // eslint-disable-next-line react-hooks/refs
+    .onStart((event) => {
+      const photo = measure(photoHandle);
+      const zone = measure(zoneHandle);
+      if (!photo || !zone) return;
+      zoneX.set(zone.pageX);
+      zoneY.set(zone.pageY);
+      zoom.x.set(photo.pageX);
+      zoom.y.set(photo.pageY);
+      zoom.width.set(photo.width);
+      zoom.height.set(photo.height);
+      zoom.startX.set(zone.pageX + event.focalX);
+      zoom.startY.set(zone.pageY + event.focalY);
+      zoom.focalX.set(zone.pageX + event.focalX);
+      zoom.focalY.set(zone.pageY + event.focalY);
+      zoom.scale.set(1);
+      zoom.active.set(true);
+      zooming.set(true);
+      scheduleOnRN(setZoomedImage, image);
+    })
+    .onUpdate((event) => {
+      if (!zooming.get()) return;
+      zoom.scale.set(Math.min(MAX_SCALE, Math.max(1, event.scale)));
+      zoom.focalX.set(zoneX.get() + event.focalX);
+      zoom.focalY.set(zoneY.get() + event.focalY);
+    })
+    .onFinalize(() => {
+      if (!zooming.get()) return;
+      // La photo revient à sa place, puis la petite photo réapparaît.
+      zoom.focalX.set(withSpring(zoom.startX.get(), SPRING));
+      zoom.focalY.set(withSpring(zoom.startY.get(), SPRING));
+      zoom.scale.set(
+        withSpring(1, SPRING, (finished) => {
+          if (!finished) return;
+          zoom.active.set(false);
+          zooming.set(false);
+          scheduleOnRN(setZoomedImage, null);
+        })
+      );
+    });
+
+  const context = useMemo(() => ({ photoHandle, zooming }), [photoHandle, zooming]);
+
+  return (
+    <PinchContext value={context}>
+      <GestureHandlerRootView style={style}>
+        <GestureDetector gesture={pinch}>
+          <Animated.View ref={zoneHandle} collapsable={false}>
+            {children}
+          </Animated.View>
+        </GestureDetector>
+      </GestureHandlerRootView>
+    </PinchContext>
+  );
+}
+
+/**
+ * La photo qu'on est en train de pincer, par-dessus tout l'écran. À poser en dernier dans
+ * l'écran qui affiche des fiches de lieux.
+ */
+export function PhotoZoomOverlay() {
+  const image = useSyncExternalStore(subscribe, () => zoomedImage);
+  const backdropStyle = useAnimatedStyle(() => ({
+    opacity: zoom.active.get() ? Math.min(0.75, (zoom.scale.get() - 1) * 0.6) : 0,
+  }));
+  const photoStyle = useAnimatedStyle(() => {
+    const scale = zoom.scale.get();
+    const centerX = zoom.x.get() + zoom.width.get() / 2;
+    const centerY = zoom.y.get() + zoom.height.get() / 2;
+    // Le point sous les doigts reste sous les doigts : on agrandit autour de lui et on le suit.
+    const movedX = zoom.focalX.get() + scale * (centerX - zoom.startX.get());
+    const movedY = zoom.focalY.get() + scale * (centerY - zoom.startY.get());
+    return {
+      opacity: zoom.active.get() ? 1 : 0,
+      left: zoom.x.get(),
+      top: zoom.y.get(),
+      width: zoom.width.get(),
+      height: zoom.height.get(),
+      transform: [{ translateX: movedX - centerX }, { translateY: movedY - centerY }, { scale }],
+    };
+  });
+  if (!image) return null;
+  return (
+    <View style={[StyleSheet.absoluteFill, styles.overlay]} pointerEvents="none">
+      <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, backdropStyle]} />
+      <Animated.View style={[styles.zoomed, photoStyle]}>
+        <Image
+          source={image.large}
+          placeholder={image.thumbnail}
+          style={styles.thumbnail}
+          contentFit="cover"
+        />
+      </Animated.View>
+    </View>
+  );
+}
+
+/**
+ * Petite photo d'un lieu. Posée dans une `PinchZone`, elle s'agrandit en pinçant la zone ; un
+ * appui l'ouvre en plein écran.
  */
 export function ZoomablePhoto({
   image,
@@ -37,50 +215,40 @@ export function ZoomablePhoto({
   label: string;
 }) {
   const [open, setOpen] = useState(false);
-  const scale = useSharedValue(1);
-  const originX = useSharedValue(size / 2);
-  const originY = useSharedValue(size / 2);
+  const pinch = use(PinchContext);
 
-  const pinch = Gesture.Pinch()
-    .onStart((event) => {
-      // La photo grossit autour des doigts.
-      originX.set(event.focalX);
-      originY.set(event.focalY);
-    })
-    .onUpdate((event) => {
-      scale.set(Math.min(MAX_SCALE, Math.max(1, event.scale)));
-    })
-    .onFinalize(() => {
-      scale.set(withSpring(1, SPRING));
-    });
+  // La version en grand est prête quand on pince.
+  useEffect(() => {
+    Image.prefetch(image.large).catch(() => {});
+  }, [image.large]);
+
   const tap = Gesture.Tap()
     .runOnJS(true)
     .onEnd(() => setOpen(true));
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    zIndex: scale.get() > 1 ? 100 : 0,
-    transformOrigin: [originX.get(), originY.get(), 0],
-    transform: [{ scale: scale.get() }],
+  // Pendant le zoom, seule la photo agrandie est visible.
+  const hiddenStyle = useAnimatedStyle(() => ({
+    opacity: pinch?.zooming.get() ? 0 : 1,
   }));
 
   return (
     <>
-      <GestureHandlerRootView style={[styles.thumbnailRoot, { width: size, height: size }]}>
-        <GestureDetector gesture={Gesture.Race(pinch, tap)}>
-          <Animated.View
-            accessible
-            accessibilityRole="imagebutton"
-            accessibilityLabel={`Photo : ${label}. Touchez pour l’agrandir.`}
-            style={[{ width: size, height: size }, animatedStyle]}>
-            <Image
-              source={image.thumbnail}
-              style={styles.thumbnail}
-              contentFit="cover"
-              transition={200}
-            />
-          </Animated.View>
-        </GestureDetector>
-      </GestureHandlerRootView>
+      <GestureDetector gesture={tap}>
+        <Animated.View
+          ref={pinch?.photoHandle}
+          collapsable={false}
+          accessible
+          accessibilityRole="imagebutton"
+          accessibilityLabel={`Photo : ${label}. Touchez pour l’agrandir.`}
+          style={[{ width: size, height: size }, hiddenStyle]}>
+          <Image
+            source={image.thumbnail}
+            style={styles.thumbnail}
+            contentFit="cover"
+            transition={200}
+          />
+        </Animated.View>
+      </GestureDetector>
       <PhotoViewer image={image} label={label} visible={open} onClose={() => setOpen(false)} />
     </>
   );
@@ -237,10 +405,12 @@ function PhotoViewer({
 }
 
 const styles = StyleSheet.create({
-  thumbnailRoot: {
-    // La photo pincée déborde de son cadre, par-dessus la fiche.
-    overflow: 'visible',
-    zIndex: 10,
+  overlay: {
+    zIndex: 1000,
+    elevation: 1000,
+  },
+  zoomed: {
+    position: 'absolute',
   },
   thumbnail: {
     width: '100%',
