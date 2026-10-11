@@ -169,17 +169,17 @@ export function hasArrived(path: LatLng[], track: Track): boolean {
 }
 
 /**
- * Distance restant à parcourir le long du trajet prévu depuis la dernière position.
+ * Distance déjà parcourue le long du trajet prévu, d'après la dernière position.
  *
  * Un trajet repasse souvent par la même rue (aller-retour vers un lieu, boucle qui revient à
  * son départ) : le point le plus proche peut alors être sur l'autre passage, et le chiffre
  * grimpe à mesure qu'on avance. Parmi les passages proches, on retient celui qui correspond
  * le mieux à la distance déjà marchée.
  */
-export function remainingAlongPath(path: LatLng[], track: Track): number {
+export function progressAlongPath(path: LatLng[], track: Track): number {
   const total = pathLength(path);
   const position = track.points.at(-1);
-  if (!position) return total;
+  if (!position) return 0;
   let best: PathProjection | null = null;
   for (const projection of projectOnSegments(path, position)) {
     if (projection.distanceM > 2 * SNAP_M) continue;
@@ -191,8 +191,70 @@ export function remainingAlongPath(path: LatLng[], track: Track): number {
     }
   }
   // Loin du trajet (détour), on retombe sur l'estimation par la distance parcourue.
-  if (!best) return Math.max(0, total - track.distanceM);
-  return Math.max(0, total - best.alongM);
+  return Math.min(total, best ? best.alongM : track.distanceM);
+}
+
+/** Distance restant à parcourir le long du trajet prévu depuis la dernière position. */
+export function remainingAlongPath(path: LatLng[], track: Track): number {
+  return Math.max(0, pathLength(path) - progressAlongPath(path, track));
+}
+
+/** Une boucle revient à moins de cette distance de son départ. */
+const LOOP_CLOSE_M = 60;
+/** Autour du départ d'une boucle, on ne sait pas encore dans quel sens on la fait. */
+const DIRECTION_MARGIN_M = 50;
+
+/**
+ * Vrai si l'on fait la boucle dans l'autre sens : le premier passage qu'on emprunte sans
+ * ambiguïté est dans la seconde moitié du tracé. Faux pour un trajet qui n'est pas une boucle.
+ */
+export function walksLoopBackwards(path: LatLng[], track: Track): boolean {
+  if (path.length < 3 || haversineMeters(path[0], path[path.length - 1]) > LOOP_CLOSE_M) {
+    return false;
+  }
+  const total = pathLength(path);
+  const half = total / 2;
+  for (const point of track.points) {
+    const near = projectOnSegments(path, point).filter((p) => p.distanceM <= 2 * SNAP_M);
+    if (near.length === 0) continue;
+    // Tout près du départ, ou sur un tronçon commun à l'aller et au retour : on attend.
+    if (near.some((p) => p.alongM < DIRECTION_MARGIN_M || p.alongM > total - DIRECTION_MARGIN_M)) {
+      continue;
+    }
+    if (near.every((p) => p.alongM < half)) return false;
+    if (near.every((p) => p.alongM > half)) return true;
+  }
+  return false;
+}
+
+/** Le trajet prévu dans le sens où on le marche : une boucle peut se faire à l'envers. */
+export function orientedPath(path: LatLng[], track: Track): LatLng[] {
+  return walksLoopBackwards(path, track) ? [...path].reverse() : path;
+}
+
+/**
+ * Les `count` prochains lieux le long du trajet, au-delà de `progressM` mètres parcourus. Un
+ * lieu devant lequel le trajet passe deux fois compte au passage qui reste à faire.
+ */
+export function upcomingAlongPath<T extends { coords: LatLng }>(
+  pois: T[],
+  path: LatLng[],
+  progressM: number,
+  count = 3
+): T[] {
+  return pois
+    .flatMap((poi) => {
+      const projections = projectOnSegments(path, poi.coords);
+      if (projections.length === 0) return [];
+      const closest = Math.min(...projections.map((p) => p.distanceM));
+      const ahead = projections
+        .filter((p) => p.distanceM <= closest + SNAP_M && p.alongM >= progressM - SNAP_M)
+        .map((p) => p.alongM);
+      return ahead.length > 0 ? [{ poi, alongM: Math.min(...ahead) }] : [];
+    })
+    .sort((a, b) => a.alongM - b.alongM)
+    .slice(0, count)
+    .map(({ poi }) => poi);
 }
 
 /** Tracé au format attendu par PostGIS, ou null s'il a moins de deux points. */
