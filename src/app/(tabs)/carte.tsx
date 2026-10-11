@@ -1,4 +1,4 @@
-import { router, useIsFocused, useLocalSearchParams } from 'expo-router';
+import { useIsFocused, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -23,6 +23,7 @@ import {
 import { PoiClusterMarker, PoiMarker, RouteLine } from '@/components/map-route';
 import { ActiveWalkView, confirmFinish } from '@/components/active-walk';
 import { PoiSheet } from '@/components/poi-sheet';
+import { WalkDone } from '@/components/walk-done';
 import { PhotoZoomOverlay } from '@/components/zoomable-photo';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -79,7 +80,13 @@ import { clusterByRegion, FAN_OUT_DELTA, fanOut } from '@/lib/map-declutter';
 import { type Poi } from '@/lib/pois';
 import { strideLengthMeters } from '@/lib/steps';
 import { haversineMeters } from '@/lib/track';
-import { startWalk, useActiveWalk, walkInProgress } from '@/providers/walk-provider';
+import {
+  endWalk,
+  startWalk,
+  useActiveWalk,
+  useWalkStarting,
+  walkInProgress,
+} from '@/providers/walk-provider';
 
 const formatNumber = (value: number) => Math.round(value).toLocaleString('fr-FR');
 
@@ -93,21 +100,36 @@ const MODE_OPTIONS: { value: MapMode; label: string }[] = [
 /** Glissé vertical à partir duquel le panneau se replie ou se déplie. */
 
 /**
- * Onglet Carte : pendant un trajet (écran du trajet réduit), le trajet en cours prend la place
- * de la préparation des boucles ; une fois terminé, le bilan s'ouvre.
+ * Onglet Carte : on y prépare un trajet, on le suit une fois lancé, puis on y lit son bilan
+ * jusqu'à le fermer.
  */
 export default function MapScreen() {
   const walk = useActiveWalk();
+  const starting = useWalkStarting();
   const focused = useIsFocused();
-  if (walk && !walk.summary) {
-    // Sous l'écran du trajet ouvert, inutile de dessiner une seconde carte qui suit la marche.
-    if (!focused) return <View style={styles.container} />;
+  if (walk?.summary) {
     return (
-      <ActiveWalkView
-        walk={walk}
-        embedded
-        onFinish={() => confirmFinish(walk, () => router.push('/trajet'))}
+      <WalkDone
+        summary={walk.summary}
+        saveState={walk.saveState}
+        discovered={walk.discovery.discovered}
+        cellCount={walk.cellCount}
+        points={walk.tracker.track.points}
+        onRetry={walk.retrySave}
+        onClose={endWalk}
       />
+    );
+  }
+  if (walk) {
+    // Depuis un autre onglet, inutile de dessiner une carte qui suit la marche.
+    if (!focused) return <View style={styles.container} />;
+    return <ActiveWalkView walk={walk} onFinish={() => confirmFinish(walk)} />;
+  }
+  if (starting) {
+    return (
+      <ThemedView style={[styles.container, styles.centeredScreen]}>
+        <ThemedText themeColor="textSecondary">Démarrage du trajet…</ThemedText>
+      </ThemedView>
     );
   }
   return <PlanMap />;
@@ -294,14 +316,11 @@ function PlanMap() {
   const go = (walk: PlannedWalk) => {
     // Un seul trajet à la fois : celui qui est en cours continue en fond de l'app.
     if (walkInProgress()) {
-      Alert.alert('Un trajet est déjà en cours', 'Terminez-le avant d’en commencer un autre.', [
-        { text: 'Annuler', style: 'cancel' },
-        { text: 'Reprendre le trajet', onPress: () => router.push('/trajet') },
-      ]);
+      Alert.alert('Un trajet est déjà en cours', 'Terminez-le avant d’en commencer un autre.');
       return;
     }
+    // Le trajet s'affiche aussitôt à la place de la préparation, dans ce même onglet.
     startWalk(walk);
-    router.push('/trajet');
   };
   const goToPin = (coords: LatLng) => {
     const place: Place = {

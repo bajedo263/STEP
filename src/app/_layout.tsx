@@ -34,10 +34,6 @@ function RootNavigator() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Protected guard={session !== null && onboarded}>
           <Stack.Screen name="(tabs)" />
-          <Stack.Screen
-            name="trajet"
-            options={{ presentation: 'fullScreenModal', gestureEnabled: false }}
-          />
           <Stack.Screen name="profil" options={{ presentation: 'modal' }} />
           <Stack.Screen name="ami" options={{ presentation: 'modal' }} />
           <Stack.Screen name="souvenirs" options={{ presentation: 'modal' }} />
