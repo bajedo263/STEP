@@ -4,7 +4,13 @@ import { AppState } from 'react-native';
 
 import { notifyConquestChanged } from '@/hooks/use-conquest';
 import { useTodaySteps } from '@/hooks/use-today-steps';
-import { CONQUEST_SKIP_M, cellKey, cellOf, conquestUnlocked } from '@/lib/conquest';
+import {
+  CONQUEST_MAX_SPEED_MS,
+  CONQUEST_SKIP_M,
+  cellKey,
+  cellOf,
+  conquestUnlocked,
+} from '@/lib/conquest';
 import type { LatLng } from '@/lib/loop';
 import { supabase } from '@/lib/supabase';
 import { haversineMeters } from '@/lib/track';
@@ -25,7 +31,8 @@ const subscribeAppState = (listener: () => void) => {
  * passe se colorent à son nom, sans lancer de trajet. La position n'est suivie que pendant que
  * l'app est ouverte (Expo Go ne la suit pas en arrière-plan) et hors trajet, qui prend lui-même
  * ses cases. Comme pour un trajet, rien n'est pris à moins de 150 m de l'endroit où le suivi a
- * commencé : l'adresse de départ, souvent son domicile, n'apparaît pas sur la carte.
+ * commencé : l'adresse de départ, souvent son domicile, n'apparaît pas sur la carte. Les
+ * positions prises à plus de 15 km/h (vélo, voiture, transports) ne comptent pas.
  */
 export function usePassiveConquest() {
   const today = useTodaySteps();
@@ -40,6 +47,7 @@ export function usePassiveConquest() {
     let cancelled = false;
     let subscription: Location.LocationSubscription | null = null;
     let origin: LatLng | null = null;
+    let previous: { point: LatLng; timestamp: number } | null = null;
     let pending: LatLng[] = [];
     const sent = new Set<string>();
 
@@ -58,9 +66,20 @@ export function usePassiveConquest() {
       if (cancelled || !permission.granted) return;
       const watch = await Location.watchPositionAsync(
         { accuracy: Location.Accuracy.Balanced, distanceInterval: 15 },
-        ({ coords }) => {
+        ({ coords, timestamp }) => {
           if (coords.accuracy !== null && coords.accuracy > MAX_ACCURACY_M) return;
           const point = { latitude: coords.latitude, longitude: coords.longitude };
+          // Vitesse donnée par le GPS, sinon calculée depuis la position précédente.
+          const last = previous;
+          previous = { point, timestamp };
+          const seconds = last ? (timestamp - last.timestamp) / 1000 : 0;
+          const speed =
+            coords.speed !== null && coords.speed >= 0
+              ? coords.speed
+              : last && seconds > 0
+                ? haversineMeters(last.point, point) / seconds
+                : 0;
+          if (speed > CONQUEST_MAX_SPEED_MS) return;
           if (!origin) origin = point;
           if (haversineMeters(origin, point) < CONQUEST_SKIP_M) return;
           const key = cellKey(cellOf(point));
