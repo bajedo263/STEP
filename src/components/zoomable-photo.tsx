@@ -145,6 +145,18 @@ export function PinchZone({
       );
     });
 
+  // La fiche peut disparaître en plein geste (lieu dépassé, fiche fermée) : le geste ne se
+  // termine alors jamais, et la photo agrandie resterait figée par-dessus l'écran.
+  useEffect(
+    () => () => {
+      if (!zooming.get()) return;
+      zoom.active.set(false);
+      zoom.scale.set(1);
+      setZoomedImage(null);
+    },
+    [zooming]
+  );
+
   const context = useMemo(() => ({ photoHandle, zooming }), [photoHandle, zooming]);
 
   return (
