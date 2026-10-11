@@ -23,6 +23,7 @@ import {
 import { PoiClusterMarker, PoiMarker, RouteLine } from '@/components/map-route';
 import { ActiveWalkView, confirmFinish } from '@/components/active-walk';
 import { PoiSheet } from '@/components/poi-sheet';
+import { PhotoZoomOverlay } from '@/components/zoomable-photo';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
@@ -697,6 +698,7 @@ function PlanMap() {
       {selected ? (
         <PoiSheet poi={selected} visited={selected.visited} onClose={() => setSelectedId(null)} />
       ) : null}
+      <PhotoZoomOverlay />
     </View>
   );
 }
