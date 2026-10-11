@@ -3,6 +3,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { ZoomablePhoto } from '@/components/zoomable-photo';
 import { MaxContentWidth, PoiColor, Radius, Spacing, VisitedPoiColor } from '@/constants/theme';
 import { usePoiStory } from '@/hooks/use-poi-story';
 import { useTheme } from '@/hooks/use-theme';
@@ -30,7 +31,11 @@ export function PoiSheet({
     <View
       style={[
         styles.container,
-        { paddingTop: insets.top + topOffset, paddingLeft: insets.left, paddingRight: insets.right },
+        {
+          paddingTop: insets.top + topOffset,
+          paddingLeft: insets.left,
+          paddingRight: insets.right,
+        },
       ]}
       pointerEvents="box-none">
       <ThemedView style={[styles.sheet, { borderColor: color }]}>
@@ -65,18 +70,31 @@ export function PoiSheet({
   );
 }
 
-/** Anecdote du lieu, ou sa description courte en attendant (ou à défaut). */
+/** Taille de la petite photo d'un lieu. */
+const PHOTO_SIZE = 76;
+
+/**
+ * Anecdote du lieu, ou sa description courte en attendant (ou à défaut), avec sa photo
+ * Wikipédia quand l'article en a une.
+ */
 export function PoiStory({ poi, numberOfLines }: { poi: Poi; numberOfLines?: number }) {
   const story = usePoiStory(poi.wikipediaUrl);
   const text = story.status === 'ready' ? (story.text ?? poi.description) : poi.description;
   return (
-    <View style={styles.story}>
-      {text ? (
-        <ThemedText type="small" numberOfLines={numberOfLines}>
-          {text}
-        </ThemedText>
+    <View style={styles.storyRow}>
+      {story.image ? (
+        <ZoomablePhoto image={story.image} size={PHOTO_SIZE} label={poi.title} />
       ) : null}
-      {story.status === 'loading' ? <ActivityIndicator size="small" style={styles.loader} /> : null}
+      <View style={[styles.story, styles.flex]}>
+        {text ? (
+          <ThemedText type="small" numberOfLines={numberOfLines}>
+            {text}
+          </ThemedText>
+        ) : null}
+        {story.status === 'loading' ? (
+          <ActivityIndicator size="small" style={styles.loader} />
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -122,6 +140,11 @@ const styles = StyleSheet.create({
   },
   flex: {
     flex: 1,
+  },
+  storyRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.three,
   },
   story: {
     gap: Spacing.one,

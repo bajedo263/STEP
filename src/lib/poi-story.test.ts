@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { shortStory, wikipediaTitleFromUrl } from './poi-story.ts';
+import { poiImage, shortStory, wikipediaTitleFromUrl } from './poi-story.ts';
 
 test('wikipediaTitleFromUrl lit le titre de l’article', () => {
   assert.equal(
@@ -26,4 +26,35 @@ test('shortStory garde les premières phrases', () => {
   assert.equal(shortStory('Paris (prononcé [pa.ʁi]) est une ville.'), 'Paris est une ville.');
   assert.equal(shortStory('   '), null);
   assert.ok(shortStory('x'.repeat(600))!.length <= 420);
+});
+
+test('poiImage : vignette et version en grand', () => {
+  const thumb =
+    'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Tour_Eiffel.jpg/320px-Tour_Eiffel.jpg';
+  assert.deepEqual(
+    poiImage({
+      thumbnail: { source: thumb, width: 320, height: 480 },
+      originalimage: {
+        source: 'https://upload.wikimedia.org/wikipedia/commons/a/ab/Tour_Eiffel.jpg',
+        width: 4000,
+        height: 6000,
+      },
+    }),
+    {
+      thumbnail: thumb,
+      large:
+        'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Tour_Eiffel.jpg/1280px-Tour_Eiffel.jpg',
+      aspectRatio: 320 / 480,
+    }
+  );
+  // Original assez petit : on le garde tel quel.
+  assert.equal(
+    poiImage({
+      thumbnail: { source: thumb, width: 320, height: 240 },
+      originalimage: { source: 'https://example.org/petit.jpg', width: 800, height: 600 },
+    })?.large,
+    'https://example.org/petit.jpg'
+  );
+  assert.equal(poiImage({}), null);
+  assert.equal(poiImage(null), null);
 });
