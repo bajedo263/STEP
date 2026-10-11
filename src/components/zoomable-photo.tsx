@@ -149,7 +149,8 @@ export function PinchZone({
 
   return (
     <PinchContext value={context}>
-      <GestureHandlerRootView style={style}>
+      {/* Sans style, GestureHandlerRootView prend flex: 1 et écrase la fiche à hauteur nulle. */}
+      <GestureHandlerRootView style={[styles.zone, style]}>
         <GestureDetector gesture={pinch}>
           <Animated.View ref={zoneHandle} collapsable={false}>
             {children}
@@ -405,6 +406,9 @@ function PhotoViewer({
 }
 
 const styles = StyleSheet.create({
+  zone: {
+    alignSelf: 'stretch',
+  },
   overlay: {
     zIndex: 1000,
     elevation: 1000,
