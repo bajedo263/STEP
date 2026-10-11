@@ -122,7 +122,7 @@ function PlanMap() {
   const today = useTodaySteps();
   const profile = useProfile();
   const insets = useSafeAreaInsets();
-  const { width: windowWidth } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const mapRef = useRef<MapView>(null);
   const handlesOverlay = useRef<LoopHandlesOverlayHandle>(null);
   const [mode, setMode] = useState<MapMode>('loop');
@@ -279,6 +279,32 @@ function PlanMap() {
     if (region) mapRef.current?.animateToRegion(region, 400);
   }, [route]);
 
+  // En Destination, les résultats de la recherche sont aussi posés sur la carte.
+  const placesOnMap = useMemo(
+    () =>
+      mode === 'destination' && destination.status === 'idle' && search.status === 'ready'
+        ? search.places.slice(0, 5)
+        : [],
+    [mode, destination.status, search]
+  );
+  // Cadre une fois chaque nouvelle liste de résultats, avec la position, au-dessus du panneau.
+  const framedPlaces = useRef('');
+  useEffect(() => {
+    const key = placesOnMap.map((place) => place.id).join('|');
+    if (!key || key === framedPlaces.current) return;
+    framedPlaces.current = key;
+    const coords = placesOnMap.map((place) => place.coords);
+    mapRef.current?.fitToCoordinates(here ? [here, ...coords] : coords, {
+      edgePadding: {
+        top: 120,
+        right: 60,
+        bottom: panel.collapsed ? 220 : windowHeight * 0.55,
+        left: 60,
+      },
+      animated: true,
+    });
+  }, [placesOnMap, here, panel.collapsed, windowHeight]);
+
   if (location.status !== 'ready') {
     return <LocationUnavailable location={location} />;
   }
@@ -302,6 +328,10 @@ function PlanMap() {
     }
     startWalk(walk);
     router.push('/trajet');
+  };
+  const choosePlace = (place: Place) => {
+    Keyboard.dismiss();
+    destination.choose(start, place, goalReached ? null : targetM);
   };
   const goToPin = (coords: LatLng) => {
     const place: Place = {
@@ -428,6 +458,17 @@ function PlanMap() {
           />
         ) : null}
         {pin ? <Marker coordinate={pin} title="Point choisi" pinColor={theme.tint} /> : null}
+        {placesOnMap.map((place) => (
+          // Toucher l'épingle affiche le lieu ; toucher sa bulle lance l'itinéraire.
+          <Marker
+            key={place.id}
+            coordinate={place.coords}
+            title={place.label}
+            description={`À ${formatDistance(haversineMeters(start, place.coords))} · touchez pour y aller`}
+            pinColor={theme.tint}
+            onCalloutPress={() => choosePlace(place)}
+          />
+        ))}
         {mode === 'destination' && destination.status !== 'idle' ? (
           <Marker
             coordinate={destination.place.coords}
@@ -673,8 +714,7 @@ function PlanMap() {
                               key={place.id}
                               accessibilityRole="button"
                               onPress={() => {
-                                Keyboard.dismiss();
-                                destination.choose(start, place, goalReached ? null : targetM);
+                                choosePlace(place);
                               }}
                               style={({ pressed }) => [
                                 styles.place,
