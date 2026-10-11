@@ -25,6 +25,7 @@ import { ActiveWalkView, confirmFinish } from '@/components/active-walk';
 import { PoiSheet } from '@/components/poi-sheet';
 import { WalkDone } from '@/components/walk-done';
 import { PhotoZoomOverlay } from '@/components/zoomable-photo';
+import { TerritoryShape, territoryKey } from '@/components/territory-shape';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
@@ -437,18 +438,13 @@ function PlanMap() {
         }}>
         {territoryShapes
           ? TERRITORY_STYLES.flatMap(({ owner, color, fill, dashed }) =>
-              territoryShapes[owner].map((territory, index) => (
-                // Couleurs toujours explicites en withAlpha() : sans contour ou avec un alpha en
-                // hexadécimal, Apple Maps dessinait les cases en noir.
-                <Polygon
-                  key={`${owner}-${index}-${territory.cellCount}`}
-                  coordinates={territory.outline}
-                  holes={territory.holes}
-                  fillColor={withAlpha(color, fill)}
-                  strokeColor={withAlpha(color, 1)}
-                  strokeWidth={2}
-                  // Les rivaux en pointillés : lisibles sans distinguer les couleurs.
-                  lineDashPattern={dashed ? [4, 4] : undefined}
+              territoryShapes[owner].map((territory) => (
+                <TerritoryShape
+                  key={territoryKey(owner, territory)}
+                  territory={territory}
+                  color={color}
+                  fill={fill}
+                  dashed={dashed}
                 />
               ))
             )
