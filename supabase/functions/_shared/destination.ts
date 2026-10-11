@@ -73,6 +73,9 @@ const DISTRICT_CITIES: { city: string; prefix: string; max: number }[] = [
   { city: 'Marseille', prefix: '130', max: 16 },
 ];
 
+const districtLabel = (city: string, district: number) =>
+  `${city} ${district === 1 ? '1er' : `${district}e`}`;
+
 /**
  * Ville suivie de son arrondissement quand on peut le lire au code postal : « Paris 15e »,
  * « Lyon 1er », « Marseille 8e ». Ailleurs, la ville seule.
@@ -81,7 +84,7 @@ export function cityWithDistrict(city: string | null, postcode: string | null): 
   if (!city) return null;
   const district = districtNumber(city, postcode?.trim() ?? '');
   if (district === null) return city;
-  return `${city} ${district === 1 ? '1er' : `${district}e`}`;
+  return districtLabel(city, district);
 }
 
 function districtNumber(city: string, code: string): number | null {
@@ -91,6 +94,36 @@ function districtNumber(city: string, code: string): number | null {
   if (!match || code.length !== 5) return null;
   const value = Number(code.slice(match.prefix.length));
   return value >= 1 && value <= match.max ? value : null;
+}
+
+/** Numéro d'arrondissement lu dans un code INSEE d'arrondissement municipal (75115 → 15). */
+export function districtFromInseeCode(code: unknown): number | null {
+  if (typeof code !== 'string') return null;
+  const ranges: [string, number][] = [
+    ['751', 20],
+    ['6938', 9],
+    ['132', 16],
+  ];
+  for (const [prefix, max] of ranges) {
+    if (code.length !== 5 || !code.startsWith(prefix)) continue;
+    const value = Number(code.slice(prefix.length));
+    return value >= 1 && value <= max ? value : null;
+  }
+  return null;
+}
+
+/** Ville à arrondissements qui termine le libellé sans son arrondissement (« Lidl, Paris »). */
+export function cityMissingDistrict(label: string): string | null {
+  const last = label.replace(/, France$/, '').split(', ').at(-1) ?? '';
+  return DISTRICT_CITIES.some((d) => d.city === last) ? last : null;
+}
+
+/** Libellé complété de l'arrondissement : « Lidl, Paris » → « Lidl, Paris 15e ». */
+export function labelWithDistrict(label: string, district: number): string {
+  const city = cityMissingDistrict(label);
+  if (!city) return label;
+  const base = label.replace(/, France$/, '');
+  return `${base.slice(0, base.length - city.length)}${districtLabel(city, district)}`;
 }
 
 const text = (value: unknown) => (typeof value === 'string' && value.trim() ? value.trim() : null);

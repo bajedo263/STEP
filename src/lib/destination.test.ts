@@ -7,7 +7,10 @@ import {
   orsAutocompleteParams,
   parseDestinationRequest,
   parseOrsPlaces,
+  cityMissingDistrict,
   cityWithDistrict,
+  districtFromInseeCode,
+  labelWithDistrict,
   straightDistanceM,
 } from '../../supabase/functions/_shared/destination.ts';
 
@@ -117,4 +120,19 @@ test('parseOrsPlaces distingue deux magasins par leur rue et leur arrondissement
     places.map((p) => p.label),
     ['Lidl, 28 Rue de la Croix-Nivert, Paris 15e', '12 Rue de Passy, Paris 16e']
   );
+});
+
+test('arrondissement ajouté d’après le code INSEE', () => {
+  assert.equal(districtFromInseeCode('75115'), 15);
+  assert.equal(districtFromInseeCode('69381'), 1);
+  assert.equal(districtFromInseeCode('13208'), 8);
+  assert.equal(districtFromInseeCode('92012'), null);
+  assert.equal(districtFromInseeCode(undefined), null);
+  assert.equal(cityMissingDistrict('Lidl, Paris'), 'Paris');
+  assert.equal(cityMissingDistrict('Lidl, Paris, France'), 'Paris');
+  assert.equal(cityMissingDistrict('Lidl, Paris 15e'), null);
+  assert.equal(cityMissingDistrict('Lidl, Boulogne-Billancourt'), null);
+  assert.equal(labelWithDistrict('Lidl, Paris', 15), 'Lidl, Paris 15e');
+  assert.equal(labelWithDistrict('Lidl, Paris, France', 1), 'Lidl, Paris 1er');
+  assert.equal(labelWithDistrict('Lidl, Paris 15e', 16), 'Lidl, Paris 15e');
 });

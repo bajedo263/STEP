@@ -1,6 +1,13 @@
 // Itinéraires à pied et recherche de lieux : OpenRouteService d'abord, puis les services de secours
 // d'OpenStreetMap s'il ne répond pas. Utilisé seulement par les fonctions Edge.
-import { orsAutocompleteParams, parseOrsPlaces, type Place } from './destination.ts';
+import {
+  cityMissingDistrict,
+  districtFromInseeCode,
+  labelWithDistrict,
+  orsAutocompleteParams,
+  parseOrsPlaces,
+  type Place,
+} from './destination.ts';
 import {
   orsPathBody,
   orsRoundTripBody,
@@ -92,7 +99,44 @@ export async function orsRoundTrip(
 /** Lieux correspondant à la saisie, ou null si aucun service n'a répondu. */
 export async function searchPlaces(query: string, near: LatLng | null, apiKey: string): Promise<Place[] | null> {
   const fromOrs = await ors(`/geocode/autocomplete?${orsAutocompleteParams(query, near)}`, {}, apiKey);
-  if (fromOrs) return parseOrsPlaces(fromOrs);
+  if (fromOrs) return withDistricts(parseOrsPlaces(fromOrs));
   const fromPhoton = await getJson(photonUrl(query, near));
-  return fromPhoton ? parsePhotonPlaces(fromPhoton) : null;
+  return fromPhoton ? withDistricts(parsePhotonPlaces(fromPhoton)) : null;
+}
+
+/**
+ * Ajoute l'arrondissement aux lieux de Paris, Lyon et Marseille qui n'en ont pas : les services
+ * de recherche ne donnent souvent ni code postal ni quartier pour un magasin. On le demande à
+ * l'API Découpage administratif de l'État, d'après les coordonnées ; en cas d'échec, le libellé
+ * reste tel quel.
+ */
+async function withDistricts(places: Place[]): Promise<Place[]> {
+  return await Promise.all(
+    places.map(async (place) => {
+      if (!cityMissingDistrict(place.label)) return place;
+      const district = await districtAt(place.coords);
+      return district ? { ...place, label: labelWithDistrict(place.label, district) } : place;
+    })
+  );
+}
+
+async function districtAt({ latitude, longitude }: LatLng): Promise<number | null> {
+  const params = new URLSearchParams({
+    lat: String(latitude),
+    lon: String(longitude),
+    type: 'arrondissement-municipal',
+    fields: 'code',
+    format: 'json',
+  });
+  try {
+    const response = await fetch(`https://geo.api.gouv.fr/communes?${params}`, {
+      headers: { 'User-Agent': USER_AGENT },
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!response.ok) return null;
+    const communes = (await response.json()) as { code?: unknown }[] | null;
+    return Array.isArray(communes) ? districtFromInseeCode(communes[0]?.code) : null;
+  } catch {
+    return null;
+  }
 }
