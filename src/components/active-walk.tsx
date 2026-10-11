@@ -4,15 +4,16 @@ import {
   Animated,
   Pressable,
   StyleSheet,
+  useWindowDimensions,
   View,
   type GestureResponderEvent,
 } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import MapView, { Marker, type Region } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Celebration } from '@/components/celebration';
 import { HeadingCone } from '@/components/heading-cone';
-import { PoiMarker, RouteLine } from '@/components/map-route';
+import { PoiClusterMarker, PoiMarker, RouteLine } from '@/components/map-route';
 import { PoiBanner } from '@/components/poi-banner';
 import { PoiSheet } from '@/components/poi-sheet';
 import { PhotoZoomOverlay } from '@/components/zoomable-photo';
@@ -28,6 +29,8 @@ import { localFlag, setLocalFlag } from '@/hooks/use-local-flag';
 import { useElapsedSeconds } from '@/hooks/use-walk-tracker';
 import { cellsAlongTrack, territories } from '@/lib/conquest';
 import { formatDistance } from '@/lib/daily-progress';
+import { regionForCoordinates } from '@/lib/loop';
+import { clusterByRegion, FAN_OUT_DELTA, fanOut } from '@/lib/map-declutter';
 import { distanceM, nearestPois } from '@/lib/pois';
 import {
   formatElapsed,
@@ -77,8 +80,7 @@ export function ActiveWalkView({ walk, onFinish }: { walk: Walk; onFinish: () =>
   // Le rappel « écran allumé » ne s'affiche qu'au premier trajet sur ce téléphone.
   const [showAwakeHint] = useState(() => localFlag(AWAKE_HINT_KEY) === null);
   useEffect(() => setLocalFlag(AWAKE_HINT_KEY, '1'), []);
-  // Pour ne pas couvrir la carte : les 3 prochains lieux du trajet, plus ceux déjà découverts.
-  // En marche libre, sans trajet, ce sont les 3 lieux les plus proches.
+  // Le prochain lieu du trajet, annoncé dans le panneau ; en marche libre, le plus proche.
   const lastPoint = tracker.track.points.at(-1);
   // Une boucle peut se faire dans l'autre sens : on suit alors le tracé à rebours.
   const route = plannedRoute ? orientedPath(plannedRoute.coordinates, tracker.track) : null;
@@ -93,13 +95,16 @@ export function ActiveWalkView({ walk, onFinish }: { walk: Walk; onFinish: () =>
         discovery.all.filter((poi) => !discovery.isVisited(poi)),
         lastPoint
       );
-  const shown = [
-    ...next,
-    ...pois.filter((poi) => discovery.isVisited(poi) && !next.some((n) => n.id === poi.id)),
-    ...discovery.discovered.filter(
-      (d) => !pois.some((p) => p.id === d.id) && !next.some((n) => n.id === d.id)
-    ),
+  // Sur la carte, tous les lieux du trajet (ou des environs en marche libre), regroupés en
+  // pastilles numérotées quand ils se chevauchent, comme dans la préparation.
+  const basePois = route ? pois : discovery.all;
+  const mapPois = [
+    ...basePois,
+    ...discovery.discovered.filter((d) => !basePois.some((p) => p.id === d.id)),
   ];
+  const [region, setRegion] = useState<Region | null>(null);
+  const poiClusters = clusterByRegion(mapPois, region);
+  const { width: windowWidth } = useWindowDimensions();
   const start = plannedRoute ? plannedRoute.coordinates[0] : tracker.track.points[0];
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // Fiche du lieu fermée d'un geste : elle ne revient qu'au lieu suivant.
@@ -174,7 +179,7 @@ export function ActiveWalkView({ walk, onFinish }: { walk: Walk; onFinish: () =>
     const moved = from ? Math.hypot(pageX - from.x, pageY - from.y) > 12 : false;
     if (touches.length > 1 || moved) releaseMap();
   };
-  const selected = shown.find((poi) => poi.id === selectedId) ?? null;
+  const selected = mapPois.find((poi) => poi.id === selectedId) ?? null;
   // Cases prises en marchant (le départ ne compte pas, pour ne pas montrer l'adresse).
   const cells = useMemo(
     () => (conquering ? cellsAlongTrack(tracker.track.points) : []),
@@ -222,7 +227,8 @@ export function ActiveWalkView({ walk, onFinish }: { walk: Walk; onFinish: () =>
             initialRegion={{ ...start, latitudeDelta: 0.01, longitudeDelta: 0.01 }}
             showsCompass={false}
             showsPointsOfInterests={false}
-            onRegionChangeComplete={() => {
+            onRegionChangeComplete={(next) => {
+              setRegion(next);
               if (followHeading) return;
               // La carte a pu être tournée au doigt : on relit son orientation.
               mapRef.current
@@ -244,14 +250,59 @@ export function ActiveWalkView({ walk, onFinish }: { walk: Walk; onFinish: () =>
                 pinColor={theme.tint}
               />
             ) : null}
-            {shown.map((poi) => {
-              const visited = discovery.isVisited(poi);
+            {poiClusters.flatMap((cluster) => {
+              if (cluster.items.length === 1) {
+                const poi = cluster.items[0];
+                const visited = discovery.isVisited(poi);
+                return (
+                  <PoiMarker
+                    key={`${poi.id}-${visited}`}
+                    poi={poi}
+                    visited={visited}
+                    onPress={() => setSelectedId(poi.id)}
+                  />
+                );
+              }
+              // Vue rapprochée : le groupe s'ouvre en éventail autour de son point réel.
+              if (region && region.longitudeDelta <= FAN_OUT_DELTA) {
+                return fanOut(cluster.items, cluster.coords, region, windowWidth).map(
+                  ({ item, coords }) => {
+                    const visited = discovery.isVisited(item);
+                    return (
+                      <PoiMarker
+                        key={`${item.id}-${visited}`}
+                        poi={{ ...item, coords }}
+                        visited={visited}
+                        onPress={() => setSelectedId(item.id)}
+                      />
+                    );
+                  }
+                );
+              }
               return (
-                <PoiMarker
-                  key={`${poi.id}-${visited}`}
-                  poi={poi}
-                  visited={visited}
-                  onPress={() => setSelectedId(poi.id)}
+                <PoiClusterMarker
+                  key={`groupe-${cluster.key}-${cluster.items.length}`}
+                  coords={cluster.coords}
+                  count={cluster.items.length}
+                  onPress={() => {
+                    // On rapproche la carte : elle cesse de suivre la position jusqu'à « Me recentrer ».
+                    const zoomed = regionForCoordinates(
+                      cluster.items.map((item) => item.coords),
+                      2
+                    );
+                    if (!zoomed) return;
+                    releaseMap();
+                    mapRef.current?.animateToRegion(
+                      zoomed.longitudeDelta > FAN_OUT_DELTA
+                        ? zoomed
+                        : {
+                            ...cluster.coords,
+                            latitudeDelta: FAN_OUT_DELTA * 0.6,
+                            longitudeDelta: FAN_OUT_DELTA * 0.6,
+                          },
+                      400
+                    );
+                  }}
                 />
               );
             })}

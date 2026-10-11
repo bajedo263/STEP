@@ -912,7 +912,7 @@ function ConquestStatus({
       <ThemedText type="small" themeColor="textSecondary">
         {zoomedOut
           ? 'Rapprochez la carte pour voir les cases.'
-          : 'Vos trajets du jour colorent les cases traversées pendant 7 jours, sauf le début et la fin.'}
+          : 'Les cases libres où vous passez, app ouverte, se colorent à votre nom pendant 7 jours. Un trajet prend aussi celles des autres.'}
       </ThemedText>
     </View>
   );
