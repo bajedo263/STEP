@@ -8,7 +8,12 @@ import {
   formatElapsed,
   hasArrived,
   haversineMeters,
+  orientedPath,
+  pathLength,
+  progressAlongPath,
   remainingAlongPath,
+  upcomingAlongPath,
+  walksLoopBackwards,
   toLineStringWkt,
 } from './track.ts';
 
@@ -143,4 +148,70 @@ test('sur un aller-retour, les mètres restants diminuent à l’aller', () => {
     track = addPoint(track, at(48.8518 - i * 0.0001, 200_000 + i * 10_000), path);
   }
   assert.ok(remainingAlongPath(path, track) < 50, String(remainingAlongPath(path, track)));
+});
+
+// Boucle carrée d'environ 880 m : nord, est, sud, puis retour vers l'ouest.
+const square = [
+  { latitude: 48.85, longitude: 2.35 },
+  { latitude: 48.852, longitude: 2.35 },
+  { latitude: 48.852, longitude: 2.353 },
+  { latitude: 48.85, longitude: 2.353 },
+  { latitude: 48.85, longitude: 2.35 },
+];
+const eastward = (count: number) =>
+  Array.from({ length: count }, (_, i) => ({
+    latitude: 48.85,
+    longitude: 2.35 + i * 0.0002,
+    timestamp: i * 10_000,
+    accuracy: 5,
+  }));
+
+test('une boucle faite à l’envers est suivie à rebours', () => {
+  let track = emptyTrack();
+  for (const point of eastward(10)) track = addPoint(track, point, square);
+  assert.equal(walksLoopBackwards(square, track), true);
+  const route = orientedPath(square, track);
+  assert.deepEqual(route[1], square[3]);
+  // On a marché environ 130 m : il en reste environ 750, pas une centaine.
+  const remaining = remainingAlongPath(route, track);
+  assert.ok(Math.abs(remaining - (pathLength(square) - track.distanceM)) < 20, String(remaining));
+});
+
+test('une boucle faite dans le bon sens n’est pas retournée', () => {
+  let track = emptyTrack();
+  for (let i = 0; i < 10; i++) track = addPoint(track, at(48.85 + i * 0.0002, i * 10_000), square);
+  assert.equal(walksLoopBackwards(square, track), false);
+  assert.equal(orientedPath(square, track), square);
+  // Pas une boucle : jamais retourné.
+  assert.equal(walksLoopBackwards(square.slice(0, 4), track), false);
+});
+
+test('upcomingAlongPath : les prochains lieux, dans l’ordre du trajet', () => {
+  const place = (id: string, latitude: number, longitude: number) => ({
+    id,
+    coords: { latitude, longitude },
+  });
+  const pois = [
+    place('est', 48.851, 2.3531),
+    place('nord', 48.8521, 2.3515),
+    place('ouest', 48.851, 2.3499),
+  ];
+  assert.deepEqual(
+    upcomingAlongPath(pois, square, 0).map((p) => p.id),
+    ['ouest', 'nord', 'est']
+  );
+  // Après 300 m, le lieu du premier côté est derrière nous.
+  assert.deepEqual(
+    upcomingAlongPath(pois, square, 300).map((p) => p.id),
+    ['nord', 'est']
+  );
+  // À rebours, l'ordre s'inverse.
+  assert.deepEqual(
+    upcomingAlongPath(pois, [...square].reverse(), 0).map((p) => p.id),
+    ['est', 'nord', 'ouest']
+  );
+});
+
+test('progressAlongPath vaut 0 avant le premier point', () => {
+  assert.equal(progressAlongPath(square, emptyTrack()), 0);
 });
