@@ -37,9 +37,14 @@ import { feedback } from '@/lib/feedback';
 import { cellKey, cellPolygon, cellsAlongTrack } from '@/lib/conquest';
 import { formatDistance } from '@/lib/daily-progress';
 import { formatDuration, regionForCoordinates } from '@/lib/loop';
-import { upcomingPois } from '@/lib/map-declutter';
 import { distanceM, nearestPois, POI_KIND_LABELS, type RoutePoi } from '@/lib/pois';
-import { formatElapsed, remainingAlongPath } from '@/lib/track';
+import {
+  formatElapsed,
+  orientedPath,
+  pathLength,
+  progressAlongPath,
+  upcomingAlongPath,
+} from '@/lib/track';
 import { type WalkSummary } from '@/lib/walk-summary';
 import {
   endWalk,
@@ -122,11 +127,14 @@ function ActiveWalk({ walk, onFinish }: { walk: Walk; onFinish: () => void }) {
   // Pour ne pas couvrir la carte : les 3 prochains lieux du trajet, plus ceux déjà découverts.
   // En marche libre, sans trajet, ce sont les 3 lieux les plus proches.
   const lastPoint = tracker.track.points.at(-1);
-  const next = plannedRoute
-    ? upcomingPois(
-        pois.filter((poi) => !discovery.isVisited(poi)).map((poi) => ({ ...poi, visited: false })),
-        plannedRoute.coordinates,
-        lastPoint
+  // Une boucle peut se faire dans l'autre sens : on suit alors le tracé à rebours.
+  const route = plannedRoute ? orientedPath(plannedRoute.coordinates, tracker.track) : null;
+  const progressM = route ? progressAlongPath(route, tracker.track) : 0;
+  const next = route
+    ? upcomingAlongPath(
+        pois.filter((poi) => !discovery.isVisited(poi)),
+        route,
+        progressM
       )
     : nearestPois(
         discovery.all.filter((poi) => !discovery.isVisited(poi)),
@@ -158,8 +166,8 @@ function ActiveWalk({ walk, onFinish }: { walk: Walk; onFinish: () => void }) {
   const position = tracker.position ?? tracker.track.points.at(-1) ?? null;
   const panel = useCollapsiblePanel();
   // Ce qu'il reste à marcher (trajet prévu) ou ce qu'on a marché (marche libre).
-  const mainDistance = plannedRoute
-    ? formatDistance(remainingAlongPath(plannedRoute.coordinates, tracker.track))
+  const mainDistance = route
+    ? formatDistance(Math.max(0, pathLength(route) - progressM))
     : formatDistance(tracker.track.distanceM);
   const latitude = position?.latitude;
   const longitude = position?.longitude;
