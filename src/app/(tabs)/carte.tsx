@@ -39,6 +39,7 @@ import {
   PoiColor,
   Radius,
   Spacing,
+  withAlpha,
 } from '@/constants/theme';
 import {
   useConquestCells,
@@ -63,8 +64,10 @@ import {
   cellRangeOf,
   conquestUnlocked,
   defensePoints,
+  territories,
   territoryAlertLabel,
   type Cell,
+  type Territory,
 } from '@/lib/conquest';
 import { missingPlacesPoints } from '@/lib/collection';
 import { FIRST_WALK_STEPS, firstWalkDistance } from '@/lib/comeback';
@@ -91,6 +94,14 @@ import {
 const formatNumber = (value: number) => Math.round(value).toLocaleString('fr-FR');
 
 type MapMode = 'loop' | 'destination';
+
+/** Rendu des blocs de cases : à moi, d'amis (même trait), rivaux (plus pâles, en pointillés). */
+const TERRITORY_STYLES = [
+  { owner: 'other', color: ConquestOtherColor, fill: 0.2, dashed: true },
+  { owner: 'friend', color: ConquestFriendColor, fill: 0.3, dashed: false },
+  { owner: 'mine', color: ConquestMineColor, fill: 0.3, dashed: false },
+] as const;
+
 
 const MODE_OPTIONS: { value: MapMode; label: string }[] = [
   { value: 'loop', label: 'Boucle' },
@@ -190,6 +201,19 @@ function PlanMap() {
   const selected = pois.find((poi) => poi.id === selectedId) ?? null;
   const alerts = useTerritoryAlerts();
   const [defenseNote, setDefenseNote] = useState<string | null>(null);
+  // Les cases d'un même propriétaire forment des blocs : un territoire, pas un damier.
+  const territoryShapes = useMemo(
+    () =>
+      conquestActive
+        ? {
+            mine: territories(cells.filter((cell) => cell.mine)),
+            friend: territories(cells.filter((cell) => !cell.mine && cell.friend)),
+            other: territories(cells.filter((cell) => !cell.mine && !cell.friend)),
+          }
+        : null,
+    [conquestActive, cells]
+  );
+  const myCellCount = useMyConquestCount();
   const alertCells = useMemo(
     () => visibleAlerts(alerts, region ? cellRangeOf(region) : null),
     [alerts, region]
@@ -348,6 +372,22 @@ function PlanMap() {
     // Le trajet s'affiche aussitôt à la place de la préparation, dans ce même onglet.
     startWalk(walk);
   };
+  // Sur le plus grand bloc à moi dans la zone chargée ; sinon autour de soi, assez près pour
+  // voir les cases (seules celles de la zone affichée sont chargées).
+  const showMyTerritory = () => {
+    const largest = territoryShapes?.mine.reduce<Territory | null>(
+      (best, territory) => (!best || territory.cellCount > best.cellCount ? territory : best),
+      null
+    );
+    if (largest) {
+      mapRef.current?.fitToCoordinates(largest.outline, {
+        edgePadding: { top: 140, right: 60, bottom: windowHeight * 0.35, left: 60 },
+        animated: true,
+      });
+    } else {
+      mapRef.current?.animateToRegion({ ...start, latitudeDelta: 0.008, longitudeDelta: 0.008 }, 400);
+    }
+  };
   const choosePlace = (place: Place) => {
     Keyboard.dismiss();
     destination.choose(start, place, goalReached ? null : targetM);
@@ -395,29 +435,36 @@ function PlanMap() {
           setRegion(next);
           handlesOverlay.current?.update();
         }}>
-        {conquestActive
-          ? cells.map((cell) => (
-              <Polygon
-                key={cellKey(cell)}
-                coordinates={cellPolygon(cell)}
-                fillColor={`${cell.mine ? ConquestMineColor : cell.friend ? ConquestFriendColor : ConquestOtherColor}55`}
-                // Les cases rivales ont un contour pointillé : lisibles sans distinguer les couleurs.
-                strokeColor={cell.mine || cell.friend ? undefined : ConquestOtherColor}
-                strokeWidth={cell.mine || cell.friend ? 0 : 1}
-                lineDashPattern={cell.mine || cell.friend ? undefined : [3, 3]}
-              />
-            ))
+        {territoryShapes
+          ? TERRITORY_STYLES.flatMap(({ owner, color, fill, dashed }) =>
+              territoryShapes[owner].map((territory, index) => (
+                // Couleurs toujours explicites en withAlpha() : sans contour ou avec un alpha en
+                // hexadécimal, Apple Maps dessinait les cases en noir.
+                <Polygon
+                  key={`${owner}-${index}-${territory.cellCount}`}
+                  coordinates={territory.outline}
+                  holes={territory.holes}
+                  fillColor={withAlpha(color, fill)}
+                  strokeColor={withAlpha(color, 1)}
+                  strokeWidth={2}
+                  // Les rivaux en pointillés : lisibles sans distinguer les couleurs.
+                  lineDashPattern={dashed ? [4, 4] : undefined}
+                />
+              ))
+            )
           : null}
-        {alertCells.map(({ cell, lost }) => (
-          <Polygon
-            key={`alerte-${cellKey(cell)}`}
-            coordinates={cellPolygon(cell)}
-            fillColor={`${lost ? ConquestOtherColor : ConquestMineColor}22`}
-            strokeColor={lost ? ConquestOtherColor : ConquestMineColor}
-            strokeWidth={2}
-            lineDashPattern={lost ? undefined : [4, 4]}
-          />
-        ))}
+        {/* Case reprise : un simple contour rouge, sans remplissage par-dessus le territoire. */}
+        {alertCells
+          .filter(({ lost }) => lost)
+          .map(({ cell }) => (
+            <Polygon
+              key={`alerte-${cellKey(cell)}`}
+              coordinates={cellPolygon(cell)}
+              fillColor="rgba(0, 0, 0, 0)"
+              strokeColor={withAlpha(ConquestOtherColor, 1)}
+              strokeWidth={2}
+            />
+          ))}
         {route ? (
           <RouteLine coordinates={route.coordinates} />
         ) : null}
@@ -496,6 +543,22 @@ function PlanMap() {
           />
         ) : null}
       </MapView>
+      {conquestActive && myCellCount ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityHint="Recentre la carte sur votre plus grand bloc de cases"
+          onPress={showMyTerritory}
+          style={({ pressed }) => [
+            styles.territoryPill,
+            { top: insets.top + Spacing.two, backgroundColor: theme.background },
+            pressed && styles.pressed,
+          ]}>
+          <View style={[styles.swatch, { backgroundColor: ConquestMineColor }]} />
+          <ThemedText type="smallBold">
+            {`Mon territoire · ${formatNumber(myCellCount)} case${myCellCount > 1 ? 's' : ''}`}
+          </ThemedText>
+        </Pressable>
+      ) : null}
       {mode === 'loop' && loopRoute && handles ? (
         <LoopHandlesOverlay
           ref={handlesOverlay}
@@ -939,6 +1002,21 @@ function LocationUnavailable({ location }: { location: ReturnType<typeof useCurr
 }
 
 const styles = StyleSheet.create({
+  territoryPill: {
+    position: 'absolute',
+    left: Spacing.three,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    borderRadius: 999,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
   buttonRow: {
     flexDirection: 'row',
     gap: Spacing.two,

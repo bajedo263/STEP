@@ -90,3 +90,9 @@ export const ConquestMineColor = '#4B3FF0';
 export const ConquestOtherColor = '#E03131';
 /** Cases des amis. */
 export const ConquestFriendColor = '#0CA5B0';
+
+/** Couleur #RRGGBB en rgba(), plus sûr que l'alpha hexadécimal pour Apple Maps. */
+export function withAlpha(hex: string, alpha: number): string {
+  const value = parseInt(hex.slice(1), 16);
+  return `rgba(${value >> 16}, ${(value >> 8) & 255}, ${value & 255}, ${alpha})`;
+}

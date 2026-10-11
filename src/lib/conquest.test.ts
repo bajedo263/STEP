@@ -9,6 +9,7 @@ import {
   cellPolygon,
   cellRangeOf,
   cellsAlongTrack,
+  territories,
   MAX_VISIBLE_SPAN,
   cellCenter,
   defensePoints,
@@ -101,4 +102,29 @@ test('territoryAlertLabel accorde au singulier et au pluriel', () => {
     territoryAlertLabel({ lost: [], expiring: [] }),
     'Votre territoire est en sécurité.'
   );
+});
+
+test('territories : cases voisines fusionnées, diagonales séparées, trou', () => {
+  // Trois cases alignées : un seul bloc à 4 coins.
+  const line = territories([{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }]);
+  assert.equal(line.length, 1);
+  assert.equal(line[0].outline.length, 4);
+  assert.equal(line[0].cellCount, 3);
+  assert.equal(line[0].holes.length, 0);
+
+  // En L : 6 coins.
+  assert.equal(territories([{ x: 0, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }])[0].outline.length, 6);
+
+  // Deux cases qui ne se touchent que par un coin : deux blocs.
+  assert.equal(territories([{ x: 0, y: 0 }, { x: 1, y: 1 }]).length, 2);
+
+  // Anneau de 8 cases autour d'un trou.
+  const ring = [];
+  for (let x = 0; x < 3; x++) for (let y = 0; y < 3; y++) if (x !== 1 || y !== 1) ring.push({ x, y });
+  const donut = territories(ring);
+  assert.equal(donut.length, 1);
+  assert.equal(donut[0].outline.length, 4);
+  assert.equal(donut[0].holes.length, 1);
+  assert.equal(donut[0].holes[0].length, 4);
+  assert.equal(territories([]).length, 0);
 });
