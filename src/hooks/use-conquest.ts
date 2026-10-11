@@ -1,5 +1,5 @@
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 
 import type { Cell, ConquestCell, cellRangeOf } from '@/lib/conquest';
 import type { SeasonRow } from '@/lib/season';
@@ -7,9 +7,27 @@ import { supabase } from '@/lib/supabase';
 
 type CellRange = NonNullable<ReturnType<typeof cellRangeOf>>;
 
+// Les cases ont changé hors d'un trajet (Conquête sans trajet) : les vues se rechargent.
+let conquestVersion = 0;
+const conquestListeners = new Set<() => void>();
+export function notifyConquestChanged() {
+  conquestVersion += 1;
+  conquestListeners.forEach((listener) => listener());
+}
+function useConquestVersion(): number {
+  return useSyncExternalStore(
+    (listener) => {
+      conquestListeners.add(listener);
+      return () => conquestListeners.delete(listener);
+    },
+    () => conquestVersion
+  );
+}
+
 /** Cases en cours dans la zone affichée (les miennes et celles des autres). */
 export function useConquestCells(range: CellRange | null): ConquestCell[] {
-  const key = range ? `${range.minX}/${range.minY}/${range.maxX}/${range.maxY}` : null;
+  const version = useConquestVersion();
+  const key = range ? `${range.minX}/${range.minY}/${range.maxX}/${range.maxY}/${version}` : null;
   const [loaded, setLoaded] = useState<{ key: string; cells: ConquestCell[] } | null>(null);
 
   useEffect(() => {
@@ -39,6 +57,7 @@ export function useConquestCells(range: CellRange | null): ConquestCell[] {
 /** Nombre de cases à moi en ce moment ; null tant qu'il n'est pas connu. */
 export function useMyConquestCount(): number | null {
   const [count, setCount] = useState<number | null>(null);
+  const version = useConquestVersion();
   useEffect(() => {
     if (!supabase) return;
     let cancelled = false;
@@ -48,7 +67,7 @@ export function useMyConquestCount(): number | null {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [version]);
   return count;
 }
 
