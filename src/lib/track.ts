@@ -80,13 +80,11 @@ function toLocal(origin: LatLng, point: LatLng): { x: number; y: number } {
   };
 }
 
-/** Point du tracé le plus proche, sa distance et la longueur du tracé jusqu'à lui. */
-export function projectOnPath(
-  path: LatLng[],
-  point: LatLng
-): { point: LatLng; distanceM: number; alongM: number } | null {
-  if (path.length < 2) return null;
-  let best: { point: LatLng; distanceM: number; alongM: number } | null = null;
+type PathProjection = { point: LatLng; distanceM: number; alongM: number };
+
+/** Projection du point sur chaque segment du tracé, dans l'ordre du tracé. */
+function projectOnSegments(path: LatLng[], point: LatLng): PathProjection[] {
+  const projections: PathProjection[] = [];
   let walked = 0;
   for (let i = 1; i < path.length; i++) {
     const a = path[i - 1];
@@ -96,19 +94,25 @@ export function projectOnPath(
     const t = length2 === 0 ? 0 : Math.max(0, Math.min(1, (p.x * b.x + p.y * b.y) / length2));
     const dx = p.x - t * b.x;
     const dy = p.y - t * b.y;
-    const distanceM = Math.sqrt(dx * dx + dy * dy);
     const segmentM = Math.sqrt(length2);
-    if (!best || distanceM < best.distanceM) {
-      best = {
-        point: {
-          latitude: a.latitude + t * (path[i].latitude - a.latitude),
-          longitude: a.longitude + t * (path[i].longitude - a.longitude),
-        },
-        distanceM,
-        alongM: walked + t * segmentM,
-      };
-    }
+    projections.push({
+      point: {
+        latitude: a.latitude + t * (path[i].latitude - a.latitude),
+        longitude: a.longitude + t * (path[i].longitude - a.longitude),
+      },
+      distanceM: Math.sqrt(dx * dx + dy * dy),
+      alongM: walked + t * segmentM,
+    });
     walked += segmentM;
+  }
+  return projections;
+}
+
+/** Point du tracé le plus proche, sa distance et la longueur du tracé jusqu'à lui. */
+export function projectOnPath(path: LatLng[], point: LatLng): PathProjection | null {
+  let best: PathProjection | null = null;
+  for (const projection of projectOnSegments(path, point)) {
+    if (!best || projection.distanceM < best.distanceM) best = projection;
   }
   return best;
 }
@@ -164,18 +168,31 @@ export function hasArrived(path: LatLng[], track: Track): boolean {
   );
 }
 
-/** Distance restant à parcourir le long du trajet prévu depuis la dernière position. */
+/**
+ * Distance restant à parcourir le long du trajet prévu depuis la dernière position.
+ *
+ * Un trajet repasse souvent par la même rue (aller-retour vers un lieu, boucle qui revient à
+ * son départ) : le point le plus proche peut alors être sur l'autre passage, et le chiffre
+ * grimpe à mesure qu'on avance. Parmi les passages proches, on retient celui qui correspond
+ * le mieux à la distance déjà marchée.
+ */
 export function remainingAlongPath(path: LatLng[], track: Track): number {
   const total = pathLength(path);
   const position = track.points.at(-1);
   if (!position) return total;
-  const projected = projectOnPath(path, position);
+  let best: PathProjection | null = null;
+  for (const projection of projectOnSegments(path, position)) {
+    if (projection.distanceM > 2 * SNAP_M) continue;
+    if (
+      !best ||
+      Math.abs(projection.alongM - track.distanceM) < Math.abs(best.alongM - track.distanceM)
+    ) {
+      best = projection;
+    }
+  }
   // Loin du trajet (détour), on retombe sur l'estimation par la distance parcourue.
-  if (!projected || projected.distanceM > 2 * SNAP_M) return Math.max(0, total - track.distanceM);
-  // Sur une boucle, départ et arrivée se confondent : on ne retient l'arrivée qu'une fois bien avancé.
-  const along =
-    projected.alongM < total * 0.5 && track.distanceM > total * 0.5 ? total : projected.alongM;
-  return Math.max(0, total - Math.max(along, 0));
+  if (!best) return Math.max(0, total - track.distanceM);
+  return Math.max(0, total - best.alongM);
 }
 
 /** Tracé au format attendu par PostGIS, ou null s'il a moins de deux points. */

@@ -120,3 +120,27 @@ test('une boucle ne se termine pas au départ', () => {
   assert.equal(hasArrived(loop, track), false);
   assert.ok(remainingAlongPath(loop, track) > 600);
 });
+
+test('sur un aller-retour, les mètres restants diminuent à l’aller', () => {
+  // 200 m vers le nord, puis retour par la même rue.
+  const path = [
+    { latitude: 48.85, longitude: 2.35 },
+    { latitude: 48.8518, longitude: 2.35 },
+    { latitude: 48.85, longitude: 2.35 },
+  ];
+  const total = 400;
+  let track = emptyTrack();
+  let previous = Infinity;
+  for (let i = 0; i <= 15; i++) {
+    track = addPoint(track, at(48.85 + i * 0.0001, i * 10_000), path);
+    const remaining = remainingAlongPath(path, track);
+    assert.ok(remaining <= previous + 1, `${remaining} > ${previous} au point ${i}`);
+    previous = remaining;
+  }
+  assert.ok(Math.abs(previous - (total - track.distanceM)) < 15, String(previous));
+  // Au retour, on retient le second passage.
+  for (let i = 1; i <= 15; i++) {
+    track = addPoint(track, at(48.8518 - i * 0.0001, 200_000 + i * 10_000), path);
+  }
+  assert.ok(remainingAlongPath(path, track) < 50, String(remainingAlongPath(path, track)));
+});
