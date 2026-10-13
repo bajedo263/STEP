@@ -12,6 +12,7 @@ import {
   conquestUnlocked,
 } from '@/lib/conquest';
 import type { LatLng } from '@/lib/loop';
+import { localDay } from '@/lib/daily-progress';
 import { supabase } from '@/lib/supabase';
 import { haversineMeters } from '@/lib/track';
 import { useActiveWalk } from '@/providers/walk-provider';
@@ -21,17 +22,24 @@ const MAX_ACCURACY_M = 35;
 /** Délai entre deux envois des cases traversées (ms). */
 const FLUSH_INTERVAL_MS = 30_000;
 
+/**
+ * Premier point suivi du jour : la zone de 150 m autour reste neutre. On le garde tant que l'app
+ * tourne, pour ne pas neutraliser une nouvelle zone à chaque retour dans l'app.
+ */
+let dayOrigin: { day: string; point: LatLng } | null = null;
+
 const subscribeAppState = (listener: () => void) => {
   const subscription = AppState.addEventListener('change', listener);
   return () => subscription.remove();
 };
 
 /**
- * Conquête sans trajet : une fois les 10 000 pas du jour atteints, les cases libres où l'on
- * passe se colorent à son nom, sans lancer de trajet. La position n'est suivie que pendant que
+ * Conquête sans trajet : une fois les 10 000 pas du jour atteints, on est en marche libre par
+ * défaut et les cases où l'on passe se colorent à son nom (y compris celles des autres), sans
+ * lancer de trajet. La position n'est suivie que pendant que
  * l'app est ouverte (Expo Go ne la suit pas en arrière-plan) et hors trajet, qui prend lui-même
- * ses cases. Comme pour un trajet, rien n'est pris à moins de 150 m de l'endroit où le suivi a
- * commencé : l'adresse de départ, souvent son domicile, n'apparaît pas sur la carte. Les
+ * ses cases. Comme pour un trajet, rien n'est pris à moins de 150 m du premier point suivi dans
+ * la journée : l'adresse de départ, souvent son domicile, n'apparaît pas sur la carte. Les
  * positions prises à plus de 15 km/h (vélo, voiture, transports) ne comptent pas.
  */
 export function usePassiveConquest() {
@@ -46,7 +54,6 @@ export function usePassiveConquest() {
     const client = supabase;
     let cancelled = false;
     let subscription: Location.LocationSubscription | null = null;
-    let origin: LatLng | null = null;
     let previous: { point: LatLng; timestamp: number } | null = null;
     let pending: LatLng[] = [];
     const sent = new Set<string>();
@@ -80,8 +87,9 @@ export function usePassiveConquest() {
                 ? haversineMeters(last.point, point) / seconds
                 : 0;
           if (speed > CONQUEST_MAX_SPEED_MS) return;
-          if (!origin) origin = point;
-          if (haversineMeters(origin, point) < CONQUEST_SKIP_M) return;
+          const day = localDay(new Date(timestamp));
+          if (dayOrigin?.day !== day) dayOrigin = { day, point };
+          if (haversineMeters(dayOrigin.point, point) < CONQUEST_SKIP_M) return;
           const key = cellKey(cellOf(point));
           if (sent.has(key)) return;
           sent.add(key);
