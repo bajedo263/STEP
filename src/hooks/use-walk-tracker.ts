@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 
 import type { LatLng } from '@/lib/loop';
+import type { FixedPosition } from '@/lib/pois';
 import { isExpoGo } from '@/lib/native-build';
 import { addPoint, emptyTrack, type Track } from '@/lib/track';
 import { onWalkLocations, WALK_LOCATION_TASK } from '@/lib/walk-location-task';
@@ -21,7 +22,7 @@ export type WalkTracker = {
   steps: number | null;
   startedAt: Date;
   /** Dernière position GPS brute (non lissée, non posée sur l'itinéraire), pour le point bleu. */
-  position: LatLng | null;
+  position: FixedPosition | null;
   /** Vrai si le suivi continue écran éteint ; sinon l'écran doit rester allumé. */
   background: boolean;
 };
@@ -38,7 +39,7 @@ export function useWalkTracker(path: LatLng[] | null = null) {
   const [status, setStatus] = useState<WalkTracker['status']>('starting');
   const [track, setTrack] = useState<Track>(emptyTrack);
   const [steps, setSteps] = useState<number | null>(null);
-  const [position, setPosition] = useState<LatLng | null>(null);
+  const [position, setPosition] = useState<FixedPosition | null>(null);
   const [background, setBackground] = useState(false);
   const subscriptions = useRef<{ remove: () => void }[]>([]);
   const pathRef = useRef(path);
@@ -67,7 +68,7 @@ export function useWalkTracker(path: LatLng[] | null = null) {
       }
 
       const onLocation = ({ coords, timestamp }: Location.LocationObject) => {
-        setPosition({ latitude: coords.latitude, longitude: coords.longitude });
+        setPosition({ latitude: coords.latitude, longitude: coords.longitude, accuracy: coords.accuracy });
         setTrack((current) =>
           addPoint(
             current,

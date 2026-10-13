@@ -102,7 +102,10 @@ function WalkSession({ planned }: { planned: PlannedWalk }) {
     () => (planned.mode === 'free' ? [] : mergePois(routePois, planned.pois)),
     [planned, routePois]
   );
-  const discovery = usePoiDiscovery(plannedPois, summary ? null : tracker.track.points.at(-1));
+  const discovery = usePoiDiscovery(
+    plannedPois,
+    summary ? [] : [tracker.position, tracker.track.points.at(-1)]
+  );
   const strideM = strideLengthMeters(profile?.height_cm ?? 170, profile?.sex ?? 'unspecified');
 
   const save = async (walk: WalkSummary, conquers: boolean) => {

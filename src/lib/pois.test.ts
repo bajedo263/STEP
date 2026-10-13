@@ -117,12 +117,23 @@ test('distanceM', () => {
   assert.ok(Math.abs(distanceM(street[0], street[2]) - 400) < 2);
 });
 
-test('nearbyPoi signale le lieu le plus proche à portée', async () => {
-  const { nearbyPoi } = await import('./pois.ts');
+test('visitablePoi : 50 m plus la marge du GPS, depuis la position la plus proche', async () => {
+  const { visitablePoi } = await import('./pois.ts');
   const pois = parseWikipediaPois(wikipedia);
-  assert.equal(nearbyPoi(pois, { latitude: 48.8811, longitude: 2.3301 })?.id, 'wiki/1');
-  assert.equal(nearbyPoi(pois, street[0]), null);
-  assert.equal(nearbyPoi(pois, null), null);
+  const poi = pois.find((item) => item.id === 'wiki/1')!;
+  // Positions à 60 m au sud du lieu (1° de latitude ≈ 111,2 km).
+  const across = { latitude: poi.coords.latitude - 60 / 111_200, longitude: poi.coords.longitude };
+  assert.equal(visitablePoi([poi], [across]), null);
+  assert.equal(visitablePoi([poi], [{ ...across, accuracy: 15 }])?.poi.id, 'wiki/1');
+  // Marge plafonnée à 20 m, et une position trop imprécise est ignorée.
+  const far = { latitude: poi.coords.latitude - 75 / 111_200, longitude: poi.coords.longitude };
+  assert.equal(visitablePoi([poi], [{ ...far, accuracy: 30 }]), null);
+  assert.equal(visitablePoi([poi], [{ ...across, accuracy: 40 }]), null);
+  // La trace posée sur le trajet d'en face ne masque pas la position brute, plus proche.
+  const reached = visitablePoi([poi], [null, far, { ...across, accuracy: 10 }]);
+  assert.equal(reached?.from.latitude, across.latitude);
+  assert.equal(visitablePoi(pois, [street[0]]), null);
+  assert.equal(visitablePoi(pois, []), null);
 });
 
 test('zoneOf et zoneBbox sont cohérents', async () => {
