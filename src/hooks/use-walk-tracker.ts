@@ -129,7 +129,7 @@ async function startBackgroundTracking(
     }
     await Location.startLocationUpdatesAsync(WALK_LOCATION_TASK, {
       ...TRACKING,
-      activityType: Location.LocationActivityType.Fitness,
+      activityType: Location.ActivityType.Fitness,
       pausesUpdatesAutomatically: false,
       showsBackgroundLocationIndicator: true,
       foregroundService: {
