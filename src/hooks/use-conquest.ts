@@ -20,6 +20,7 @@ function useConquestVersion(): number {
       conquestListeners.add(listener);
       return () => conquestListeners.delete(listener);
     },
+    () => conquestVersion,
     () => conquestVersion
   );
 }

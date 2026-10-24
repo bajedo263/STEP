@@ -35,7 +35,8 @@ export function localFlag(key: string): string | null {
 
 /** Valeur d'un drapeau local, mise à jour dès qu'un écran la change. */
 export function useLocalFlag(key: string | null): string | null {
-  return useSyncExternalStore(subscribe, () => (key ? (memory.get(key) ?? read(key)) : null));
+  const snapshot = () => (key ? (memory.get(key) ?? read(key)) : null);
+  return useSyncExternalStore(subscribe, snapshot, snapshot);
 }
 
 

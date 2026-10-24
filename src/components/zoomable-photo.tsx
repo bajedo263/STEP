@@ -178,7 +178,7 @@ export function PinchZone({
  * l'écran qui affiche des fiches de lieux.
  */
 export function PhotoZoomOverlay() {
-  const image = useSyncExternalStore(subscribe, () => zoomedImage);
+  const image = useSyncExternalStore(subscribe, () => zoomedImage, () => null);
   const backdropStyle = useAnimatedStyle(() => ({
     opacity: zoom.active.get() ? Math.min(0.75, (zoom.scale.get() - 1) * 0.6) : 0,
   }));
