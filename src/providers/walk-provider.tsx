@@ -62,12 +62,16 @@ export function endWalk() {
 }
 
 export function useActiveWalk(): ActiveWalk | null {
-  return useSyncExternalStore(subscribe, () => active);
+  return useSyncExternalStore(subscribe, () => active, () => null);
 }
 
 /** Vrai entre le lancement d'un trajet et la première position de suivi publiée. */
 export function useWalkStarting(): boolean {
-  return useSyncExternalStore(subscribe, () => request !== null && active === null);
+  return useSyncExternalStore(
+    subscribe,
+    () => request !== null && active === null,
+    () => false
+  );
 }
 
 /** Vrai tant qu'un trajet est commencé et pas encore terminé. */
@@ -77,7 +81,7 @@ export function walkInProgress(): boolean {
 
 /** À monter une fois, sous l'authentification : fait tourner le trajet en cours. */
 export function WalkHost() {
-  const current = useSyncExternalStore(subscribe, () => request);
+  const current = useSyncExternalStore(subscribe, () => request, () => null);
   // À la déconnexion, le trajet s'arrête avec l'hôte.
   useEffect(() => endWalk, []);
   return current ? <WalkSession key={current.id} planned={current.planned} /> : null;

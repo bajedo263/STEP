@@ -45,7 +45,11 @@ const subscribeAppState = (listener: () => void) => {
 export function usePassiveConquest() {
   const today = useTodaySteps();
   const walk = useActiveWalk();
-  const active = useSyncExternalStore(subscribeAppState, () => AppState.currentState === 'active');
+  const active = useSyncExternalStore(
+    subscribeAppState,
+    () => AppState.currentState === 'active',
+    () => false
+  );
   const unlocked = conquestUnlocked(today.status === 'ready' ? today.steps : null);
   const enabled = unlocked && !walk && active;
 
