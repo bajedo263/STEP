@@ -1,5 +1,5 @@
 import * as Sharing from 'expo-sharing';
-import { useRef, useState } from 'react';
+import { type ComponentRef, useRef, useState } from 'react';
 import { ActivityIndicator, Modal, Platform, StyleSheet, Text, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Polyline, Rect, Stop } from 'react-native-svg';
 import { captureRef } from 'react-native-view-shot';
@@ -140,7 +140,7 @@ function ShareSheetContent({
   subtitle: string;
   stats: ShareStat[];
 }) {
-  const card = useRef<View>(null);
+  const card = useRef<ComponentRef<typeof View>>(null);
   const paths = useWalkPaths(since);
   const [sharing, setSharing] = useState(false);
   const [error, setError] = useState<string | null>(null);

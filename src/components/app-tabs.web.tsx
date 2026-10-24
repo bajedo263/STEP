@@ -1,3 +1,4 @@
+import type { ComponentRef, Ref } from 'react';
 import {
   Tabs,
   TabList,
@@ -37,9 +38,10 @@ export default function AppTabs() {
   );
 }
 
-export function TabButton({ children, isFocused, ...props }: TabTriggerSlotProps) {
+export function TabButton({ children, isFocused, ref, ...props }: TabTriggerSlotProps) {
   return (
-    <Pressable {...props} style={({ pressed }) => pressed && styles.pressed}>
+    // expo-router type encore ref en Ref<View>, alors que View est une fonction depuis RN 0.88.
+    <Pressable {...props} ref={ref as Ref<ComponentRef<typeof Pressable>>} style={({ pressed }) => pressed && styles.pressed}>
       <ThemedView
         type={isFocused ? 'backgroundSelected' : 'backgroundElement'}
         style={styles.tabButtonView}>

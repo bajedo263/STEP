@@ -1,4 +1,5 @@
 import * as Notifications from 'expo-notifications';
+import { AndroidImportance } from 'expo-notifications';
 import { router } from 'expo-router';
 import { useEffect, useMemo } from 'react';
 import { Platform } from 'react-native';
@@ -54,7 +55,7 @@ async function ensurePermission(): Promise<boolean> {
     // Sur Android 13, la demande n'apparaît qu'une fois un canal créé.
     await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
       name: 'Rappels',
-      importance: Notifications.AndroidImportance.DEFAULT,
+      importance: AndroidImportance.DEFAULT,
     });
   }
   const current = await Notifications.getPermissionsAsync();

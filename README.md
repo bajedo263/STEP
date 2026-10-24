@@ -6,7 +6,7 @@ Le cadrage complet (besoins, architecture, plan) est dans le [document de cadrag
 
 ## Stack
 
-- **App** : React Native + Expo (SDK 57), TypeScript, Expo Router
+- **App** : React Native + Expo (SDK 58), TypeScript, Expo Router
 - **Backend** : Supabase (Auth, Postgres + PostGIS, Edge Functions, Realtime)
 - **Carte et itinéraires** : react-native-maps (Apple Plans sur iPhone, Google Maps sur Android), OpenRouteService pour le calcul des boucles
 
