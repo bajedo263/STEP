@@ -1,5 +1,5 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { Place } from '../../supabase/functions/_shared/destination.ts';
 import type { Poi } from '@/lib/pois';
@@ -56,7 +56,15 @@ export type DestinationRouteState =
   | { status: 'idle' }
   | { status: 'loading'; place: Place }
   | { status: 'error'; place: Place; message: string }
-  | { status: 'ready'; place: Place; route: DestinationRoute };
+  | {
+      status: 'ready';
+      place: Place;
+      route: DestinationRoute;
+      /** Chemin direct demandé par l'utilisateur (sans objectif à atteindre). */
+      direct: boolean;
+      /** Détour proposé juste avant pour ce lieu, pour y revenir après « Chemin direct ». */
+      detour: DestinationRoute | null;
+    };
 
 /**
  * Itinéraire renvoyé par le serveur ; `lengthened` s'il a été rallongé par un détour,
@@ -70,12 +78,15 @@ export type DestinationRoute = LoopRoute & { lengthened: boolean; via: Poi | nul
  */
 export function useDestinationRoute() {
   const [state, setState] = useState<DestinationRouteState>({ status: 'idle' });
+  // Dernier détour proposé pour le lieu choisi : « Chemin direct » ne le perd pas.
+  const lastDetour = useRef<{ placeId: string; route: DestinationRoute } | null>(null);
 
   const choose = useCallback(async (start: LatLng, place: Place, targetM: number | null) => {
     if (!supabase) {
       setState({ status: 'error', place, message: 'Le serveur n’est pas configuré.' });
       return;
     }
+    if (lastDetour.current?.placeId !== place.id) lastDetour.current = null;
     setState({ status: 'loading', place });
     const { data, error } = await supabase.functions.invoke<DestinationRoute>('destination', {
       body: {
@@ -90,10 +101,25 @@ export function useDestinationRoute() {
       setState({ status: 'error', place, message: await errorMessage(error) });
       return;
     }
-    setState({ status: 'ready', place, route: data });
+    if (data.lengthened) lastDetour.current = { placeId: place.id, route: data };
+    const direct = targetM === null;
+    const detour = direct ? (lastDetour.current?.route ?? null) : null;
+    setState({ status: 'ready', place, route: data, direct, detour });
   }, []);
 
-  const clear = useCallback(() => setState({ status: 'idle' }), []);
+  /** Revient au détour proposé avant « Chemin direct », sans nouveau calcul. */
+  const restoreDetour = useCallback(() => {
+    setState((s) =>
+      s.status === 'ready' && s.detour
+        ? { status: 'ready', place: s.place, route: s.detour, direct: false, detour: null }
+        : s
+    );
+  }, []);
 
-  return { ...state, choose, clear };
+  const clear = useCallback(() => {
+    lastDetour.current = null;
+    setState({ status: 'idle' });
+  }, []);
+
+  return { ...state, choose, restoreDetour, clear };
 }
