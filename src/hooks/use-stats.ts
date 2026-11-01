@@ -39,11 +39,30 @@ export type StatsData =
       poiZones: PoiZoneStats[];
     };
 
+/** Trajets plus courts que ça : un aller-retour à la boulangerie, pas un trajet à revoir. */
+export const LISTED_WALK_MIN_M = 400;
+const LISTED_WALKS = 5;
+
+// Dernières statistiques chargées : au retour sur l'écran, on les montre aussitôt et on les met à
+// jour en silence, au lieu d'une roue de chargement à chaque visite.
+let cached: { userId: string; data: StatsData } | null = null;
+
 /** Historique des pas, derniers trajets et records, relus à chaque retour sur l'écran. */
 export function useStats(): StatsData {
   const { session } = useAuth();
   const userId = session?.user.id;
-  const [state, setState] = useState<StatsData>({ status: 'loading' });
+  const [state, setStateRaw] = useState<StatsData>(() =>
+    cached && cached.userId === userId ? cached.data : { status: 'loading' }
+  );
+  const setState = useCallback(
+    (next: StatsData | ((current: StatsData) => StatsData)) =>
+      setStateRaw((current) => {
+        const value = typeof next === 'function' ? next(current) : next;
+        if (userId && value.status === 'ready') cached = { userId, data: value };
+        return value;
+      }),
+    [userId]
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -63,8 +82,9 @@ export function useStats(): StatsData {
             .from('walks')
             .select('id, mode, started_at, ended_at, steps, distance_m, calories_kcal')
             .eq('user_id', userId)
+            .gte('distance_m', LISTED_WALK_MIN_M)
             .order('started_at', { ascending: false })
-            .limit(10)
+            .limit(LISTED_WALKS)
             .returns<WalkRow[]>(),
           client
             .from('walks')
@@ -96,7 +116,7 @@ export function useStats(): StatsData {
       return () => {
         cancelled = true;
       };
-    }, [userId])
+    }, [userId, setState])
   );
 
   return state;

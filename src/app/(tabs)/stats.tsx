@@ -17,7 +17,13 @@ import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { CardLink } from '@/components/ui/card-link';
 import { InfoButton } from '@/components/ui/info-button';
-import { BottomTabInset, MaxContentWidth, Spacing, VisitedPoiColor } from '@/constants/theme';
+import {
+  BottomTabInset,
+  MaxContentWidth,
+  Spacing,
+  VisitedPoiColor,
+  withAlpha,
+} from '@/constants/theme';
 import { useBadges } from '@/hooks/use-badges';
 import { useDailyGoal } from '@/hooks/use-daily-goal';
 import { useProfile } from '@/hooks/use-profile';
@@ -94,11 +100,11 @@ export default function StatsScreen() {
                 <ThemedText type="smallBold" style={styles.flex}>
                   Derniers trajets
                 </ThemedText>
-                <CardLink title="Mes souvenirs" onPress={() => router.push('/souvenirs')} />
+                <CardLink title="Tous mes souvenirs" onPress={() => router.push('/souvenirs')} />
               </View>
               {stats.walks.length === 0 ? (
                 <ThemedText themeColor="textSecondary">
-                  Aucun trajet pour l’instant. Lancez une boucle depuis la carte !
+                  Vos trajets de plus de 400 m s’afficheront ici. Lancez une boucle depuis la carte !
                 </ThemedText>
               ) : (
                 stats.walks.map((walk) => <WalkItem key={walk.id} walk={walk} />)
@@ -173,7 +179,7 @@ function WeekSummary({ week, goal, rule }: { week: WeekDay[]; goal: number; rule
         <View
           style={[
             styles.goalLine,
-            { bottom: `${(goal / max) * 100}%`, borderColor: theme.textSecondary },
+            { bottom: `${(goal / max) * 100}%`, borderColor: theme.text },
           ]}
         />
         {week.map((day) => (
@@ -183,8 +189,9 @@ function WeekSummary({ week, goal, rule }: { week: WeekDay[]; goal: number; rule
                 styles.bar,
                 {
                   height: `${Math.max(2, (day.steps / max) * 100)}%`,
+                  // Jours réussis en vert, les autres en indigo atténué : lisibles sur fond sombre.
                   backgroundColor:
-                    day.steps >= goalOn(rule, day.day) ? theme.success : theme.backgroundSelected,
+                    day.steps >= goalOn(rule, day.day) ? theme.success : withAlpha(theme.tint, 0.45),
                 },
               ]}
             />
@@ -392,6 +399,9 @@ function RecordRow({ label, value, detail }: { label: string; value: string; det
   );
 }
 
+/** Quartiers montrés d'emblée dans la collection. */
+const ZONES_SHOWN = 3;
+
 /** Lieux découverts sur le total disponible, au global et par quartier. */
 function PoiProgress({ zones }: { zones: PoiZoneStats[] }) {
   const theme = useTheme();
@@ -399,7 +409,7 @@ function PoiProgress({ zones }: { zones: PoiZoneStats[] }) {
   const visited = zones.reduce((sum, zone) => sum + zone.visited, 0);
   const total = zones.reduce((sum, zone) => sum + zone.total, 0);
   const { explored, complete } = collectionCounts(zones);
-  const shown = showAll ? zones : zones.slice(0, 5);
+  const shown = showAll ? zones : zones.slice(0, ZONES_SHOWN);
   // Un seul lien « Boucle vers les lieux manquants », sur le premier quartier à compléter.
   const linkZone = shown.find((zone) => zoneNextStep(zone) !== null);
 
@@ -413,12 +423,12 @@ function PoiProgress({ zones }: { zones: PoiZoneStats[] }) {
         </ThemedText>
       ) : (
         <>
-          <ThemedText>
-            <ThemedText type="subtitle">{formatNumber(visited)}</ThemedText>
-            <ThemedText themeColor="textSecondary">
-              {` sur ${formatNumber(total)} dans les quartiers où vous avez marché`}
+          <View>
+            <ThemedText type="subtitle">{`${formatNumber(visited)} lieux découverts`}</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              {`sur ${formatNumber(total)} dans vos quartiers`}
             </ThemedText>
-          </ThemedText>
+          </View>
           <ThemedText type="small" themeColor="textSecondary">
             {`${explored} quartier${explored > 1 ? 's' : ''} exploré${explored > 1 ? 's' : ''} à moitié, ${complete} complet${complete > 1 ? 's' : ''}.`}
           </ThemedText>
@@ -428,7 +438,7 @@ function PoiProgress({ zones }: { zones: PoiZoneStats[] }) {
             return (
               <View key={`${zone.zone_x}/${zone.zone_y}`} style={styles.zone}>
                 <View style={styles.zoneHeader}>
-                  <ThemedText type="small" numberOfLines={1} style={styles.flex}>
+                  <ThemedText type="small" numberOfLines={2} style={styles.flex}>
                     {zone.label ? `Autour de : ${zone.label}` : 'Quartier'}
                   </ThemedText>
                   <ThemedText type="small" themeColor="textSecondary">
@@ -446,12 +456,12 @@ function PoiProgress({ zones }: { zones: PoiZoneStats[] }) {
                     ]}
                   />
                 </View>
-                {next ? (
-                  <View style={styles.zoneHeader}>
-                    <ThemedText type="small" themeColor="textSecondary" style={styles.flex}>
+                {/* La prochaine étape seulement pour le quartier mis en avant : pas de phrase répétée. */}
+                {next && zone === linkZone ? (
+                  <View style={styles.zone}>
+                    <ThemedText type="small" themeColor="textSecondary">
                       {next}
                     </ThemedText>
-                    {zone !== linkZone ? null : (
                     <Pressable
                       accessibilityRole="button"
                       hitSlop={Spacing.two}
@@ -466,18 +476,20 @@ function PoiProgress({ zones }: { zones: PoiZoneStats[] }) {
                         Boucle vers les lieux manquants
                       </ThemedText>
                     </Pressable>
-                    )}
                   </View>
                 ) : null}
               </View>
             );
           })}
-          {zones.length > 5 ? (
-            <Pressable accessibilityRole="button" onPress={() => setShowAll((value) => !value)}>
-              <ThemedText type="smallBold" themeColor="tint">
-                {showAll ? 'Voir moins' : `Voir les ${zones.length} quartiers`}
-              </ThemedText>
-            </Pressable>
+          {zones.length > ZONES_SHOWN ? (
+            <CardLink
+              title={
+                showAll
+                  ? 'Voir moins'
+                  : `Voir les ${zones.length - ZONES_SHOWN} autres quartiers`
+              }
+              onPress={() => setShowAll((value) => !value)}
+            />
           ) : null}
         </>
       )}
