@@ -11,7 +11,15 @@ import {
   parseOrsResponse,
   parseThroughPoints,
 } from '../../supabase/functions/_shared/loop.ts';
-import { formatDuration, loopTargetDistance, regionForCoordinates } from './loop.ts';
+import {
+  defaultLoopDistance,
+  formatDuration,
+  loopDistanceForSteps,
+  loopStepsRange,
+  loopTargetDistance,
+  regionForCoordinates,
+  stepsForDistance,
+} from './loop.ts';
 
 test('parseLoopRequest valide et borne la demande', () => {
   const ok = parseLoopRequest({ start: { latitude: 48.85, longitude: 2.35 }, distanceM: 40_000, seed: 7.6 });
@@ -73,6 +81,25 @@ test('loopTargetDistance part de la distance restante', () => {
   assert.equal(loopTargetDistance(30_000), 15_000);
   assert.equal(loopTargetDistance(0), 3_000);
   assert.equal(loopTargetDistance(null), 3_000);
+});
+
+test('defaultLoopDistance ne propose jamais une boucle minuscule', () => {
+  assert.equal(defaultLoopDistance(250), 2_000);
+  assert.equal(defaultLoopDistance(4_231), 4_300);
+  assert.equal(defaultLoopDistance(null), 3_000);
+});
+
+test('loopDistanceForSteps convertit et borne la saisie', () => {
+  const stride = 0.7;
+  assert.equal(loopDistanceForSteps(5_000, stride), 3_500);
+  assert.equal(loopDistanceForSteps(null, stride), null);
+  assert.equal(loopDistanceForSteps(0, stride), null);
+  const { min, max } = loopStepsRange(stride);
+  assert.equal(min, 1_500);
+  assert.equal(max, 21_400);
+  assert.equal(loopDistanceForSteps(10, stride), 1_100);
+  assert.equal(loopDistanceForSteps(1_000_000, stride), 15_000);
+  assert.equal(stepsForDistance(3_500, stride), 5_000);
 });
 
 test('regionForCoordinates englobe la boucle', () => {
