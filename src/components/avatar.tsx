@@ -28,9 +28,12 @@ export function Avatar({ name, size = 40, ring }: { name: string; size?: number;
     <View
       style={[
         styles.avatar,
-        { width: size, height: size, borderRadius: size / 2, backgroundColor: theme.tint },
+        { width: size, height: size, borderRadius: size / 2, backgroundColor: theme.tintFill },
       ]}>
-      <ThemedText style={{ color: theme.onTint, fontSize: size * 0.42, lineHeight: size * 0.55, fontWeight: 800 }}>
+      {/* L'initiale suit la taille du rond, pas celle du texte du système : sinon elle déborde. */}
+      <ThemedText
+        allowFontScaling={false}
+        style={{ color: theme.onTint, fontSize: size * 0.42, lineHeight: size * 0.55, fontWeight: 800 }}>
         {initial}
       </ThemedText>
     </View>

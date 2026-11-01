@@ -51,7 +51,7 @@ export function fanOut<T extends Located>(
   center: LatLng,
   region: Region,
   widthPoints: number,
-  gapPoints = 34
+  gapPoints = 44
 ): { item: T; coords: LatLng }[] {
   if (items.length < 2) return items.map((item) => ({ item, coords: item.coords }));
   const cosLat = Math.cos((center.latitude * Math.PI) / 180);

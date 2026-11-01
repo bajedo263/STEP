@@ -250,9 +250,15 @@ export default function HomeScreen() {
 
           {progress ? (
             <>
-              <ProgressRing progress={progress.ratio} size={220}>
-                <ThemedText type="title">{formatNumber(progress.steps)}</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
+              <ProgressRing
+                progress={progress.ratio}
+                size={220}
+                accessibilityLabel={`${formatNumber(progress.steps)} pas sur ${formatNumber(progress.goal)}`}>
+                {/* Taille de texte plafonnée : en très grand, le nombre débordait de l'anneau. */}
+                <ThemedText type="title" maxFontSizeMultiplier={1.2}>
+                  {formatNumber(progress.steps)}
+                </ThemedText>
+                <ThemedText type="small" themeColor="textSecondary" maxFontSizeMultiplier={1.3}>
                   sur {formatNumber(progress.goal)} pas
                 </ThemedText>
               </ProgressRing>

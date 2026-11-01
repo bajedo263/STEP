@@ -122,7 +122,8 @@ export function LeagueCard({ rows }: { rows: LeagueRow[] }) {
                     zone === 'promote' && { color: theme.success },
                     zone === 'demote' && { color: theme.danger },
                   ]}>
-                  {row.rank}
+                  {/* Flèche en plus de la couleur : la zone se lit sans distinguer vert et rouge. */}
+                  {zone === 'promote' ? `▲${row.rank}` : zone === 'demote' ? `▼${row.rank}` : row.rank}
                 </ThemedText>
                 <ThemedText
                   numberOfLines={1}
@@ -162,7 +163,7 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.three,
   },
   rank: {
-    width: 24,
+    width: 32,
     textAlign: 'center',
   },
 });
