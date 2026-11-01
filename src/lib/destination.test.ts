@@ -4,6 +4,11 @@ import { test } from 'node:test';
 
 import {
   detourWaypoint,
+  FAR_PLACE_M,
+  ignSearchUrl,
+  looksLikeAddress,
+  mergePlaces,
+  parseIgnPlaces,
   orsAutocompleteParams,
   parseDestinationRequest,
   parseOrsPlaces,
@@ -162,4 +167,71 @@ test('labelWithAddress : la rue avant l\'arrondissement', () => {
   const address = { housenumber: '12', street: 'Rue du Commerce', postcode: '75015', city: 'Paris', citycode: '75115' };
   assert.equal(labelWithAddress('Monoprix, Paris', address), 'Monoprix, 12 Rue du Commerce, Paris 15e');
   assert.equal(labelWithAddress('Monoprix, Paris 15e', { ...address, postcode: null }), 'Monoprix, 12 Rue du Commerce, Paris 15e');
+});
+
+test('looksLikeAddress reconnaît numéro, code postal ou type de voie', () => {
+  assert.equal(looksLikeAddress('26 rue tiphaine 75015'), true);
+  assert.equal(looksLikeAddress('rue tiphaine paris'), true);
+  assert.equal(looksLikeAddress('75015'), true);
+  assert.equal(looksLikeAddress('12 bis avenue Félix Faure'), true);
+  assert.equal(looksLikeAddress('monoprix'), false);
+  assert.equal(looksLikeAddress('jardin du luxembourg'), false);
+});
+
+test('ignSearchUrl cherche les adresses autour de l’utilisateur', () => {
+  const url = new URL(ignSearchUrl('26 rue tiphaine 75015', paris));
+  assert.equal(url.host, 'data.geopf.fr');
+  assert.equal(url.searchParams.get('q'), '26 rue tiphaine 75015');
+  assert.equal(url.searchParams.get('index'), 'address');
+  assert.equal(url.searchParams.get('lat'), '48.85');
+  assert.equal(url.searchParams.get('lon'), '2.35');
+});
+
+test('parseIgnPlaces lit les adresses avec leur arrondissement', () => {
+  const places = parseIgnPlaces({
+    features: [
+      {
+        geometry: { coordinates: [2.2969, 48.8476] },
+        properties: {
+          id: '75115_9283_00026',
+          type: 'housenumber',
+          name: '26 Rue Tiphaine',
+          housenumber: '26',
+          street: 'Rue Tiphaine',
+          postcode: '75015',
+          city: 'Paris',
+          score: 0.92,
+        },
+      },
+      {
+        geometry: { coordinates: [-1.75, 48.02] },
+        properties: { type: 'street', name: 'Rue Tiphaine Raguenel', postcode: '35310', city: 'Saint-Erblon', score: 0.3 },
+      },
+      { geometry: { coordinates: [2.3, 48.8] }, properties: { type: 'municipality', name: 'Paris', city: 'Paris', score: 0.8 } },
+    ],
+  });
+  assert.deepEqual(
+    places.map((place) => place.label),
+    ['26 Rue Tiphaine, Paris 15e', 'Paris']
+  );
+  assert.equal(places[0].id, 'ign:75115_9283_00026');
+  assert.deepEqual(parseIgnPlaces(null), []);
+});
+
+test('mergePlaces dédoublonne et met les lieux lointains en dernier', () => {
+  const place = (id: string, label: string, latitude: number, longitude: number) => ({
+    id,
+    label,
+    coords: { latitude, longitude },
+  });
+  const far = place('a', 'Rue Tiphaine Raguenel, Saint-Erblon', 48.02, -1.75);
+  const near = place('b', '26 Rue Tiphaine, Paris 15e', 48.8476, 2.2969);
+  const sameSpot = place('c', '26 rue Tiphaine, Paris', 48.84761, 2.29691);
+  const merged = mergePlaces([[far], [near, sameSpot]], paris);
+  assert.deepEqual(
+    merged.map((p) => p.id),
+    ['b', 'a']
+  );
+  assert.ok(FAR_PLACE_M >= 25_000);
+  assert.equal(mergePlaces([[far, near]], null).length, 2);
 });

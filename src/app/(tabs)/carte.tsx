@@ -59,7 +59,12 @@ import {
 import { fetchMissingPlaces } from '@/hooks/use-collection';
 import { useCollapsiblePanel } from '@/hooks/use-collapsible-panel';
 import { useCurrentLocation } from '@/hooks/use-current-location';
-import { useDestinationRoute, usePlaceSearch, type Place } from '@/hooks/use-destination';
+import {
+  FAR_PLACE_M,
+  useDestinationRoute,
+  usePlaceSearch,
+  type Place,
+} from '@/hooks/use-destination';
 import { useLoopRoute } from '@/hooks/use-loop-route';
 import type { PlannedWalk } from '@/hooks/use-planned-walk';
 import { useProfile } from '@/hooks/use-profile';
@@ -187,6 +192,7 @@ function PlanMap() {
   const [mode, setMode] = useState<MapMode>('loop');
   const [query, setQuery] = useState('');
   const search = usePlaceSearch(query, location.status === 'ready' ? location.coords : null);
+  const searching = query.trim().length > 0;
 
   // Le même objectif que l'accueil (adaptatif, réduit les jours de pluie), sinon la boucle proposée
   // ne correspond pas à ce qu'annonce le bouton « Partir ».
@@ -395,9 +401,12 @@ function PlanMap() {
   const placesOnMap = useMemo(
     () =>
       mode === 'destination' && destination.status === 'idle' && search.status === 'ready'
-        ? search.places.slice(0, 5)
+        ? search.places
+            .slice(0, 5)
+            // Un homonyme à l'autre bout de la France ne fait pas dézoomer toute la carte.
+            .filter((place) => !here || haversineMeters(here, place.coords) <= FAR_PLACE_M)
         : [],
-    [mode, destination.status, search]
+    [mode, destination.status, search, here]
   );
   // Cadre une fois chaque nouvelle liste de résultats, avec la position, au-dessus du panneau.
   const framedPlaces = useRef('');
@@ -722,6 +731,7 @@ function PlanMap() {
                   onContentSizeChange={(_, height) => setPanelOverflow(height > panelMaxHeight)}
                   contentContainerStyle={styles.panelBody}
                   keyboardShouldPersistTaps="handled"
+                  keyboardDismissMode="on-drag"
                   showsVerticalScrollIndicator={false}>
                   <SegmentedChoice options={MODE_OPTIONS} value={mode} onChange={setMode} />
                   <ConquestStatus
@@ -901,13 +911,14 @@ function PlanMap() {
                         autoCorrect={false}
                         returnKeyType="search"
                       />
-                      {longPressTipSeen ? null : (
+                      {/* Pendant la saisie, les résultats viennent juste sous le champ. */}
+                      {longPressTipSeen || searching ? null : (
                         <ThemedText type="small" themeColor="textSecondary">
                           Astuce : un appui long sur la carte choisit n’importe quel point
                           d’arrivée.
                         </ThemedText>
                       )}
-                      {goalReached ? null : (
+                      {goalReached || searching ? null : (
                         <ThemedText type="small" themeColor="textSecondary">
                           {`Si le lieu est proche, l’itinéraire fera un détour pour atteindre environ ${formatDistance(targetM)}, ce qu’il vous reste pour l’objectif.`}
                         </ThemedText>
@@ -915,7 +926,14 @@ function PlanMap() {
                       {destination.status === 'error' ? (
                         <ErrorText message={destination.message} />
                       ) : null}
-                      {search.status === 'loading' ? <ActivityIndicator /> : null}
+                      {search.status === 'loading' ? (
+                        <View style={styles.loadingRow}>
+                          <ActivityIndicator color={theme.tint} />
+                          <ThemedText type="small" themeColor="textSecondary">
+                            Recherche…
+                          </ThemedText>
+                        </View>
+                      ) : null}
                       {search.status === 'error' ? <ErrorText message={search.message} /> : null}
                       {search.status === 'ready' && search.places.length === 0 ? (
                         <ThemedText type="small" themeColor="textSecondary">
