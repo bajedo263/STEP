@@ -9,6 +9,7 @@ import {
   Linking,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   useWindowDimensions,
   View,
@@ -27,6 +28,7 @@ import { PoiSheet } from '@/components/poi-sheet';
 import { WalkDone } from '@/components/walk-done';
 import { PhotoZoomOverlay } from '@/components/zoomable-photo';
 import { TerritoryShape, territoryKey } from '@/components/territory-shape';
+import { Icon } from '@/components/icon';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
@@ -209,6 +211,7 @@ function PlanMap() {
   const cells = useConquestCells(conquestActive && region ? cellRangeOf(region) : null);
   const [pin, setPin] = useState<LatLng | null>(null);
   const panel = useCollapsiblePanel();
+  const [panelOverflow, setPanelOverflow] = useState(false);
   const pois = useRoutePois(route?.coordinates ?? null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = pois.find((poi) => poi.id === selectedId) ?? null;
@@ -277,6 +280,16 @@ function PlanMap() {
     setPin(null);
     loop.generate(here, loopM);
   }, [loopRequest, here, loop, loopM]);
+
+  // Sans demande particulière, la boucle de l'objectif est prête dès l'ouverture : « Partir » suffit.
+  const autoLoop = useRef(false);
+  const pendingRequest = Boolean(defendRequest || loopRequest || zoneRequest || firstRequest);
+  useEffect(() => {
+    if (autoLoop.current || pendingRequest || !here || mode !== 'loop') return;
+    if (loop.status !== 'idle') return;
+    autoLoop.current = true;
+    loop.generate(here, loopM);
+  }, [pendingRequest, here, mode, loop, loopM]);
 
   // Depuis la collection, une boucle vers les lieux pas encore découverts d'un quartier.
   const [collectionNote, setCollectionNote] = useState<string | null>(null);
@@ -401,6 +414,11 @@ function PlanMap() {
       mapRef.current?.animateToRegion({ ...start, latitudeDelta: 0.008, longitudeDelta: 0.008 }, 400);
     }
   };
+  // Panneau plus haut que la place disponible : il défile, et seule la poignée le replie.
+  const panelMaxHeight = windowHeight * 0.55;
+  const bodyScrolls = !panel.collapsed && panelOverflow;
+  const recenter = () =>
+    mapRef.current?.animateToRegion({ ...start, latitudeDelta: 0.01, longitudeDelta: 0.01 }, 400);
   const choosePlace = (place: Place) => {
     Keyboard.dismiss();
     destination.choose(start, place, goalReached ? null : targetM);
@@ -578,6 +596,17 @@ function PlanMap() {
           </ThemedText>
         </Pressable>
       ) : null}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Recentrer sur ma position"
+        onPress={recenter}
+        style={({ pressed }) => [
+          styles.locateButton,
+          { top: insets.top + Spacing.two, backgroundColor: theme.background },
+          pressed && styles.pressed,
+        ]}>
+        <Icon ios="location.fill" fallback="◎" color={theme.tint} />
+      </Pressable>
       {mode === 'loop' && loopRoute && handles ? (
         <LoopHandlesOverlay
           ref={handlesOverlay}
@@ -602,17 +631,18 @@ function PlanMap() {
             },
           ]}>
           <Animated.View
-            {...panel.panHandlers}
+            {...(bodyScrolls ? {} : panel.panHandlers)}
             style={[styles.cardWrapper, { transform: [{ translateY: panel.translateY }] }]}>
             <ThemedView style={[styles.card, { borderColor: theme.backgroundSelected }]}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={panel.collapsed ? 'Déplier le panneau' : 'Replier le panneau'}
-                hitSlop={Spacing.three}
-                onPress={panel.toggle}
-                style={styles.grabberArea}>
-                <View style={[styles.grabber, { backgroundColor: theme.backgroundSelected }]} />
-              </Pressable>
+              <View {...(bodyScrolls ? panel.panHandlers : {})} style={styles.grabberZone}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={panel.collapsed ? 'Déplier le panneau' : 'Replier le panneau'}
+                  onPress={panel.toggle}
+                  style={styles.grabberArea}>
+                  <View style={[styles.grabber, { backgroundColor: theme.backgroundSelected }]} />
+                </Pressable>
+              </View>
 
               {panel.collapsed ? (
                 <Pressable
@@ -636,7 +666,13 @@ function PlanMap() {
                   <Button title="Annuler" variant="secondary" onPress={() => setPin(null)} />
                 </>
               ) : (
-                <>
+                <ScrollView
+                  style={{ maxHeight: panelMaxHeight }}
+                  scrollEnabled={panelOverflow}
+                  onContentSizeChange={(_, height) => setPanelOverflow(height > panelMaxHeight)}
+                  contentContainerStyle={styles.panelBody}
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={false}>
                   <SegmentedChoice options={MODE_OPTIONS} value={mode} onChange={setMode} />
                   <ConquestStatus
                     active={conquestActive}
@@ -662,15 +698,9 @@ function PlanMap() {
                     route ? (
                       <>
                         <RouteStats route={route} strideM={strideM} />
-                        <ThemedText type="small" themeColor="textSecondary">
-                          {loop.refining
-                            ? 'Recalcul de la boucle par ce point…'
-                            : 'Faites glisser un point rond du tracé vers la rue où vous voulez passer.'}
-                        </ThemedText>
-                        {loop.refineError ? <ErrorText message={loop.refineError} /> : null}
                         <PoiSummary pois={pois} via={loopRoute?.via ?? []} />
+                        {loop.refineError ? <ErrorText message={loop.refineError} /> : null}
                         <Button title="Partir" onPress={() => go({ mode: 'loop', route, pois })} />
-                        {stepsPicker}
                         <View style={styles.buttonRow}>
                           <Button
                             title="Autre boucle"
@@ -690,6 +720,12 @@ function PlanMap() {
                             onPress={() => go({ mode: 'free' })}
                           />
                         </View>
+                        {stepsPicker}
+                        <ThemedText type="small" themeColor="textSecondary">
+                          {loop.refining
+                            ? 'Recalcul de la boucle par ce point…'
+                            : 'Faites glisser un point rond du tracé vers la rue où vous voulez passer.'}
+                        </ThemedText>
                       </>
                     ) : (
                       <>
@@ -851,7 +887,7 @@ function PlanMap() {
                         : null}
                     </>
                   )}
-                </>
+                </ScrollView>
               )}
             </ThemedView>
           </Animated.View>
@@ -894,6 +930,7 @@ function TerritoryAlert({
   loading: boolean;
   onDefend: () => void;
 }) {
+  const theme = useTheme();
   return (
     <View style={styles.conquest}>
       <ThemedText type="small">{territoryAlertLabel(alerts)}</ThemedText>
@@ -905,12 +942,21 @@ function TerritoryAlert({
           : `La boucle les reprendra si vous avez fait ${formatNumber(CONQUEST_UNLOCK_STEPS)} pas à l’arrivée.`}
       </ThemedText>
       {note ? <ErrorText message={note} /> : null}
-      <Button
-        title="Défendre mon territoire"
-        variant="secondary"
-        loading={loading}
+      {/* Un lien plutôt qu'un bouton : « Partir » reste la seule action principale du panneau. */}
+      <Pressable
+        accessibilityRole="button"
+        disabled={loading}
+        hitSlop={Spacing.two}
         onPress={onDefend}
-      />
+        style={styles.link}>
+        {loading ? (
+          <ActivityIndicator color={theme.tint} />
+        ) : (
+          <ThemedText type="smallBold" style={{ color: theme.tint }}>
+            Tracer une boucle pour les défendre
+          </ThemedText>
+        )}
+      </Pressable>
     </View>
   );
 }
@@ -951,11 +997,11 @@ function ConquestStatus({
         <View style={[styles.swatch, { backgroundColor: ConquestOtherColor }]} />
         <ThemedText type="small">Autres</ThemedText>
       </View>
-      <ThemedText type="small" themeColor="textSecondary">
-        {zoomedOut
-          ? 'Rapprochez la carte pour voir les cases.'
-          : 'Les cases où vous passez, app ouverte, se colorent à votre nom pendant 7 jours, même sans lancer de trajet.'}
-      </ThemedText>
+      {zoomedOut ? (
+        <ThemedText type="small" themeColor="textSecondary">
+          Rapprochez la carte pour voir les cases.
+        </ThemedText>
+      ) : null}
     </View>
   );
 }
@@ -1106,11 +1152,39 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     alignItems: 'center',
   },
+  grabberZone: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    marginTop: -Spacing.four,
+    marginBottom: -Spacing.three,
+  },
   grabberArea: {
-    alignSelf: 'center',
-    paddingVertical: Spacing.one,
-    marginTop: -Spacing.three,
-    marginBottom: -Spacing.two,
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+  },
+  panelBody: {
+    gap: Spacing.three,
+  },
+  link: {
+    alignSelf: 'flex-start',
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  locateButton: {
+    position: 'absolute',
+    right: Spacing.three,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
   },
   grabber: {
     width: 40,
