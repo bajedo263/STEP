@@ -123,8 +123,8 @@ export function evaluateChallenge(kind: ChallengeKind, activity: TodayActivity):
     case 'loop': {
       const best = longestOf('loop');
       return make(
-        'Boucle du jour',
-        `Bouclez une boucle proposée par STEP d’au moins ${formatKm(LOOP_MIN_M)} km.`,
+        'Une boucle',
+        `Faites une boucle proposée par STEP d’au moins ${formatKm(LOOP_MIN_M)} km.`,
         best >= LOOP_MIN_M ? 1 : 0,
         1,
         best >= LOOP_MIN_M ? 'Boucle faite' : 'Aucune boucle pour l’instant'

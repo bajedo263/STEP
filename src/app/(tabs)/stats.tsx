@@ -31,6 +31,7 @@ import {
   bestDay,
   buildWeek,
   historyTotals,
+  monthGoalLine,
   monthTotals,
   weekTotals,
   type HistoryRow,
@@ -235,8 +236,8 @@ function StreakCard({
       : streak.todayDone
         ? 'Objectif du jour atteint, la série continue demain.'
         : `Atteignez l’objectif aujourd’hui pour passer à ${streak.current + 1} jours.`,
-    `${streak.freezes} gel${streak.freezes > 1 ? 's' : ''} en réserve.`,
-    streak.frozenDays.length > 0
+    streak.freezes > 0 ? `${streak.freezes} gel${streak.freezes > 1 ? 's' : ''} en réserve.` : '',
+    streak.current > 0 && streak.frozenDays.length > 0
       ? `${streak.frozenDays.length} jour${streak.frozenDays.length > 1 ? 's' : ''} sauvé${streak.frozenDays.length > 1 ? 's' : ''} par un gel.`
       : '',
   ]
@@ -251,16 +252,19 @@ function StreakCard({
             <ThemedText type="smallBold">Série en cours</ThemedText>
             <InfoButton topic="streak" />
           </View>
-          <ThemedText>
-            <ThemedText
-              type="subtitle"
-              style={{ color: streak.current > 0 ? theme.success : theme.text }}>
-              {streak.current}
+          {streak.current > 0 ? (
+            <ThemedText>
+              <ThemedText type="subtitle" style={{ color: theme.success }}>
+                {streak.current}
+              </ThemedText>
+              <ThemedText themeColor="textSecondary">
+                {streak.current > 1 ? ' jours d’affilée' : ' jour'}
+              </ThemedText>
             </ThemedText>
-            <ThemedText themeColor="textSecondary">
-              {streak.current > 1 ? ' jours d’affilée' : ' jour'}
-            </ThemedText>
-          </ThemedText>
+          ) : (
+            // Pas de « 0 jour » : la série est à lancer.
+            <ThemedText type="subtitle">À lancer</ThemedText>
+          )}
         </View>
         <View style={styles.streakBest}>
           <ThemedText type="stat">{streak.best}</ThemedText>
@@ -292,8 +296,9 @@ function MonthCard({ days, todaySteps, goal }: HistoryProps & { goal: GoalRule }
         <Stat value={`${formatNumber(current.calories)}`} label="kcal" />
       </View>
       <ThemedText type="small" themeColor="textSecondary">
-        {`${current.daysAtGoal} jour${current.daysAtGoal > 1 ? 's' : ''} à l’objectif sur ${current.days}. `}
-        {comparison(current, previous)}
+        {[monthGoalLine(current.daysAtGoal, current.days), comparison(current, previous)]
+          .filter(Boolean)
+          .join(' ')}
       </ThemedText>
       <CardLink title="Partager mon mois" onPress={() => setSharing(true)} />
       <ShareSheet
@@ -301,7 +306,11 @@ function MonthCard({ days, todaySteps, goal }: HistoryProps & { goal: GoalRule }
         onClose={() => setSharing(false)}
         since={new Date(today.getFullYear(), today.getMonth(), 1).toISOString()}
         title={`Mon mois ${monthOf(today)}`}
-        subtitle={`${current.daysAtGoal} jour${current.daysAtGoal > 1 ? 's' : ''} à l’objectif sur ${current.days}`}
+        subtitle={
+          current.daysAtGoal > 0
+            ? `${current.daysAtGoal} jour${current.daysAtGoal > 1 ? 's' : ''} à l’objectif`
+            : `${formatDistance(current.distanceM)} parcourus`
+        }
         stats={[
           { value: formatNumber(current.steps), label: 'pas' },
           { value: formatDistance(current.distanceM), label: 'parcourus' },

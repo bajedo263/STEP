@@ -188,3 +188,14 @@ export function historyTotals(rows: HistoryRow[]) {
     { steps: 0, distanceM: 0, calories: 0 }
   );
 }
+
+/**
+ * Jours à l'objectif du mois, sans « 0 sur 1 » décourageant : en début de mois ou sans jour réussi,
+ * une invitation à la place du compte.
+ */
+export function monthGoalLine(daysAtGoal: number, days: number): string {
+  if (daysAtGoal > 0)
+    return `${daysAtGoal} jour${daysAtGoal > 1 ? 's' : ''} à l’objectif sur ${days}.`;
+  if (days <= 3) return 'Le mois commence : chaque jour à l’objectif comptera ici.';
+  return 'Pas encore de jour à l’objectif ce mois-ci : aujourd’hui peut être le premier.';
+}

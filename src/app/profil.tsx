@@ -16,6 +16,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { SegmentedChoice } from '@/components/ui/segmented-choice';
+import { Stepper } from '@/components/ui/stepper';
 import { TextField } from '@/components/ui/text-field';
 import { Avatar } from '@/components/avatar';
 import { MaxContentWidth, Radius, Spacing } from '@/constants/theme';
@@ -28,6 +29,8 @@ import { useTodaySteps } from '@/hooks/use-today-steps';
 import { useTheme } from '@/hooks/use-theme';
 import { useTrophies } from '@/hooks/use-trophies';
 import {
+  GOAL_RANGE,
+  parseGoal,
   profileToForm,
   validateProfileForm,
   type Profile,
@@ -135,6 +138,28 @@ export default function ProfileScreen() {
     save();
   };
 
+  // L'objectif se règle par crans : on enregistre une fois les crans enchaînés.
+  // Profil refermé avant la fin du délai : on enregistre tout de suite.
+  const goalTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flushGoal = useRef<(() => void) | null>(null);
+  useEffect(
+    () => () => {
+      if (goalTimer.current) clearTimeout(goalTimer.current);
+      flushGoal.current?.();
+    },
+    []
+  );
+  const changeGoal = (goal: number) => {
+    const next = { ...form, dailyGoal: String(goal) };
+    update('dailyGoal', next.dailyGoal);
+    if (goalTimer.current) clearTimeout(goalTimer.current);
+    flushGoal.current = () => {
+      flushGoal.current = null;
+      save(next);
+    };
+    goalTimer.current = setTimeout(() => flushGoal.current?.(), 800);
+  };
+
   return (
     <ThemedView style={styles.container}>
       {/* Sur iPhone, la feuille modale laisse déjà la place de la barre d'état. */}
@@ -186,14 +211,18 @@ export default function ProfileScreen() {
                 <SectionTitle title="Objectif" />
                 <GoalModeChoice adaptive={adaptive} />
                 {adaptive ? null : (
-                  <TextField
-                    label="Objectif quotidien (pas)"
-                    value={form.dailyGoal}
-                    onChangeText={(value) => update('dailyGoal', value)}
-                    onEndEditing={onBlur}
-                    keyboardType="number-pad"
-                    error={errors.dailyGoal}
-                  />
+                  <View style={styles.goal}>
+                    <ThemedText type="smallBold">Objectif quotidien</ThemedText>
+                    <Stepper
+                      value={parseGoal(form.dailyGoal)}
+                      onChange={changeGoal}
+                      min={GOAL_RANGE.min}
+                      max={GOAL_RANGE.max}
+                      step={GOAL_RANGE.step}
+                      unit="pas par jour"
+                      accessibilityLabel="Objectif quotidien"
+                    />
+                  </View>
                 )}
 
                 <SectionTitle title="Corps" />
@@ -466,6 +495,9 @@ function Highlight({ value, label }: { value: string; label: string }) {
 }
 
 const styles = StyleSheet.create({
+  goal: {
+    gap: Spacing.one,
+  },
   account: {
     alignSelf: 'stretch',
     alignItems: 'center',

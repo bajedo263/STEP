@@ -1,12 +1,14 @@
-import { StyleSheet, TextInput, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
 import { SegmentedChoice } from '@/components/ui/segmented-choice';
-import { Radius, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { Stepper } from '@/components/ui/stepper';
+import { Spacing } from '@/constants/theme';
 import { loopStepsRange } from '@/lib/loop';
 
 export type LoopStepsChoice = 'goal' | 'custom';
+
+/** Cran du sélecteur de pas de la boucle. */
+export const LOOP_STEPS_STEP = 500;
 
 type LoopStepsPickerProps = {
   choice: LoopStepsChoice;
@@ -14,31 +16,28 @@ type LoopStepsPickerProps = {
   /** Pas de la boucle proposée par défaut (ce qui manque pour l'objectif, ou le bonus). */
   defaultSteps: number;
   goalReached: boolean;
-  /** Saisie en cours, telle que tapée. */
-  text: string;
-  onTextChange: (text: string) => void;
+  /** Pas choisis en mode « Au choix ». */
+  customSteps: number;
+  onCustomStepsChange: (steps: number) => void;
   strideM: number;
 };
 
 const formatSteps = (value: number) => Math.round(value).toLocaleString('fr-FR');
 
 /**
- * Choix de la longueur de la boucle : par défaut ce qui manque pour l'objectif,
- * ou un nombre de pas précis saisi par l'utilisateur.
+ * Choix de la longueur de la boucle : par défaut ce qui manque pour l'objectif, ou un nombre de
+ * pas réglé par crans de 500 (pas de clavier qui couvre la carte).
  */
 export function LoopStepsPicker({
   choice,
   onChoiceChange,
   defaultSteps,
   goalReached,
-  text,
-  onTextChange,
+  customSteps,
+  onCustomStepsChange,
   strideM,
 }: LoopStepsPickerProps) {
-  const theme = useTheme();
   const { min, max } = loopStepsRange(strideM);
-  const typed = parseSteps(text);
-  const outOfRange = typed != null && (typed < min || typed > max);
 
   return (
     <View style={styles.container}>
@@ -54,70 +53,30 @@ export function LoopStepsPicker({
         onChange={onChoiceChange}
       />
       {choice === 'custom' ? (
-        <View style={styles.inputRow}>
-          <TextInput
-            value={text}
-            onChangeText={(value) => onTextChange(value.replace(/\D/g, '').slice(0, 6))}
-            keyboardType="number-pad"
-            returnKeyType="done"
-            placeholder={formatSteps(defaultSteps)}
-            placeholderTextColor={theme.textSecondary}
-            accessibilityLabel="Nombre de pas souhaités"
-            autoFocus={text === ''}
-            selectTextOnFocus
-            style={[
-              styles.input,
-              {
-                color: theme.text,
-                backgroundColor: theme.backgroundElement,
-                borderColor: outOfRange ? theme.danger : 'transparent',
-              },
-            ]}
-          />
-          <ThemedText themeColor="textSecondary">pas</ThemedText>
-          <ThemedText
-            type="small"
-            themeColor="textSecondary"
-            style={[styles.flex, outOfRange && { color: theme.danger }]}>
-            {outOfRange
-              ? typed < min
-                ? `Minimum ${formatSteps(min)} pas`
-                : `Maximum ${formatSteps(max)} pas`
-              : `De ${formatSteps(min)} à ${formatSteps(max)}`}
-          </ThemedText>
-        </View>
+        <Stepper
+          value={customSteps}
+          onChange={onCustomStepsChange}
+          min={min}
+          max={max}
+          step={LOOP_STEPS_STEP}
+          unit="pas"
+          accessibilityLabel="Longueur de la boucle"
+        />
       ) : null}
     </View>
   );
 }
 
-/** Pas tapés, ou `null` si le champ est vide. */
-export function parseSteps(text: string): number | null {
-  const digits = text.replace(/\D/g, '');
-  return digits ? Number(digits) : null;
+/** Valeur de départ du mode « Au choix » : la boucle par défaut, calée sur un cran. */
+export function initialCustomSteps(defaultSteps: number, strideM: number): number {
+  const { min, max } = loopStepsRange(strideM);
+  const snapped = Math.round(defaultSteps / LOOP_STEPS_STEP) * LOOP_STEPS_STEP;
+  return Math.min(max, Math.max(min, snapped));
 }
 
 const styles = StyleSheet.create({
   container: {
     gap: Spacing.two,
     alignSelf: 'stretch',
-  },
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  input: {
-    minWidth: 110,
-    fontSize: 18,
-    fontWeight: '600',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: 10,
-    borderRadius: Radius.tile,
-    borderWidth: 1.5,
-    textAlign: 'center',
-  },
-  flex: {
-    flex: 1,
   },
 });

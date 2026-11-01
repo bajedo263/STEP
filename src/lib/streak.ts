@@ -71,6 +71,8 @@ export function protectedStreak(
       } else {
         result.current = 0;
         result.freezes = 0;
+        // Les jours sauvés comptaient pour la série qui vient de casser.
+        result.frozenDays = [];
       }
     }
     if (gifted) result.freezes = Math.min(MAX_FREEZES, result.freezes + 1);

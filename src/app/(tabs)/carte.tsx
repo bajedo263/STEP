@@ -23,7 +23,11 @@ import {
 } from '@/components/loop-handles-overlay';
 import { PoiClusterMarker, PoiMarker, RouteLine } from '@/components/map-route';
 import { ActiveWalkView, confirmFinish } from '@/components/active-walk';
-import { LoopStepsPicker, parseSteps, type LoopStepsChoice } from '@/components/loop-steps-picker';
+import {
+  initialCustomSteps,
+  LoopStepsPicker,
+  type LoopStepsChoice,
+} from '@/components/loop-steps-picker';
 import { PoiSheet } from '@/components/poi-sheet';
 import { WalkDone } from '@/components/walk-done';
 import { PhotoZoomOverlay } from '@/components/zoomable-photo';
@@ -59,10 +63,12 @@ import { useDestinationRoute, usePlaceSearch, type Place } from '@/hooks/use-des
 import { useLoopRoute } from '@/hooks/use-loop-route';
 import type { PlannedWalk } from '@/hooks/use-planned-walk';
 import { useProfile } from '@/hooks/use-profile';
+import { useDailyGoal } from '@/hooks/use-daily-goal';
 import { useRoutePois } from '@/hooks/use-route-pois';
 import { setLocalFlag, useLocalFlag } from '@/hooks/use-local-flag';
 import { useTheme } from '@/hooks/use-theme';
 import { useTodaySteps } from '@/hooks/use-today-steps';
+import { useStepHistory } from '@/hooks/use-step-history';
 import {
   CONQUEST_UNLOCK_STEPS,
   cellKey,
@@ -82,9 +88,11 @@ import { dailyProgress, formatDistance } from '@/lib/daily-progress';
 import {
   defaultLoopDistance,
   formatDuration,
+  goalAtArrival,
   loopDistanceForSteps,
   loopTargetDistance,
   stepsForDistance,
+  walkingSeconds,
   regionForCoordinates,
   type LoopRoute,
 } from '@/lib/loop';
@@ -160,6 +168,8 @@ export default function MapScreen() {
 
 /** Astuce de l'appui long, affichée jusqu'au premier essai. */
 const LONG_PRESS_TIP_KEY = 'step.long-press-tip-seen';
+/** Délai après le dernier cran avant de recalculer la boucle. */
+const STEPS_SETTLE_MS = 700;
 
 /** Préparation d'un trajet : boucle ou destination, lieux à voir, Conquête. */
 function PlanMap() {
@@ -178,29 +188,34 @@ function PlanMap() {
   const [query, setQuery] = useState('');
   const search = usePlaceSearch(query, location.status === 'ready' ? location.coords : null);
 
+  // Le même objectif que l'accueil (adaptatif, réduit les jours de pluie), sinon la boucle proposée
+  // ne correspond pas à ce qu'annonce le bouton « Partir ».
+  const history = useStepHistory();
+  const { goal } = useDailyGoal(profile, history, today.status === 'ready' ? today.steps : null);
   const progress = useMemo(
     () =>
       today.status === 'ready'
         ? dailyProgress({
             steps: today.steps,
-            goal: profile?.daily_goal,
+            goal,
             heightCm: profile?.height_cm,
             weightKg: profile?.weight_kg,
             sex: profile?.sex,
           })
         : null,
-    [today, profile]
+    [today, profile, goal]
   );
   const goalReached = progress?.goalReached ?? false;
+  const remainingGoalSteps = progress && !goalReached ? progress.remainingSteps : null;
   const targetM = loopTargetDistance(progress?.remainingDistanceM);
   const strideM = strideLengthMeters(profile?.height_cm ?? 170, profile?.sex ?? 'unspecified');
   // Boucle : par défaut ce qui manque pour l'objectif (jamais minuscule), ou un nombre de pas saisi.
   const [stepsChoice, setStepsChoice] = useState<LoopStepsChoice>('goal');
-  const [stepsText, setStepsText] = useState('');
+  const [customSteps, setCustomSteps] = useState<number | null>(null);
   const defaultLoopM = defaultLoopDistance(progress?.remainingDistanceM);
   const defaultLoopSteps = stepsForDistance(defaultLoopM, strideM);
   const customLoopM =
-    stepsChoice === 'custom' ? loopDistanceForSteps(parseSteps(stepsText), strideM) : null;
+    stepsChoice === 'custom' ? loopDistanceForSteps(customSteps, strideM) : null;
   const loopM = customLoopM ?? defaultLoopM;
 
   const loopRoute = loop.status === 'ready' ? loop.route : null;
@@ -300,8 +315,24 @@ function PlanMap() {
     loop.generate(here, loopM);
   }, [pendingRequest, here, mode, loop, loopM]);
 
+
   // Depuis la collection, une boucle vers les lieux pas encore découverts d'un quartier.
   const [collectionNote, setCollectionNote] = useState<string | null>(null);
+
+  // Une nouvelle longueur choisie redessine la boucle d'elle-même, une fois les crans enchaînés.
+  // (Un changement venu d'ailleurs, comme les pas du jour qui montent, ne touche pas au tracé.)
+  const [stepsRequest, setStepsRequest] = useState(0);
+  useEffect(() => {
+    if (stepsRequest === 0 || !here || mode !== 'loop') return;
+    const timer = setTimeout(() => {
+      setDefenseNote(null);
+      setCollectionNote(null);
+      loop.generate(here, loopM);
+    }, STEPS_SETTLE_MS);
+    return () => clearTimeout(timer);
+    // Seul un réglage de la longueur déclenche le recalcul, pas chaque nouvelle position.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stepsRequest]);
 
   // Depuis l'accueil, la première marche guidée : une boucle courte qui passe par un lieu.
   const handledFirst = useRef<string | undefined>(undefined);
@@ -445,11 +476,19 @@ function PlanMap() {
   const stepsPicker = (
     <LoopStepsPicker
       choice={stepsChoice}
-      onChoiceChange={setStepsChoice}
+      onChoiceChange={(choice) => {
+        setStepsRequest((count) => count + 1);
+        if (choice === 'custom' && customSteps === null)
+          setCustomSteps(initialCustomSteps(defaultLoopSteps, strideM));
+        setStepsChoice(choice);
+      }}
       defaultSteps={defaultLoopSteps}
       goalReached={goalReached}
-      text={stepsText}
-      onTextChange={setStepsText}
+      customSteps={customSteps ?? initialCustomSteps(defaultLoopSteps, strideM)}
+      onCustomStepsChange={(steps) => {
+        setStepsRequest((count) => count + 1);
+        setCustomSteps(steps);
+      }}
       strideM={strideM}
     />
   );
@@ -708,7 +747,7 @@ function PlanMap() {
                   {mode === 'loop' ? (
                     route ? (
                       <>
-                        <RouteStats route={route} strideM={strideM} />
+                        <RouteStats route={route} strideM={strideM} remainingSteps={remainingGoalSteps} />
                         <PoiSummary pois={pois} via={loopRoute?.via ?? []} />
                         {loop.refineError ? <ErrorText message={loop.refineError} /> : null}
                         <Button title="Partir" onPress={() => go({ mode: 'loop', route, pois })} />
@@ -781,7 +820,11 @@ function PlanMap() {
                       <ThemedText type="smallBold" numberOfLines={2}>
                         {destination.place.label}
                       </ThemedText>
-                      <RouteStats route={destination.route} strideM={strideM} />
+                      <RouteStats
+                        route={destination.route}
+                        strideM={strideM}
+                        remainingSteps={remainingGoalSteps}
+                      />
                       {destination.route.lengthened && !destination.route.via ? (
                         <ThemedText type="small" themeColor="textSecondary">
                           Itinéraire rallongé par un détour pour finir votre objectif en chemin.
@@ -1023,13 +1066,36 @@ function ConquestStatus({
   );
 }
 
-function RouteStats({ route, strideM }: { route: LoopRoute; strideM: number }) {
+function RouteStats({
+  route,
+  strideM,
+  remainingSteps,
+}: {
+  route: LoopRoute;
+  strideM: number;
+  /** Pas qui manquent pour l'objectif du jour ; null s'il est atteint. */
+  remainingSteps: number | null;
+}) {
+  const theme = useTheme();
+  const steps = stepsForDistance(route.distanceM, strideM);
+  const goal = goalAtArrival(steps, remainingSteps);
   return (
-    <View style={styles.stats}>
-      <Stat value={formatDistance(route.distanceM)} label="distance" />
-      <Stat value={formatNumber(route.distanceM / strideM)} label="pas environ" />
-      <Stat value={formatDuration(route.durationS)} label="de marche" />
-    </View>
+    <>
+      <View style={styles.stats}>
+        <Stat value={formatDistance(route.distanceM)} label="distance" />
+        <Stat value={formatNumber(steps)} label="pas environ" />
+        {/* Même allure que l'accueil : la durée annoncée ne change pas d'un écran à l'autre. */}
+        <Stat value={formatDuration(walkingSeconds(route.distanceM))} label="de marche" />
+      </View>
+      {goal ? (
+        <ThemedText
+          type="small"
+          themeColor={goal.reached ? undefined : 'textSecondary'}
+          style={goal.reached ? { color: theme.success } : undefined}>
+          {goal.text}
+        </ThemedText>
+      ) : null}
+    </>
   );
 }
 

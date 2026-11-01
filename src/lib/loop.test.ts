@@ -13,6 +13,8 @@ import {
 } from '../../supabase/functions/_shared/loop.ts';
 import {
   defaultLoopDistance,
+  goalAtArrival,
+  walkingSeconds,
   formatDuration,
   loopDistanceForSteps,
   loopStepsRange,
@@ -63,15 +65,20 @@ test('parseOrsResponse lit la géométrie et le résumé', () => {
 
 test('la correction de longueur compense l’écart observé', () => {
   assert.equal(isCloseEnough(3000, 3250), true);
-  assert.equal(isCloseEnough(3000, 3400), false);
-  // Demandé 3 km, obtenu 4 km : on redemande 2,25 km.
-  assert.equal(nextRequestedLength(3000, 3000, 4000), 2250);
+  assert.equal(isCloseEnough(3000, 3400), true);
+  assert.equal(isCloseEnough(3000, 3500), false);
+  // Plus court que demandé : l'objectif ne serait pas atteint.
+  assert.equal(isCloseEnough(3000, 2850), false);
+  assert.equal(isCloseEnough(3000, 2950), true);
+  // Demandé 3 km, obtenu 4 km : on redemande 2,25 km, un peu plus pour viser au-dessus.
+  assert.equal(nextRequestedLength(3000, 3000, 4000), 2363);
   assert.equal(nextRequestedLength(3000, 3000, 0), 3000);
 });
 
-test('closestRoute garde la boucle la plus proche', () => {
+test('closestRoute garde la boucle la plus proche, en évitant les trop courtes', () => {
   const route = (distanceM: number) => ({ coordinates: [], distanceM, durationS: 0 });
-  assert.equal(closestRoute(3000, [route(4000), route(2800), route(3500)])?.distanceM, 2800);
+  assert.equal(closestRoute(3000, [route(4000), route(2800), route(3500)])?.distanceM, 3500);
+  assert.equal(closestRoute(3000, [route(4000), route(2900), route(3500)])?.distanceM, 2900);
   assert.equal(closestRoute(3000, []), null);
 });
 
@@ -153,4 +160,18 @@ test('parseThroughPoints garde les points valides et proches du départ', () => 
   );
   assert.equal(points?.length, 4);
   assert.deepEqual(points?.[0], { latitude: 48.851, longitude: 2.351 });
+});
+
+test('goalAtArrival dit si le trajet suffit pour l’objectif', () => {
+  assert.equal(goalAtArrival(5_600, 5_600)?.reached, true);
+  assert.equal(goalAtArrival(5_500, 5_600)?.reached, true);
+  const short = goalAtArrival(5_146, 5_600);
+  assert.equal(short?.reached, false);
+  assert.match(short?.text ?? '', /500 pas/);
+  assert.equal(goalAtArrival(4_000, 0), null);
+  assert.equal(goalAtArrival(4_000, null), null);
+});
+
+test('walkingSeconds suit l’allure de l’app', () => {
+  assert.equal(walkingSeconds(4_000), 3_000);
 });

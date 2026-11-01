@@ -12,7 +12,7 @@ import {
 import {
   closestRoute,
   isCloseEnough,
-  LOOP_TOLERANCE,
+  LOOP_SHORT_TOLERANCE,
   MAX_LOOP_ATTEMPTS,
   nextRequestedLength,
   type LoopRoute,
@@ -77,7 +77,7 @@ async function handle(req: Request): Promise<Response> {
   }
 
   // Le chemin direct suffit (ou dépasse) les pas à faire : on le garde.
-  if (!targetM || direct.distanceM >= targetM * (1 - LOOP_TOLERANCE)) {
+  if (!targetM || direct.distanceM >= targetM * (1 - LOOP_SHORT_TOLERANCE)) {
     return json({ ...direct, lengthened: false, via: null });
   }
 

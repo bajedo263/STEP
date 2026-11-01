@@ -50,6 +50,7 @@ import { cheersLabel } from '@/lib/duels';
 import type { Challenge } from '@/lib/challenge';
 import { CONQUEST_UNLOCK_STEPS, conquestUnlocked, territoryAlertLabel } from '@/lib/conquest';
 import { dailyProgress, formatDistance, localDay } from '@/lib/daily-progress';
+import { defaultLoopDistance, formatDuration, walkingSeconds } from '@/lib/loop';
 import { useAuth } from '@/providers/auth-provider';
 import { milestoneToday, protectedStreak, type ProtectedStreak } from '@/lib/streak';
 import {
@@ -79,6 +80,7 @@ function ringLine(
 }
 
 export default function HomeScreen() {
+  const theme = useTheme();
   const [moreCards, setMoreCards] = useState(false);
   const today = useTodaySteps();
   const profile = useProfile();
@@ -273,7 +275,7 @@ export default function HomeScreen() {
                 title={
                   progress.goalReached
                     ? 'Partir pour une boucle bonus'
-                    : `Partir · ${formatDistance(progress.remainingDistanceM)}`
+                    : `Partir · ${formatDistance(defaultLoopDistance(progress.remainingDistanceM))}`
                 }
                 onPress={() => router.navigate('/carte')}
               />
@@ -287,7 +289,10 @@ export default function HomeScreen() {
                     label="pas en plus"
                   />
                 ) : (
-                  <Stat value={`${walkMin} min`} label="de marche restante" />
+                  <Stat
+                    value={formatDuration(walkingSeconds(progress.remainingDistanceM))}
+                    label="de marche restante"
+                  />
                 )}
               </ThemedView>
               {streak ? <StreakBanner streak={streak} /> : null}
@@ -302,7 +307,7 @@ export default function HomeScreen() {
                     accessibilityRole="button"
                     onPress={() => setMoreCards(true)}
                     style={styles.more}>
-                    <ThemedText type="smallBold" themeColor="textSecondary">
+                    <ThemedText type="smallBold" style={{ color: theme.tint }}>
                       {`Voir ${dayCards.length - MAX_DAY_CARDS === 1 ? 'l’autre carte' : `les ${dayCards.length - MAX_DAY_CARDS} autres cartes`} du jour`}
                     </ThemedText>
                   </Pressable>
@@ -357,37 +362,40 @@ function DismissibleCard({ onDismiss, children }: { onDismiss: () => void; child
 /** Série protégée : jours d'affilée à l'objectif, gels en stock et paliers fêtés. */
 function StreakBanner({ streak }: { streak: ProtectedStreak }) {
   const milestone = milestoneToday(streak);
+  // Sans série en cours, pas de « 0 » : une invitation à la lancer.
+  const started = streak.current > 0;
+  const freezes =
+    streak.freezes > 0 ? `${streak.freezes} gel${streak.freezes > 1 ? 's' : ''} en réserve.` : '';
   return (
     <ThemedView type="backgroundElement" style={styles.card}>
       <View style={styles.row}>
         <View style={styles.iconValue}>
           <Icon ios="flame.fill" fallback="🔥" color={PoiColor} size={26} />
-          <ThemedText type="subtitle">{streak.current}</ThemedText>
+          {started ? <ThemedText type="subtitle">{streak.current}</ThemedText> : null}
         </View>
         <View style={styles.flex}>
           <View style={styles.titleRow}>
-            <ThemedText type="smallBold">
-              {streak.current > 1 ? 'jours d’affilée à l’objectif' : 'jour à l’objectif'}
+            <ThemedText type="smallBold" style={styles.flex}>
+              {started
+                ? streak.current > 1
+                  ? 'Jours d’affilée à l’objectif'
+                  : 'Premier jour de série'
+                : 'Lancez votre série'}
             </ThemedText>
             <InfoButton topic="streak" />
           </View>
           <ThemedText type="small" themeColor="textSecondary">
-            {streak.todayDone
-              ? 'Objectif du jour atteint, la série continue.'
-              : streak.current > 0
-                ? 'Atteignez l’objectif aujourd’hui pour la prolonger.'
-                : 'Atteignez l’objectif aujourd’hui pour lancer une série.'}
+            {[
+              streak.todayDone
+                ? 'Objectif du jour atteint, la série continue.'
+                : started
+                  ? 'Atteignez l’objectif aujourd’hui pour la prolonger.'
+                  : 'Atteignez l’objectif aujourd’hui : ce sera le premier jour.',
+              freezes,
+            ]
+              .filter(Boolean)
+              .join(' ')}
           </ThemedText>
-        </View>
-        <View style={styles.freezes}>
-          <View style={styles.iconValue}>
-            <Icon ios="snowflake" fallback="❄️" color={ConquestFriendColor} size={16} />
-            <ThemedText type="smallBold">{streak.freezes}</ThemedText>
-          </View>
-          <ThemedText type="small" themeColor="textSecondary">
-            {streak.freezes > 1 ? 'gels' : 'gel'}
-          </ThemedText>
-          <InfoButton topic="freeze" />
         </View>
       </View>
       {milestone ? (
@@ -730,9 +738,6 @@ const styles = StyleSheet.create({
   },
   flex: {
     flex: 1,
-  },
-  freezes: {
-    alignItems: 'center',
   },
   iconValue: {
     flexDirection: 'row',

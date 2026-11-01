@@ -5,6 +5,8 @@
  * d'eux-mêmes au bout de quelques jours.
  */
 
+import { WALK_M_PER_MIN } from './loop.ts';
+
 export type Reminder = {
   id: string;
   date: Date;
@@ -22,7 +24,6 @@ export const STREAK_REMINDER_HOUR = 21;
 /** Jours suivants déjà programmés, au cas où l'app ne serait pas rouverte. */
 export const DAYS_AHEAD = 2;
 /** Vitesse de marche pour estimer la durée d'une boucle. */
-const WALK_M_PER_MIN = 80;
 
 /** Ouvre la carte et propose une boucle ; la valeur change à chaque rappel pour être traitée une fois. */
 const loopUrl = (date: Date) => `/carte?boucle=${date.getTime()}`;
