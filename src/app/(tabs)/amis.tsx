@@ -1,7 +1,7 @@
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import * as Linking from 'expo-linking';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -19,6 +19,8 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ActionSheet } from '@/components/ui/action-sheet';
 import { Button } from '@/components/ui/button';
+import { CardLink } from '@/components/ui/card-link';
+import { InfoButton } from '@/components/ui/info-button';
 import { TextField } from '@/components/ui/text-field';
 import {
   BottomTabInset,
@@ -40,22 +42,8 @@ import {
   type FriendRow,
   type RankingEntry,
 } from '@/lib/friends';
-import {
-  ordinal,
-  rankLabel,
-  seasonEndLabel,
-  seasonName,
-  seasonRanking,
-  type SeasonRow,
-} from '@/lib/season';
-import {
-  leagueChangeLabel,
-  leagueStatusLabel,
-  leagueZone,
-  stepsToOvertake,
-  tierName,
-  type LeagueRow,
-} from '@/lib/league';
+import { ordinal, seasonName, type SeasonRow } from '@/lib/season';
+import { tierName, type LeagueRow } from '@/lib/league';
 import { localDay } from '@/lib/daily-progress';
 import { DUEL_DAYS, duelLabel, duelPhase, inviteMessage, type DuelRow } from '@/lib/duels';
 import { useAuth } from '@/providers/auth-provider';
@@ -75,6 +63,13 @@ export default function FriendsScreen() {
   const [adding, setAdding] = useState(false);
   const [message, setMessage] = useState<{ text: string; isError: boolean } | null>(null);
   const [selected, setSelected] = useState<RankingEntry | null>(null);
+  // Résultat d'un encouragement ou d'un défi, affiché en bas de l'écran, près du geste.
+  const [toast, setToast] = useState<{ text: string; isError: boolean } | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   const add = async () => {
     const name = username.trim();
@@ -107,7 +102,7 @@ export default function FriendsScreen() {
   const friendActions = (entry: RankingEntry) => {
     const cheer = async () => {
       const result = await sendCheer(entry.id);
-      setMessage(
+      setToast(
         result === 'sent'
           ? { text: `${entry.name} verra votre encouragement à sa prochaine ouverture.`, isError: false }
           : result === 'already'
@@ -117,7 +112,7 @@ export default function FriendsScreen() {
     };
     const challenge = async (days: number) => {
       const result = await duels.challenge(entry.id, days);
-      setMessage(
+      setToast(
         result === 'sent'
           ? { text: `Défi envoyé à ${entry.name}. Il commence dès qu’il est accepté.`, isError: false }
           : result === 'already'
@@ -138,6 +133,26 @@ export default function FriendsScreen() {
     ];
   };
 
+  const respondDuel = async (duel: DuelRow, accept: boolean) => {
+    await duels.respond(duel.id, accept);
+    const name = duel.other_name ?? 'votre ami';
+    setToast({
+      text: accept ? `Duel accepté contre ${name}. Bonne marche !` : `Défi de ${name} refusé.`,
+      isError: false,
+    });
+  };
+  const rematch = async (duel: DuelRow) => {
+    const result = await duels.challenge(duel.other_id, duel.days);
+    const name = duel.other_name ?? 'votre ami';
+    setToast(
+      result === 'sent'
+        ? { text: `Revanche proposée à ${name}.`, isError: false }
+        : result === 'already'
+          ? { text: `Un duel est déjà en cours avec ${name}.`, isError: false }
+          : { text: 'Le défi n’a pas pu être envoyé. Réessayez.', isError: true }
+    );
+  };
+
   const list = friends.status === 'ready' ? friends.friends : [];
   const incoming = list.filter((friend) => friend.status === 'incoming');
   const outgoing = list.filter((friend) => friend.status === 'outgoing');
@@ -156,6 +171,73 @@ export default function FriendsScreen() {
           style={styles.flex}>
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
             <ThemedText type="subtitle">Amis</ThemedText>
+
+            {friends.status === 'loading' ? <ActivityIndicator style={styles.loader} /> : null}
+            {friends.status === 'error' ? (
+              <Message text="Impossible de charger vos amis. Vérifiez votre connexion." isError />
+            ) : null}
+
+            {/* D'abord ce qui attend une réponse : demandes et défis reçus. */}
+            {incoming.length > 0 ? (
+              <ThemedView type="backgroundElement" style={styles.card}>
+                <ThemedText type="smallBold">Demandes reçues</ThemedText>
+                {incoming.map((friend) => (
+                  <IncomingRequest
+                    key={friend.friend_id}
+                    friend={friend}
+                    onRespond={friends.respond}
+                  />
+                ))}
+              </ThemedView>
+            ) : null}
+
+            {duels.duels.length > 0 ? (
+              <DuelsCard duels={duels.duels} onRespond={respondDuel} onRematch={rematch} />
+            ) : null}
+
+            {outgoing.length > 0 ? (
+              <ThemedView type="backgroundElement" style={styles.card}>
+                <ThemedText type="smallBold">En attente de réponse</ThemedText>
+                {outgoing.map((friend) => (
+                  <View key={friend.friend_id} style={styles.row}>
+                    <ThemedText style={styles.flex} numberOfLines={1}>
+                      {friend.username ?? 'Marcheur'}
+                    </ThemedText>
+                    <Pressable
+                      accessibilityRole="button"
+                      hitSlop={Spacing.two}
+                      onPress={() => friends.remove(friend.friend_id)}>
+                      <ThemedText type="small" themeColor="textSecondary">
+                        Annuler
+                      </ThemedText>
+                    </Pressable>
+                  </View>
+                ))}
+              </ThemedView>
+            ) : null}
+            {friends.status === 'ready' ? (
+              <ThemedView type="backgroundElement" style={styles.card}>
+                <ThemedText type="smallBold">Classement du jour</ThemedText>
+                {ranking.length === 1 ? (
+                  <ThemedText type="small" themeColor="textSecondary">
+                    Ajoutez des amis pour comparer vos pas chaque jour et voir leurs cases sur la
+                    carte, pour aller les reprendre.
+                  </ThemedText>
+                ) : (
+                  ranking.map((entry) => (
+                    <RankingRow key={entry.id} entry={entry} onPress={() => setSelected(entry)} />
+                  ))
+                )}
+                {ranking.length > 1 ? (
+                  <View style={styles.legend}>
+                    <View style={[styles.swatch, { backgroundColor: ConquestFriendColor }]} />
+                    <ThemedText type="small" themeColor="textSecondary" style={styles.flex}>
+                      Les cases de vos amis apparaissent dans cette couleur sur la carte.
+                    </ThemedText>
+                  </View>
+                ) : null}
+              </ThemedView>
+            ) : null}
 
             <ThemedView type="backgroundElement" style={styles.card}>
               {profile && !profile.username ? (
@@ -197,93 +279,35 @@ export default function FriendsScreen() {
               />
             </ThemedView>
 
-            {friends.status === 'loading' ? <ActivityIndicator style={styles.loader} /> : null}
-            {friends.status === 'error' ? (
-              <Message text="Impossible de charger vos amis. Vérifiez votre connexion." isError />
-            ) : null}
-
-            {duels.duels.length > 0 ? (
-              <DuelsCard duels={duels.duels} onRespond={duels.respond} />
-            ) : null}
-
-            {incoming.length > 0 ? (
-              <ThemedView type="backgroundElement" style={styles.card}>
-                <ThemedText type="smallBold">Demandes reçues</ThemedText>
-                {incoming.map((friend) => (
-                  <IncomingRequest
-                    key={friend.friend_id}
-                    friend={friend}
-                    onRespond={friends.respond}
-                  />
-                ))}
-              </ThemedView>
-            ) : null}
-
-            {friends.status === 'ready' ? (
-              <ThemedView type="backgroundElement" style={styles.card}>
-                <ThemedText type="smallBold">Classement du jour</ThemedText>
-                {ranking.length === 1 ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.push('/competitions')}
+              style={({ pressed }) => pressed && styles.pressed}>
+              <ThemedView type="backgroundElement" style={[styles.card, styles.linkCard]}>
+                <View style={styles.flex}>
+                  <ThemedText type="smallBold">🏆 Compétitions</ThemedText>
                   <ThemedText type="small" themeColor="textSecondary">
-                    Ajoutez des amis pour comparer vos pas chaque jour et voir leurs cases sur la
-                    carte, pour aller les reprendre.
+                    {competitionsSummary(league, season)}
                   </ThemedText>
-                ) : (
-                  ranking.map((entry) => (
-                    <RankingRow key={entry.id} entry={entry} onPress={() => setSelected(entry)} />
-                  ))
-                )}
-                {ranking.length > 1 ? (
-                  <ThemedText type="small" themeColor="textSecondary">
-                    Touchez un ami pour l’encourager ou le défier en duel.
-                  </ThemedText>
-                ) : null}
-                {ranking.length > 1 ? (
-                  <View style={styles.legend}>
-                    <View style={[styles.swatch, { backgroundColor: ConquestFriendColor }]} />
-                    <ThemedText type="small" themeColor="textSecondary" style={styles.flex}>
-                      Les cases de vos amis apparaissent dans cette couleur sur la carte.
-                    </ThemedText>
-                  </View>
-                ) : null}
+                </View>
+                <ThemedText type="smallBold" themeColor="textSecondary">
+                  ›
+                </ThemedText>
               </ThemedView>
-            ) : null}
-
-            {league ? <LeagueCard rows={league} /> : null}
-
-            {season && friends.status === 'ready' ? (
-              <SeasonCard
-                season={season}
-                ranking={seasonRanking(list, {
-                  id: session?.user.id ?? 'me',
-                  name: profile?.username ?? 'Moi',
-                  cells: season.cells,
-                })}
-              />
-            ) : null}
-
-            {outgoing.length > 0 ? (
-              <ThemedView type="backgroundElement" style={styles.card}>
-                <ThemedText type="smallBold">En attente de réponse</ThemedText>
-                {outgoing.map((friend) => (
-                  <View key={friend.friend_id} style={styles.row}>
-                    <ThemedText style={styles.flex} numberOfLines={1}>
-                      {friend.username ?? 'Marcheur'}
-                    </ThemedText>
-                    <Pressable
-                      accessibilityRole="button"
-                      hitSlop={Spacing.two}
-                      onPress={() => friends.remove(friend.friend_id)}>
-                      <ThemedText type="small" themeColor="textSecondary">
-                        Annuler
-                      </ThemedText>
-                    </Pressable>
-                  </View>
-                ))}
-              </ThemedView>
-            ) : null}
+            </Pressable>
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
+      {toast ? (
+        <View style={styles.toastArea} pointerEvents="none">
+          <ThemedView
+            type="backgroundSelected"
+            style={styles.toast}
+            accessibilityLiveRegion="polite">
+            <Message {...toast} />
+          </ThemedView>
+        </View>
+      ) : null}
       <ActionSheet
         visible={selected !== null}
         title={selected?.name}
@@ -334,7 +358,7 @@ function RankingRow({ entry, onPress }: { entry: RankingEntry; onPress: () => vo
   return (
     <Pressable
       accessibilityRole={entry.isMe ? undefined : 'button'}
-      accessibilityHint={entry.isMe ? undefined : 'Encourager, défier ou retirer cet ami'}
+      accessibilityHint={entry.isMe ? undefined : 'Défier, encourager ou retirer cet ami'}
       disabled={entry.isMe}
       onPress={onPress}
       style={[styles.rankingRow, entry.isMe && { backgroundColor: theme.backgroundSelected }]}>
@@ -352,104 +376,14 @@ function RankingRow({ entry, onPress }: { entry: RankingEntry; onPress: () => vo
         ) : null}
       </View>
       <ThemedText type="smallBold">{`${formatNumber(entry.steps)} pas`}</ThemedText>
+      {entry.isMe ? null : (
+        <View style={[styles.pill, { borderColor: theme.tint }]}>
+          <ThemedText type="smallBold" style={{ color: theme.tint }}>
+            Défier
+          </ThemedText>
+        </View>
+      )}
     </Pressable>
-  );
-}
-
-/** Saison de Conquête : classement entre amis aux cases détenues, rang général et saison passée. */
-function SeasonCard({ season, ranking }: { season: SeasonRow; ranking: ReturnType<typeof seasonRanking> }) {
-  const theme = useTheme();
-  const lastPlayers = season.last_players ?? 0;
-  return (
-    <ThemedView type="backgroundElement" style={styles.card}>
-      <View>
-        <ThemedText type="smallBold">{`🚩 ${seasonName(new Date(season.season_start))}`}</ThemedText>
-        <ThemedText type="small" themeColor="textSecondary">
-          {`${seasonEndLabel(new Date(season.season_end), new Date())}. Toutes les cases repartent de zéro le 1er du mois.`}
-        </ThemedText>
-      </View>
-      <ThemedText type="small">{`Vous : ${rankLabel(season.rank, season.players)}.`}</ThemedText>
-      {ranking.length > 1
-        ? ranking.map((entry) => (
-            <View
-              key={entry.id}
-              style={[styles.rankingRow, entry.isMe && { backgroundColor: theme.backgroundSelected }]}>
-              <ThemedText type="smallBold" style={styles.rank}>
-                {entry.rank}
-              </ThemedText>
-              <ThemedText
-                numberOfLines={1}
-                type={entry.isMe ? 'smallBold' : 'small'}
-                style={styles.flex}>
-                {entry.isMe ? `${entry.name} (vous)` : entry.name}
-              </ThemedText>
-              <ThemedText type="smallBold">
-                {`${formatNumber(entry.cells)} case${entry.cells > 1 ? 's' : ''}`}
-              </ThemedText>
-            </View>
-          ))
-        : null}
-      {season.last_rank && season.last_cells ? (
-        <ThemedText type="small" themeColor="textSecondary">
-          {`${seasonName(new Date(season.last_season_start))} : vous avez fini ${ordinal(season.last_rank)} sur ${lastPlayers}, avec ${formatNumber(season.last_cells)} case${season.last_cells > 1 ? 's' : ''}.`}
-        </ThemedText>
-      ) : null}
-    </ThemedView>
-  );
-}
-
-/** Ligue de la semaine : le groupe classé aux pas, zones de montée et de descente. */
-function LeagueCard({ rows }: { rows: LeagueRow[] }) {
-  const theme = useTheme();
-  const me = rows.find((row) => row.is_me);
-  if (!me) return null;
-  const change = leagueChangeLabel(me);
-  const overtake = stepsToOvertake(rows);
-  // Les 10 premiers, et sa propre place si elle est plus loin.
-  const shown = rows.filter((row) => row.rank <= 10 || row.is_me);
-  return (
-    <ThemedView type="backgroundElement" style={styles.card}>
-      <View>
-        <ThemedText type="smallBold">{tierName(me.tier)}</ThemedText>
-        <ThemedText type="small" themeColor="textSecondary">
-          Classement aux pas de la semaine, jusqu’à dimanche soir.
-        </ThemedText>
-      </View>
-      {change ? <ThemedText type="smallBold">{change}</ThemedText> : null}
-      <ThemedText type="small">{`Vous : ${me.rank}${me.rank === 1 ? 'er' : 'e'} sur ${me.players}. ${leagueStatusLabel(me)}`}</ThemedText>
-      {overtake ? (
-        <ThemedText type="small" themeColor="textSecondary">
-          {`${formatNumber(overtake)} pas pour gagner une place.`}
-        </ThemedText>
-      ) : null}
-      {rows.length > 1
-        ? shown.map((row) => {
-            const zone = leagueZone(row);
-            return (
-              <View
-                key={row.user_id}
-                style={[styles.rankingRow, row.is_me && { backgroundColor: theme.backgroundSelected }]}>
-                <ThemedText
-                  type="smallBold"
-                  style={[
-                    styles.rank,
-                    zone === 'promote' && { color: theme.success },
-                    zone === 'demote' && { color: theme.danger },
-                  ]}>
-                  {row.rank}
-                </ThemedText>
-                <ThemedText
-                  numberOfLines={1}
-                  type={row.is_me ? 'smallBold' : 'small'}
-                  style={styles.flex}>
-                  {`${row.username ?? 'Marcheur'}${row.is_me ? ' (vous)' : ''}`}
-                </ThemedText>
-                <ThemedText type="smallBold">{`${formatNumber(row.steps)} pas`}</ThemedText>
-              </View>
-            );
-          })
-        : null}
-    </ThemedView>
   );
 }
 
@@ -457,15 +391,20 @@ function LeagueCard({ rows }: { rows: LeagueRow[] }) {
 function DuelsCard({
   duels,
   onRespond,
+  onRematch,
 }: {
   duels: DuelRow[];
-  onRespond: (duelId: string, accept: boolean) => Promise<void>;
+  onRespond: (duel: DuelRow, accept: boolean) => Promise<void>;
+  onRematch: (duel: DuelRow) => void;
 }) {
   const theme = useTheme();
   const today = localDay(new Date());
   return (
     <ThemedView type="backgroundElement" style={styles.card}>
-      <ThemedText type="smallBold">⚔️ Duels</ThemedText>
+      <View style={styles.titleRow}>
+        <ThemedText type="smallBold">⚔️ Duels</ThemedText>
+        <InfoButton topic="duel" />
+      </View>
       {duels.map((duel) => {
         const phase = duelPhase(duel, today);
         const total = Math.max(1, duel.my_steps + duel.their_steps);
@@ -481,12 +420,12 @@ function DuelsCard({
             </ThemedText>
             {phase === 'pending' && duel.incoming ? (
               <View style={styles.row}>
-                <Button title="Relever" style={styles.flex} onPress={() => onRespond(duel.id, true)} />
+                <Button title="Relever" style={styles.flex} onPress={() => onRespond(duel, true)} />
                 <Button
                   title="Refuser"
                   variant="secondary"
                   style={styles.flex}
-                  onPress={() => onRespond(duel.id, false)}
+                  onPress={() => onRespond(duel, false)}
                 />
               </View>
             ) : null}
@@ -510,11 +449,26 @@ function DuelsCard({
                 </ThemedText>
               </View>
             ) : null}
+            {phase === 'won' || phase === 'lost' || phase === 'tie' ? (
+              <CardLink
+                title={phase === 'lost' ? 'Prendre ma revanche' : 'Rejouer'}
+                onPress={() => onRematch(duel)}
+              />
+            ) : null}
           </View>
         );
       })}
     </ThemedView>
   );
+}
+
+/** Résumé de la ligne « Compétitions » : sa ligue et son rang de saison. */
+function competitionsSummary(league: LeagueRow[] | null, season: SeasonRow | null): string {
+  const me = league?.find((row) => row.is_me);
+  const parts: string[] = [];
+  if (me) parts.push(`${tierName(me.tier)} : ${ordinal(me.rank)} sur ${me.players}`);
+  if (season?.rank) parts.push(`${seasonName(new Date(season.season_start))} : ${ordinal(season.rank)}`);
+  return parts.length > 0 ? parts.join(' · ') : 'Ligue de la semaine et saison de Conquête';
 }
 
 function Message({ text, isError }: { text: string; isError: boolean }) {
@@ -580,6 +534,38 @@ const styles = StyleSheet.create({
   rank: {
     width: 24,
     textAlign: 'center',
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  pill: {
+    borderWidth: 1.5,
+    borderRadius: Radius.pill,
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.two,
+  },
+  linkCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  pressed: {
+    opacity: 0.6,
+  },
+  toastArea: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: BottomTabInset + Spacing.five,
+    alignItems: 'center',
+    paddingHorizontal: Spacing.four,
+  },
+  toast: {
+    maxWidth: MaxContentWidth,
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Radius.tile,
   },
   legend: {
     flexDirection: 'row',

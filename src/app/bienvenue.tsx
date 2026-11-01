@@ -8,11 +8,13 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { SegmentedChoice } from '@/components/ui/segmented-choice';
+import { TextField } from '@/components/ui/text-field';
 import { MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { onboardedKey, setLocalFlag } from '@/hooks/use-local-flag';
+import { useProfile } from '@/hooks/use-profile';
 import { useTheme } from '@/hooks/use-theme';
 import { feedback } from '@/lib/feedback';
-import { requestHealthAccess } from '@/lib/health';
+import { healthAvailable, requestHealthAccess } from '@/lib/health';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/auth-provider';
 
@@ -29,12 +31,25 @@ const PROMISES = [
   { title: 'Un territoire à conquérir', text: 'Vos trajets colorent la carte. Vos amis peuvent vous la reprendre.' },
 ];
 
-/** Premier lancement : la promesse, l'objectif quotidien, puis les autorisations expliquées. */
+const STEPS = 4;
+
+/**
+ * Premier lancement : la promesse, l'objectif quotidien, le pseudo, puis les autorisations
+ * expliquées. Sur un nouveau téléphone, un compte existant garde son objectif et son pseudo.
+ */
 export default function WelcomeScreen() {
   const { session } = useAuth();
   const userId = session?.user.id ?? null;
+  const profile = useProfile();
   const [step, setStep] = useState(0);
-  const [goal, setGoal] = useState<Goal>('10000');
+  // Objectif choisi ici ; tant qu'on n'y touche pas, celui du compte est gardé.
+  const [chosenGoal, setChosenGoal] = useState<Goal | null>(null);
+  const profileGoal = GOALS.find((value) => Number(value) === profile?.daily_goal);
+  const goal = chosenGoal ?? profileGoal ?? '10000';
+  const [pseudo, setPseudo] = useState<string | null>(null);
+  const shownPseudo = pseudo ?? profile?.username ?? '';
+  const [pseudoError, setPseudoError] = useState<string | null>(null);
+  const [savingPseudo, setSavingPseudo] = useState(false);
   const [asking, setAsking] = useState(false);
 
   const finish = () => {
@@ -43,13 +58,33 @@ export default function WelcomeScreen() {
 
   const saveGoal = () => {
     // Au mieux : l'objectif reste modifiable dans le Profil si l'enregistrement échoue.
-    if (supabase && userId) {
+    if (supabase && userId && chosenGoal) {
       supabase.from('profiles').update({ daily_goal: Number(goal) }).eq('id', userId).then(
         () => {},
         () => {}
       );
     }
     setStep(2);
+  };
+
+  // Le pseudo sert à être trouvé par ses amis ; on peut le choisir plus tard dans le Profil.
+  const savePseudo = async () => {
+    const name = shownPseudo.trim();
+    if (name === (profile?.username ?? '')) {
+      setStep(3);
+      return;
+    }
+    if (name.length < 3 || name.length > 30) {
+      setPseudoError('Entre 3 et 30 caractères.');
+      return;
+    }
+    if (!supabase || !userId) return;
+    setSavingPseudo(true);
+    const { error } = await supabase.from('profiles').update({ username: name }).eq('id', userId);
+    setSavingPseudo(false);
+    if (error?.code === '23505') setPseudoError('Ce pseudo est déjà pris.');
+    else if (error) setPseudoError('Le pseudo n’a pas pu être enregistré. Réessayez.');
+    else setStep(3);
   };
 
   const askPermissions = async () => {
@@ -94,16 +129,43 @@ export default function WelcomeScreen() {
                 Les boucles proposées s’ajustent aux pas qu’il vous reste pour l’atteindre. Vous pourrez
                 le changer à tout moment dans le Profil.
               </ThemedText>
-              <SegmentedChoice options={GOAL_OPTIONS} value={goal} onChange={setGoal} />
+              <SegmentedChoice options={GOAL_OPTIONS} value={goal} onChange={setChosenGoal} />
               <ThemedText type="small" themeColor="textSecondary" style={styles.centered}>
                 {`${Number(goal).toLocaleString('fr-FR')} pas, c’est environ ${((Number(goal) * 0.75) / 1000).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} km de marche.`}
               </ThemedText>
               <Button title="Continuer" onPress={saveGoal} />
             </>
+          ) : step === 2 ? (
+            <>
+              <ThemedText type="subtitle" style={styles.centered}>
+                Votre pseudo
+              </ThemedText>
+              <ThemedText themeColor="textSecondary" style={styles.centered}>
+                C’est grâce à lui que vos amis vous trouvent, et qu’il apparaît dans les classements.
+              </ThemedText>
+              <View style={styles.list}>
+                <TextField
+                  label="Pseudo"
+                  placeholder="Entre 3 et 30 caractères"
+                  value={shownPseudo}
+                  onChangeText={(value) => {
+                    setPseudo(value);
+                    setPseudoError(null);
+                  }}
+                  error={pseudoError ?? undefined}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="next"
+                  onSubmitEditing={savePseudo}
+                />
+              </View>
+              <Button title="Continuer" loading={savingPseudo} onPress={savePseudo} />
+              <Button title="Plus tard" variant="secondary" onPress={() => setStep(3)} />
+            </>
           ) : (
             <>
               <ThemedText type="subtitle" style={styles.centered}>
-                Deux autorisations
+                {healthAvailable ? 'Trois autorisations' : 'Deux autorisations'}
               </ThemedText>
               <View style={styles.list}>
                 <Point
@@ -116,6 +178,13 @@ export default function WelcomeScreen() {
                   title="Position"
                   text="Pour tracer des boucles autour de vous et suivre le trajet, seulement quand STEP est ouvert."
                 />
+                {healthAvailable ? (
+                  <Point
+                    index={3}
+                    title={Platform.OS === 'ios' ? 'Santé' : 'Health Connect'}
+                    text="Pour compter aussi les pas de votre montre."
+                  />
+                ) : null}
               </View>
               <Button title="Autoriser" loading={asking} onPress={askPermissions} />
               <Button title="Plus tard" variant="secondary" onPress={finish} />
@@ -130,8 +199,8 @@ export default function WelcomeScreen() {
 function Dots({ current }: { current: number }) {
   const theme = useTheme();
   return (
-    <View style={styles.dots} accessibilityLabel={`Étape ${current + 1} sur 3`}>
-      {[0, 1, 2].map((index) => (
+    <View style={styles.dots} accessibilityLabel={`Étape ${current + 1} sur ${STEPS}`}>
+      {Array.from({ length: STEPS }, (_, index) => (
         <View
           key={index}
           style={[
