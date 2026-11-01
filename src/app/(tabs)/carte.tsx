@@ -899,7 +899,9 @@ function TerritoryAlert({
       <ThemedText type="small">{territoryAlertLabel(alerts)}</ThemedText>
       <ThemedText type="small" themeColor="textSecondary">
         {active
-          ? 'Contour plein : reprises par d’autres. Pointillés : à vous, bientôt libérées.'
+          ? alerts.lost.length > 0
+            ? 'Encadrées de rouge sur la carte : les cases qu’on vous a reprises. Repassez-y pour les récupérer.'
+            : 'Repassez-y avant pour les garder.'
           : `La boucle les reprendra si vous avez fait ${formatNumber(CONQUEST_UNLOCK_STEPS)} pas à l’arrivée.`}
       </ThemedText>
       {note ? <ErrorText message={note} /> : null}

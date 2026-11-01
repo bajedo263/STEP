@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,8 +9,8 @@ import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { WalkPathsMap } from '@/components/walk-paths-map';
 import { MaxContentWidth, Radius, Spacing } from '@/constants/theme';
-import { useMemoryData } from '@/hooks/use-memories';
-import { useWalkPaths } from '@/hooks/use-walk-paths';
+import { useMemoryState } from '@/hooks/use-memories';
+import { useWalkPathsState } from '@/hooks/use-walk-paths';
 import { formatDistance } from '@/lib/daily-progress';
 import { memoriesFor, placesByMonth } from '@/lib/memories';
 import { useAuth } from '@/providers/auth-provider';
@@ -19,8 +20,15 @@ const formatNumber = (value: number) => Math.round(value).toLocaleString('fr-FR'
 /** Souvenirs : la carte de tous ses trajets, les anniversaires du jour et les lieux par mois. */
 export default function SouvenirsScreen() {
   const { session } = useAuth();
-  const data = useMemoryData();
-  const paths = useWalkPaths(null);
+  const memory = useMemoryState();
+  const data = memory.data;
+  const walkPaths = useWalkPathsState(null);
+  const paths = walkPaths.paths;
+  const failed = (memory.failed && !data) || paths === 'error';
+  const retry = () => {
+    if (memory.failed) memory.retry();
+    if (paths === 'error') walkPaths.retry();
+  };
   const [sharing, setSharing] = useState(false);
 
   const memories = useMemo(
@@ -67,7 +75,17 @@ export default function SouvenirsScreen() {
             <ThemedText themeColor="textSecondary">{`Tout ce que vous avez parcouru depuis le ${since}.`}</ThemedText>
           ) : null}
 
-          {paths === null ? <ActivityIndicator style={styles.loader} /> : null}
+          {failed ? (
+            <ThemedView type="backgroundElement" style={styles.card}>
+              <ThemedText type="small">
+                Vos souvenirs n’ont pas pu être chargés. Vérifiez votre connexion.
+              </ThemedText>
+              <Button title="Réessayer" variant="secondary" style={styles.inCard} onPress={retry} />
+            </ThemedView>
+          ) : null}
+          {paths === null || (!data && !memory.failed) ? (
+            <ActivityIndicator style={styles.loader} />
+          ) : null}
           {paths === 'unavailable' ? (
             <ThemedView type="backgroundElement" style={styles.card}>
               <ThemedText type="small" themeColor="textSecondary">
@@ -76,15 +94,25 @@ export default function SouvenirsScreen() {
             </ThemedView>
           ) : null}
           {Array.isArray(paths) && paths.length > 0 ? <WalkPathsMap paths={paths} /> : null}
-          {Array.isArray(paths) && paths.length === 0 ? (
+
+          {totals && totals.walks === 0 ? (
             <ThemedView type="backgroundElement" style={styles.card}>
+              <ThemedText type="smallBold">Pas encore de trajet</ThemedText>
               <ThemedText type="small" themeColor="textSecondary">
-                Vos trajets se dessineront ici, marche après marche.
+                Chaque marche enregistrée se dessinera ici, avec les lieux découverts en chemin.
               </ThemedText>
+              <Button
+                title="Lancer une boucle"
+                style={styles.inCard}
+                onPress={() => {
+                  router.back();
+                  router.navigate(`/carte?boucle=${Date.now()}`);
+                }}
+              />
             </ThemedView>
           ) : null}
 
-          {totals ? (
+          {totals && totals.walks > 0 ? (
             <ThemedView type="backgroundElement" style={styles.totals}>
               {shareStats.map((stat) => (
                 <View key={stat.label} style={styles.total}>
@@ -163,6 +191,9 @@ const styles = StyleSheet.create({
   },
   loader: {
     marginVertical: Spacing.five,
+  },
+  inCard: {
+    marginTop: Spacing.two,
   },
   card: {
     gap: Spacing.one,

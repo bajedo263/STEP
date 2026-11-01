@@ -14,7 +14,7 @@ import { feedback } from '@/lib/feedback';
 import { formatDistance } from '@/lib/daily-progress';
 import { formatDuration, regionForCoordinates } from '@/lib/loop';
 import { type RoutePoi } from '@/lib/pois';
-import { type WalkSummary } from '@/lib/walk-summary';
+import { MIN_WALK_M, type WalkSummary } from '@/lib/walk-summary';
 import { type SaveState } from '@/providers/walk-provider';
 
 /** Bilan d'un trajet terminé, dans l'onglet Carte jusqu'à ce qu'on le ferme. */
@@ -44,10 +44,10 @@ export function WalkDone({
   }, [saved]);
   const seconds = (summary.endedAt.getTime() - summary.startedAt.getTime()) / 1000;
   const message = {
-    saving: 'Enregistrement…',
+    saving: 'Enregistrement… Vous pouvez fermer, il continue.',
     saved: 'Trajet enregistré dans vos statistiques.',
     error: 'Le trajet n’a pas pu être enregistré.',
-    'too-short': 'Trajet trop court pour être enregistré.',
+    'too-short': `Trajet trop court pour être enregistré (moins de ${MIN_WALK_M} m).`,
   }[saveState];
 
   return (
@@ -116,7 +116,8 @@ export function WalkDone({
             }
           />
         ) : null}
-        <Button title="Fermer" disabled={saveState === 'saving'} onPress={onClose} />
+        {/* L'enregistrement continue une fois l'écran fermé : un réseau lent ne bloque personne. */}
+        <Button title="Fermer" onPress={onClose} />
       </SafeAreaView>
     </ThemedView>
   );

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import type { LatLng } from '@/lib/loop';
 import { supabase } from '@/lib/supabase';
@@ -10,13 +10,27 @@ export type WalkPath = { id: string; startedAt: string; distanceM: number; point
 
 /**
  * Tracés de ses trajets depuis `since` (ou depuis toujours), null pendant le chargement et
- * `unavailable` si la migration Souvenirs n'est pas encore appliquée.
+ * `unavailable` s'ils ne peuvent pas être chargés.
  */
 export function useWalkPaths(since: string | null): WalkPath[] | 'unavailable' | null {
+  const { paths } = useWalkPathsState(since);
+  return paths === 'error' ? 'unavailable' : paths;
+}
+
+/**
+ * Même chose, en distinguant la migration Souvenirs pas encore appliquée (`unavailable`) d'un
+ * échec du réseau (`error`), qu'on peut réessayer.
+ */
+export function useWalkPathsState(since: string | null): {
+  paths: WalkPath[] | 'unavailable' | 'error' | null;
+  retry: () => void;
+} {
+  const [attempt, setAttempt] = useState(0);
   const [result, setResult] = useState<{
-    since: string | null;
-    paths: WalkPath[] | 'unavailable';
+    key: string;
+    paths: WalkPath[] | 'unavailable' | 'error';
   } | null>(null);
+  const key = `${since ?? ''}/${attempt}`;
 
   useEffect(() => {
     if (!supabase) return;
@@ -25,7 +39,8 @@ export function useWalkPaths(since: string | null): WalkPath[] | 'unavailable' |
       ({ data, error }) => {
         if (cancelled) return;
         if (error) {
-          setResult({ since, paths: 'unavailable' });
+          // PGRST202 : la fonction n'existe pas encore sur le serveur.
+          setResult({ key, paths: error.code === 'PGRST202' ? 'unavailable' : 'error' });
           return;
         }
         const rows = (data ?? []) as PathRow[];
@@ -35,16 +50,17 @@ export function useWalkPaths(since: string | null): WalkPath[] | 'unavailable' |
             ? [{ id: row.id, startedAt: row.started_at, distanceM: row.distance_m ?? 0, points }]
             : [];
         });
-        setResult({ since, paths });
+        setResult({ key, paths });
       },
       () => {
-        if (!cancelled) setResult({ since, paths: 'unavailable' });
+        if (!cancelled) setResult({ key, paths: 'error' });
       }
     );
     return () => {
       cancelled = true;
     };
-  }, [since]);
+  }, [since, key]);
 
-  return result && result.since === since ? result.paths : null;
+  const retry = useCallback(() => setAttempt((value) => value + 1), []);
+  return { paths: result && result.key === key ? result.paths : null, retry };
 }

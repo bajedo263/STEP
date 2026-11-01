@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   View,
@@ -208,11 +210,73 @@ export default function ProfileScreen() {
 
             {Platform.OS !== 'web' ? <ReminderSettings /> : null}
 
-            <Button variant="secondary" title="Se déconnecter" onPress={() => supabase?.auth.signOut()} />
+            <AccountActions />
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
     </ThemedView>
+  );
+}
+
+/** Déconnexion et suppression du compte, chacune confirmée avant d'agir. */
+function AccountActions() {
+  const theme = useTheme();
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const signOut = () =>
+    Alert.alert('Se déconnecter ?', 'Vos pas et vos trajets restent enregistrés sur votre compte.', [
+      { text: 'Annuler', style: 'cancel' },
+      { text: 'Se déconnecter', onPress: () => supabase?.auth.signOut() },
+    ]);
+
+  const deleteAccount = async () => {
+    if (!supabase) return;
+    setDeleting(true);
+    setError(null);
+    const { data, error: rpcError } = await supabase.rpc('delete_my_account');
+    if (rpcError || data !== true) {
+      setDeleting(false);
+      setError('Le compte n’a pas pu être supprimé. Réessayez dans un instant.');
+      return;
+    }
+    // Le compte n'existe plus : on referme la session locale.
+    await supabase.auth.signOut({ scope: 'local' });
+  };
+
+  const confirmDelete = () =>
+    Alert.alert(
+      'Supprimer votre compte ?',
+      'Vos pas, trajets, amis, territoires et badges seront effacés définitivement. Cette action est irréversible.',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        { text: 'Supprimer', style: 'destructive', onPress: deleteAccount },
+      ]
+    );
+
+  return (
+    <View style={styles.account}>
+      <Button variant="secondary" title="Se déconnecter" onPress={signOut} />
+      <Pressable
+        accessibilityRole="button"
+        disabled={deleting}
+        hitSlop={12}
+        onPress={confirmDelete}
+        style={styles.deleteLink}>
+        {deleting ? (
+          <ActivityIndicator />
+        ) : (
+          <ThemedText type="small" style={{ color: theme.danger }}>
+            Supprimer mon compte
+          </ThemedText>
+        )}
+      </Pressable>
+      {error ? (
+        <ThemedText type="small" style={{ color: theme.danger }} accessibilityLiveRegion="polite">
+          {error}
+        </ThemedText>
+      ) : null}
+    </View>
   );
 }
 
@@ -345,6 +409,16 @@ function Highlight({ value, label }: { value: string; label: string }) {
 }
 
 const styles = StyleSheet.create({
+  account: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  deleteLink: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.three,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
