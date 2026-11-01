@@ -9,9 +9,16 @@ export type MemoryData = { visits: VisitRow[]; walks: WalkRow[] };
 
 /** Lieux découverts et trajets depuis l'inscription, pour les souvenirs. */
 export function useMemoryData(): MemoryData | null {
+  return useMemoryState().data;
+}
+
+/** Même chose, avec l'échec du chargement et de quoi réessayer. */
+export function useMemoryState(): { data: MemoryData | null; failed: boolean; retry: () => void } {
   const { session } = useAuth();
   const userId = session?.user.id;
   const [data, setData] = useState<MemoryData | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
@@ -35,7 +42,12 @@ export function useMemoryData(): MemoryData | null {
           .returns<WalkRow[]>(),
       ])
         .then(([visits, walks]) => {
-          if (cancelled || visits.error || walks.error) return;
+          if (cancelled) return;
+          if (visits.error || walks.error) {
+            setFailed(true);
+            return;
+          }
+          setFailed(false);
           setData({
             visits: (visits.data ?? []).flatMap((row) =>
               row.pois ? [{ visited_at: row.visited_at, name: row.pois.name }] : []
@@ -43,12 +55,20 @@ export function useMemoryData(): MemoryData | null {
             walks: walks.data ?? [],
           });
         })
-        .catch(() => {});
+        .catch(() => {
+          if (!cancelled) setFailed(true);
+        });
       return () => {
         cancelled = true;
       };
-    }, [userId])
+      // `attempt` relance le chargement quand on touche « Réessayer ».
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [userId, attempt])
   );
 
-  return data;
+  const retry = useCallback(() => {
+    setFailed(false);
+    setAttempt((value) => value + 1);
+  }, []);
+  return { data, failed, retry };
 }

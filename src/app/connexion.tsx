@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { SocialSignIn } from '@/components/social-sign-in';
@@ -10,6 +10,7 @@ import { TextField } from '@/components/ui/text-field';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { authErrorMessage } from '@/lib/auth-errors';
+import { requestPasswordReset } from '@/lib/password-reset';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 
 type Mode = 'signIn' | 'signUp';
@@ -22,6 +23,7 @@ export default function SignInScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [resetting, setResetting] = useState(false);
 
   const isSignUp = mode === 'signUp';
 
@@ -58,6 +60,23 @@ export default function SignInScreen() {
     // Sinon la session change et la navigation bascule d'elle-même vers les onglets.
   }
 
+  async function forgotPassword() {
+    setError(null);
+    setNotice(null);
+    if (!email.includes('@')) {
+      setError('Entrez votre adresse email ci-dessus, puis touchez à nouveau « Mot de passe oublié ».');
+      return;
+    }
+    setResetting(true);
+    const sent = await requestPasswordReset(email);
+    setResetting(false);
+    if (sent) {
+      setNotice('Si un compte existe pour cette adresse, un email vient de partir. Ouvrez son lien sur ce téléphone pour choisir un nouveau mot de passe.');
+    } else {
+      setError('L’email n’a pas pu être envoyé. Réessayez dans un instant.');
+    }
+  }
+
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
@@ -77,8 +96,9 @@ export default function SignInScreen() {
             {!isSupabaseConfigured ? (
               <ThemedView type="backgroundElement" style={styles.banner}>
                 <ThemedText type="small" style={{ color: theme.danger }}>
-                  Serveur non configuré : renseignez EXPO_PUBLIC_SUPABASE_URL et
-                  EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY dans .env.
+                  {__DEV__
+                    ? 'Serveur non configuré : renseignez EXPO_PUBLIC_SUPABASE_URL et EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY dans .env.'
+                    : 'Le service est momentanément indisponible. Réessayez plus tard.'}
                 </ThemedText>
               </ThemedView>
             ) : null}
@@ -103,13 +123,29 @@ export default function SignInScreen() {
               textContentType={isSignUp ? 'newPassword' : 'password'}
               onSubmitEditing={submit}
             />
+            {!isSignUp ? (
+              <Pressable
+                accessibilityRole="button"
+                disabled={resetting}
+                hitSlop={12}
+                onPress={forgotPassword}
+                style={styles.forgot}>
+                <ThemedText type="small" style={{ color: theme.tint, opacity: resetting ? 0.5 : 1 }}>
+                  Mot de passe oublié ?
+                </ThemedText>
+              </Pressable>
+            ) : null}
 
             {error ? (
-              <ThemedText type="small" style={{ color: theme.danger }}>
+              <ThemedText type="small" style={{ color: theme.danger }} accessibilityLiveRegion="polite">
                 {error}
               </ThemedText>
             ) : null}
-            {notice ? <ThemedText type="small">{notice}</ThemedText> : null}
+            {notice ? (
+              <ThemedText type="small" accessibilityLiveRegion="polite">
+                {notice}
+              </ThemedText>
+            ) : null}
 
             <Button
               title={isSignUp ? 'Créer mon compte' : 'Se connecter'}
@@ -154,6 +190,10 @@ const styles = StyleSheet.create({
   },
   centered: {
     textAlign: 'center',
+  },
+  forgot: {
+    alignSelf: 'flex-end',
+    paddingVertical: Spacing.one,
   },
   banner: {
     alignSelf: 'stretch',

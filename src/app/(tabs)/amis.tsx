@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { ActionSheet } from '@/components/ui/action-sheet';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
 import {
@@ -73,6 +74,7 @@ export default function FriendsScreen() {
   const [username, setUsername] = useState('');
   const [adding, setAdding] = useState(false);
   const [message, setMessage] = useState<{ text: string; isError: boolean } | null>(null);
+  const [selected, setSelected] = useState<RankingEntry | null>(null);
 
   const add = async () => {
     const name = username.trim();
@@ -123,19 +125,17 @@ export default function FriendsScreen() {
             : { text: 'Le défi n’a pas pu être envoyé. Réessayez.', isError: true }
       );
     };
-    Alert.alert(entry.name, undefined, [
-      { text: 'Encourager 👏', onPress: cheer },
-      ...DUEL_DAYS.map((days) => ({
-        text: `Défier sur ${days} jours`,
-        onPress: () => challenge(days),
-      })),
-      {
-        text: 'Retirer de mes amis',
-        style: 'destructive' as const,
-        onPress: () => friends.remove(entry.id),
-      },
-      { text: 'Annuler', style: 'cancel' as const },
-    ]);
+    // Retirer un ami ne se rattrape pas : on demande confirmation (deux boutons, sûrs sur Android).
+    const remove = () =>
+      Alert.alert(`Retirer ${entry.name} de vos amis ?`, 'Il faudra lui renvoyer une demande pour le retrouver.', [
+        { text: 'Annuler', style: 'cancel' },
+        { text: 'Retirer', style: 'destructive', onPress: () => friends.remove(entry.id) },
+      ]);
+    return [
+      { label: 'Encourager 👏', onPress: cheer },
+      ...DUEL_DAYS.map((days) => ({ label: `Défier sur ${days} jours`, onPress: () => challenge(days) })),
+      { label: 'Retirer de mes amis', destructive: true, onPress: remove },
+    ];
   };
 
   const list = friends.status === 'ready' ? friends.friends : [];
@@ -229,7 +229,7 @@ export default function FriendsScreen() {
                   </ThemedText>
                 ) : (
                   ranking.map((entry) => (
-                    <RankingRow key={entry.id} entry={entry} onPress={() => friendActions(entry)} />
+                    <RankingRow key={entry.id} entry={entry} onPress={() => setSelected(entry)} />
                   ))
                 )}
                 {ranking.length > 1 ? (
@@ -284,6 +284,12 @@ export default function FriendsScreen() {
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
+      <ActionSheet
+        visible={selected !== null}
+        title={selected?.name}
+        actions={selected ? friendActions(selected) : []}
+        onClose={() => setSelected(null)}
+      />
     </ThemedView>
   );
 }

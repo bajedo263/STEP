@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/avatar';
@@ -588,6 +588,7 @@ function Stat({ value, label }: { value: string; label: string }) {
 }
 
 function StepsUnavailable({ status }: { status: 'loading' | 'unavailable' | 'denied' | 'ready' }) {
+  const theme = useTheme();
   if (status === 'loading') return <ActivityIndicator style={styles.loader} />;
 
   const message =
@@ -600,6 +601,14 @@ function StepsUnavailable({ status }: { status: 'loading' | 'unavailable' | 'den
   return (
     <ThemedView type="backgroundElement" style={styles.notice}>
       <ThemedText style={styles.centered}>{message}</ThemedText>
+      {status === 'denied' ? (
+        <Button
+          title="Ouvrir les réglages"
+          variant="secondary"
+          style={{ backgroundColor: theme.backgroundSelected }}
+          onPress={() => Linking.openSettings()}
+        />
+      ) : null}
     </ThemedView>
   );
 }
@@ -678,8 +687,9 @@ const styles = StyleSheet.create({
   },
   notice: {
     alignSelf: 'stretch',
+    gap: Spacing.three,
     padding: Spacing.four,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.tile,
   },
   loader: {
     marginVertical: Spacing.six,
