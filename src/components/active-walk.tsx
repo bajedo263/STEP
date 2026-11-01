@@ -21,7 +21,13 @@ import { TerritoryShape, territoryKey } from '@/components/territory-shape';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
-import { BottomTabInset, ConquestMineColor, MaxContentWidth, Spacing } from '@/constants/theme';
+import {
+  BottomTabInset,
+  ConquestMineColor,
+  MaxContentWidth,
+  Radius,
+  Spacing,
+} from '@/constants/theme';
 import { useCollapsiblePanel } from '@/hooks/use-collapsible-panel';
 import { useTheme } from '@/hooks/use-theme';
 import { useHeading } from '@/hooks/use-heading';
@@ -75,7 +81,6 @@ const conquestAtStart = new Map<number, boolean>();
 export function ActiveWalkView({ walk, onFinish }: { walk: Walk; onFinish: () => void }) {
   const { tracker, planned, plannedPois: pois, discovery, estimatedSteps, conquering } = walk;
   const theme = useTheme();
-  const elapsed = useElapsedSeconds(tracker.startedAt, true);
   const plannedRoute = planned.mode === 'free' ? null : planned.route;
   // Le rappel « écran allumé » ne s'affiche qu'au premier trajet sur ce téléphone.
   const [showAwakeHint] = useState(() => localFlag(AWAKE_HINT_KEY) === null);
@@ -110,8 +115,9 @@ export function ActiveWalkView({ walk, onFinish }: { walk: Walk; onFinish: () =>
   // Fiche du lieu fermée d'un geste : elle ne revient qu'au lieu suivant.
   const [closedPoiId, setClosedPoiId] = useState<string | null>(null);
   // Un lieu déjà ouvert en haut de l'écran ne s'affiche pas une seconde fois en bas.
+  // Une seule fiche à la fois : celle qu'on a touchée sur la carte passe avant celle du lieu proche.
   const banner =
-    discovery.here && discovery.here.id !== closedPoiId && discovery.here.id !== selectedId
+    discovery.here && discovery.here.id !== closedPoiId && selectedId === null
       ? discovery.here
       : null;
   const insets = useSafeAreaInsets();
@@ -358,7 +364,28 @@ export function ActiveWalkView({ walk, onFinish }: { walk: Walk; onFinish: () =>
         edges={['left', 'right']}
         // Dans l'onglet Carte, le panneau se pose au-dessus de la barre d'onglets.
         style={[styles.overlay, { paddingBottom: insets.bottom + BottomTabInset + Spacing.two }]}>
-        {banner ? (
+        {walk.arrivalPending ? (
+          // Arrivé : on choisit, plutôt que de voir le trajet s'arrêter tout seul.
+          <ThemedView style={styles.notice} accessibilityLiveRegion="assertive">
+            <ThemedText type="subtitle" style={styles.centered}>
+              Vous êtes arrivé !
+            </ThemedText>
+            <Button title="Terminer le trajet" onPress={walk.finish} />
+            <Button title="Continuer à marcher" variant="secondary" onPress={walk.keepWalking} />
+          </ThemedView>
+        ) : walk.offRoute?.off ? (
+          <ThemedView
+            style={[styles.notice, styles.offRoute, { borderColor: theme.tint }]}
+            accessibilityLiveRegion="polite">
+            <ThemedText type="smallBold">
+              {`Vous vous éloignez du tracé (${formatDistance(walk.offRoute.distanceM)})`}
+            </ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              {`Rejoignez le tracé pour suivre ${planned.mode === 'loop' ? 'la boucle' : 'l’itinéraire'}.`}
+            </ThemedText>
+          </ThemedView>
+        ) : null}
+        {banner && !walk.arrivalPending ? (
           <PoiBanner
             key={banner.id}
             poi={banner}
@@ -387,9 +414,10 @@ export function ActiveWalkView({ walk, onFinish }: { walk: Walk; onFinish: () =>
                 <ThemedText type="smallBold" numberOfLines={1} style={styles.flex}>
                   {`${mainDistance} ${plannedRoute ? 'restants' : 'parcourus'}`}
                 </ThemedText>
-                <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
-                  {`${formatElapsed(elapsed)} · ${formatNumber(estimatedSteps)} pas`}
-                </ThemedText>
+                <ElapsedText
+                  since={tracker.startedAt}
+                  suffix={` · ${formatNumber(estimatedSteps)} pas`}
+                />
               </Pressable>
             ) : (
               <>
@@ -406,8 +434,13 @@ export function ActiveWalkView({ walk, onFinish }: { walk: Walk; onFinish: () =>
                       ? `parcourus · lieu le plus proche : ${next[0].title}, à ${formatDistance(distanceM(next[0].coords, lastPoint))}`
                       : 'parcourus'}
                 </ThemedText>
+                {walk.goalReached ? (
+                  <ThemedText type="smallBold" themeColor="success" style={styles.centered}>
+                    Objectif du jour atteint !
+                  </ThemedText>
+                ) : null}
                 <View style={styles.stats}>
-                  <Stat value={formatElapsed(elapsed)} label="de marche" />
+                  <ElapsedStat since={tracker.startedAt} />
                   <Stat value={formatNumber(estimatedSteps)} label="pas" />
                   {plannedRoute ? (
                     <Stat value={formatDistance(tracker.track.distanceM)} label="parcourus" />
@@ -444,6 +477,24 @@ export function ActiveWalkView({ walk, onFinish }: { walk: Walk; onFinish: () =>
         onClose={() => setCelebrating(false)}
       />
     </View>
+  );
+}
+
+/**
+ * Chronomètre du trajet : il est le seul à changer chaque seconde, il se redessine donc seul,
+ * sans entraîner la carte et ses repères.
+ */
+function ElapsedStat({ since }: { since: Date }) {
+  const elapsed = useElapsedSeconds(since, true);
+  return <Stat value={formatElapsed(elapsed)} label="de marche" />;
+}
+
+function ElapsedText({ since, suffix }: { since: Date; suffix: string }) {
+  const elapsed = useElapsedSeconds(since, true);
+  return (
+    <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+      {formatElapsed(elapsed) + suffix}
+    </ThemedText>
   );
 }
 
@@ -576,5 +627,22 @@ const styles = StyleSheet.create({
   },
   centered: {
     textAlign: 'center',
+  },
+  notice: {
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: MaxContentWidth,
+    gap: Spacing.two,
+    padding: Spacing.three,
+    marginBottom: Spacing.two,
+    borderRadius: Radius.card,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+  offRoute: {
+    borderLeftWidth: 4,
   },
 });

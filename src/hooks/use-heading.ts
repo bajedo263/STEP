@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { angleDelta, bestHeading } from '@/lib/heading';
 
 /** Variation minimale du cap avant de redessiner, pour ne pas rafraîchir à chaque frémissement. */
-const MIN_CHANGE_DEG = 4;
+const MIN_CHANGE_DEG = 5;
 
 /** Cap du téléphone (boussole), en degrés depuis le nord ; null tant qu'il n'est pas connu. */
 export function useHeading(enabled = true): number | null {

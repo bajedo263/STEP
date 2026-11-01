@@ -1,20 +1,31 @@
 import { useKeepAwake } from 'expo-keep-awake';
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
-import { firstWalkDoneKey, useHasWalked } from '@/hooks/use-comeback';
+import { firstWalkDoneKey, useGiftDays, useHasWalked } from '@/hooks/use-comeback';
+import { useDailyGoal } from '@/hooks/use-daily-goal';
 import { setLocalFlag } from '@/hooks/use-local-flag';
 import type { PlannedWalk } from '@/hooks/use-planned-walk';
 import { usePoiDiscovery } from '@/hooks/use-poi-discovery';
 import { useProfile } from '@/hooks/use-profile';
 import { useRoutePois } from '@/hooks/use-route-pois';
+import { useStepHistory } from '@/hooks/use-step-history';
 import { useTodaySteps } from '@/hooks/use-today-steps';
 import { useWalkTracker } from '@/hooks/use-walk-tracker';
 import { capturedCells, conquestUnlocked } from '@/lib/conquest';
 import { feedback } from '@/lib/feedback';
+import type { LatLng } from '@/lib/loop';
 import { mergePois, type RoutePoi } from '@/lib/pois';
 import { strideLengthMeters } from '@/lib/steps';
 import { supabase } from '@/lib/supabase';
-import { hasArrived } from '@/lib/track';
+import { protectedStreak } from '@/lib/streak';
+import { hasArrived, orientedPath, pathLength, progressAlongPath, type Track } from '@/lib/track';
+import {
+  goalReachedDuringWalk,
+  nearArrival,
+  nextOffRoute,
+  onRoute,
+  type OffRoute,
+} from '@/lib/walk-guidance';
 import { MIN_WALK_M, summarizeWalk, walkRow, type WalkSummary } from '@/lib/walk-summary';
 import { useAuth } from '@/providers/auth-provider';
 
@@ -32,7 +43,16 @@ export type ActiveWalk = {
   summary: WalkSummary | null;
   saveState: SaveState;
   cellCount: number;
+  /** Arrivé au bout du trajet prévu : on attend « Terminer » ou « Continuer ». */
+  arrivalPending: boolean;
+  /** Écart au tracé prévu ; `off` une fois l'écart confirmé. Null en marche libre. */
+  offRoute: OffRoute | null;
+  /** Objectif du jour franchi pendant ce trajet. */
+  goalReached: boolean;
+  /** La journée au moment du bilan : pas, objectif et série. */
+  day: { steps: number | null; goal: number; streak: number | null };
   finish: () => void;
+  keepWalking: () => void;
   retrySave: () => void;
 };
 
@@ -134,7 +154,8 @@ function WalkSession({ planned }: { planned: PlannedWalk }) {
     if (!error) setLocalFlag(firstWalkDoneKey(userId), '1');
   };
 
-  const finish = () => {
+  const finish = () => finishAt(new Date());
+  const finishAt = (endedAt: Date) => {
     if (summary) return;
     tracker.stop();
     const walk = summarizeWalk({
@@ -144,23 +165,67 @@ function WalkSession({ planned }: { planned: PlannedWalk }) {
       strideM,
       weightKg: profile?.weight_kg ?? 70,
       startedAt: tracker.startedAt,
-      endedAt: new Date(),
+      endedAt,
     });
     setSummary(walk);
     setConquered(conquering);
     save(walk, conquering);
   };
 
-  // Arrivé au bout du trajet prévu : on termine tout seul, même depuis un autre écran.
-  const arrived =
-    !summary && planned.mode !== 'free' && hasArrived(planned.route.coordinates, tracker.track);
+  const path = planned.mode === 'free' ? null : planned.route.coordinates;
+
+  // Arrivé au bout du trajet prévu : une vibration, puis « Terminer » ou « Continuer ». Sans
+  // réponse au bout de 10 minutes (téléphone resté en poche), le trajet se termine tout seul.
+  const [keptWalking, setKeptWalking] = useState(false);
+  const arrived = !summary && path !== null && hasArrived(path, tracker.track);
+  const arrivalPending = arrived && !keptWalking;
   useEffect(() => {
-    if (!arrived) return;
-    const timer = setTimeout(finish, 0);
+    if (!arrivalPending) return;
+    feedback.success();
+    // Le trajet se clôt à l'heure d'arrivée, pas dix minutes plus tard.
+    const arrivedAt = new Date();
+    const timer = setTimeout(() => finishAt(arrivedAt), ARRIVAL_TIMEOUT_MS);
     return () => clearTimeout(timer);
-    // `finish` change à chaque rendu ; seule l'arrivée compte.
+    // `finishAt` change à chaque rendu ; seule l'arrivée compte.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [arrived]);
+  }, [arrivalPending]);
+
+  // Trop loin du tracé : une vibration d'avertissement, et un bandeau tant qu'on n'y est pas revenu.
+  const offRoute = useOffRoute(summary || keptWalking ? null : path, tracker.track.filter);
+  const isOff = offRoute?.off === true;
+  useEffect(() => {
+    if (isOff) feedback.warning();
+  }, [isOff]);
+
+  // À 500 m de l'arrivée, un coup de vibration : on peut ranger le téléphone jusque-là.
+  const route = path ? orientedPath(path, tracker.track) : null;
+  const near =
+    !summary &&
+    route !== null &&
+    nearArrival(pathLength(route), pathLength(route) - progressAlongPath(route, tracker.track));
+  const nudged = useRef(false);
+  useEffect(() => {
+    if (!near || nudged.current) return;
+    nudged.current = true;
+    feedback.nudge();
+  }, [near]);
+
+  // L'objectif du jour franchi en marchant se sent aussi, téléphone en poche.
+  const history = useStepHistory();
+  const todaySteps = today.status === 'ready' ? today.steps : null;
+  const { goal, rule } = useDailyGoal(profile, history, todaySteps);
+  const [stepsAtStart, setStepsAtStart] = useState<number | null>(null);
+  if (stepsAtStart === null && todaySteps !== null) setStepsAtStart(todaySteps);
+  const walkSteps = tracker.steps ?? tracker.track.distanceM / strideM;
+  const goalReached = !summary && goalReachedDuringWalk(stepsAtStart, todaySteps, goal, walkSteps);
+  useEffect(() => {
+    if (goalReached) feedback.success();
+  }, [goalReached]);
+  const gifts = useGiftDays();
+  const streak = useMemo(
+    () => (history ? protectedStreak(history, new Date(), todaySteps, rule, gifts).current : null),
+    [history, todaySteps, rule, gifts]
+  );
 
   // Une vibration à chaque nouveau lieu découvert, même téléphone en poche.
   const newPlaceId = discovery.hereIsNew ? discovery.here?.id : undefined;
@@ -173,12 +238,17 @@ function WalkSession({ planned }: { planned: PlannedWalk }) {
     tracker,
     plannedPois,
     discovery,
-    estimatedSteps: tracker.steps ?? tracker.track.distanceM / strideM,
+    estimatedSteps: walkSteps,
     conquering,
     summary,
     saveState,
     cellCount: summary && conquered ? capturedCells(tracker.track.points).length : 0,
+    arrivalPending,
+    offRoute,
+    goalReached,
+    day: { steps: todaySteps, goal, streak },
     finish,
+    keepWalking: () => setKeptWalking(true),
     retrySave: () => {
       if (summary) save(summary, conquered);
     },
@@ -189,6 +259,30 @@ function WalkSession({ planned }: { planned: PlannedWalk }) {
   });
 
   return summary || tracker.background ? null : <KeepAwake />;
+}
+
+const ARRIVAL_TIMEOUT_MS = 10 * 60_000;
+
+/**
+ * Écart au tracé prévu, recalculé à chaque nouvelle position lissée (avant qu'elle soit posée
+ * sur le tracé, sinon elle ne s'en éloignerait jamais).
+ */
+function useOffRoute(path: LatLng[] | null, filter: Track['filter']): OffRoute | null {
+  const [state, setState] = useState<{
+    filter: Track['filter'];
+    value: OffRoute;
+  }>(() => ({
+    filter: null,
+    value: onRoute(),
+  }));
+  if (path && filter && filter !== state.filter) {
+    const position = { ...filter, accuracy: Math.sqrt(filter.variance) };
+    setState({
+      filter,
+      value: nextOffRoute(state.value, path, position, filter.timestamp),
+    });
+  }
+  return path ? state.value : null;
 }
 
 /** Sans suivi en arrière-plan (Expo Go), l'écran reste allumé pendant la marche. */
