@@ -59,6 +59,7 @@ function RootNavigator() {
           <Stack.Screen name="profil" options={{ presentation: 'modal' }} />
           <Stack.Screen name="ami" options={{ presentation: 'modal' }} />
           <Stack.Screen name="souvenirs" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="competitions" options={{ presentation: 'modal' }} />
         </Stack.Protected>
         <Stack.Protected guard={ready && !onboarded}>
           <Stack.Screen name="bienvenue" />

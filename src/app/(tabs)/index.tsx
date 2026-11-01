@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { type ReactNode, useMemo, useState } from 'react';
 import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -11,6 +11,8 @@ import { ProgressRing } from '@/components/progress-ring';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
+import { CardLink } from '@/components/ui/card-link';
+import { InfoButton } from '@/components/ui/info-button';
 import { BottomTabInset, ConquestFriendColor, MaxContentWidth, PoiColor, Radius, Spacing } from '@/constants/theme';
 import { useBadges } from '@/hooks/use-badges';
 import { useComebackBanner, useGiftDays, useHasWalked } from '@/hooks/use-comeback';
@@ -60,7 +62,24 @@ import {
 const formatNumber = (value: number) => Math.round(value).toLocaleString('fr-FR');
 const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
+const MAX_DAY_CARDS = 2;
+
+/** La ligne sous l'anneau : pluie, objectif adaptatif, Conquête ou pas restants. */
+function ringLine(
+  progress: { steps: number; goalReached: boolean; remainingSteps: number },
+  { rainy, plan }: { rainy: boolean; plan: string | null }
+): string {
+  if (conquestUnlocked(progress.steps))
+    return 'Conquête active : vos trajets du jour colorent la carte à votre nom.';
+  if (progress.goalReached)
+    return `Objectif atteint ! Encore ${formatNumber(CONQUEST_UNLOCK_STEPS - progress.steps)} pas pour la Conquête.`;
+  if (rainy) return 'Jour de pluie : objectif réduit, votre série ne risque rien.';
+  if (plan) return plan;
+  return `Encore ${formatNumber(progress.remainingSteps)} pas pour l’objectif.`;
+}
+
 export default function HomeScreen() {
+  const [moreCards, setMoreCards] = useState(false);
   const today = useTodaySteps();
   const profile = useProfile();
 
@@ -147,6 +166,63 @@ export default function HomeScreen() {
       )
     : 0;
 
+  // Cartes du jour, de la plus urgente à la plus anecdotique.
+  const dayCards = [
+    comeback.show ? (
+      <DismissibleCard key="retour" onDismiss={comeback.dismiss}>
+        <View style={styles.row}>
+          <Icon ios="snowflake" fallback="❄️" color={ConquestFriendColor} size={22} />
+          <View style={styles.flex}>
+            <ThemedText type="smallBold">Bon retour !</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              Un gel de série vous est offert pour repartir du bon pied.
+            </ThemedText>
+          </View>
+        </View>
+      </DismissibleCard>
+    ) : null,
+    hasWalked === false ? <FirstWalkCard key="premiere" /> : null,
+    territoryAlert ? <TerritoryCard key="territoire" alerts={territory} /> : null,
+    showWeekly && weekly ? (
+      <WeeklyReviewCard
+        key="semaine"
+        review={weekly.review}
+        extras={weekly.extras}
+        onClose={() => weeklyKey && setLocalFlag(weeklyKey, weekly.review.week)}
+      />
+    ) : null,
+    cheersText ? (
+      <DismissibleCard key="bravos" onDismiss={cheers.dismiss}>
+        <ThemedText type="smallBold">{cheersText}</ThemedText>
+        <ThemedText type="small" themeColor="textSecondary">
+          Une boucle pour leur montrer de quoi vous êtes capable ?
+        </ThemedText>
+        <CardLink
+          title="Préparer ma boucle"
+          onPress={() => {
+            cheers.dismiss();
+            router.push(`/carte?boucle=${Date.now()}`);
+          }}
+        />
+      </DismissibleCard>
+    ) : null,
+    tip ? (
+      <WeatherCard key="meteo" tip={tip} minutes={walkMin} reducedGoal={rainy ? goal : null} />
+    ) : null,
+    challenge ? <ChallengeCard key="defi" challenge={challenge} /> : null,
+    showSuggestion ? <AdaptiveSuggestion key="adaptatif" onDismiss={dismissSuggestion} /> : null,
+    events.active.length > 0 || events.upcoming ? (
+      <EventsCard
+        key="evenements"
+        active={events.active}
+        upcoming={events.upcoming}
+        today={todayKey}
+      />
+    ) : null,
+    memory ? <MemoryCard key="souvenir" memory={memory} /> : null,
+    nextBadge ? <NextBadge key="badge" badge={nextBadge} /> : null,
+  ].filter((card) => card !== null);
+
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -181,23 +257,10 @@ export default function HomeScreen() {
                 </ThemedText>
               </ProgressRing>
 
+              {/* Une seule ligne sous l'anneau : la plus utile maintenant. */}
               <ThemedText style={styles.centered}>
-                {conquestUnlocked(progress.steps)
-                  ? 'Conquête active : vos trajets du jour colorent la carte à votre nom.'
-                  : progress.goalReached
-                    ? `Objectif atteint ! La Conquête s’active à ${formatNumber(CONQUEST_UNLOCK_STEPS)} pas.`
-                    : `Encore ${formatNumber(progress.remainingSteps)} pas pour l’objectif.`}
+                {ringLine(progress, { rainy, plan: plan ? adaptiveLabel(plan) : null })}
               </ThemedText>
-              {plan ? (
-                <ThemedText type="small" themeColor="textSecondary" style={styles.centered}>
-                  {adaptiveLabel(plan)}
-                </ThemedText>
-              ) : null}
-              {rainy ? (
-                <ThemedText type="small" themeColor="textSecondary" style={styles.centered}>
-                  Jour de pluie : objectif réduit, votre série ne risque rien.
-                </ThemedText>
-              ) : null}
 
               {/* L'action principale reste visible sans faire défiler. */}
               <Button
@@ -212,62 +275,33 @@ export default function HomeScreen() {
               <ThemedView type="backgroundElement" style={styles.stats}>
                 <Stat value={formatDistance(progress.distanceM)} label="parcourus" />
                 <Stat value={`${formatNumber(progress.calories)} kcal`} label="dépensées" />
-                <Stat value={`${Math.round(progress.ratio * 100)} %`} label="de l’objectif" />
+                {progress.goalReached ? (
+                  <Stat
+                    value={formatNumber(progress.steps - progress.goal)}
+                    label="pas en plus"
+                  />
+                ) : (
+                  <Stat value={`${walkMin} min`} label="de marche restante" />
+                )}
               </ThemedView>
-
-              {comeback.show ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityHint="Masquer"
-                  onPress={comeback.dismiss}
-                  style={styles.cardPressable}>
-                  <ThemedView type="backgroundElement" style={styles.card}>
-                    <View style={styles.row}>
-                      <Icon ios="snowflake" fallback="❄️" color={ConquestFriendColor} size={22} />
-                      <View style={styles.flex}>
-                        <ThemedText type="smallBold">Bon retour !</ThemedText>
-                        <ThemedText type="small" themeColor="textSecondary">
-                          Un gel de série vous est offert pour repartir du bon pied.
-                        </ThemedText>
-                      </View>
-                    </View>
-                  </ThemedView>
-                </Pressable>
-              ) : null}
-              {hasWalked === false ? <FirstWalkCard /> : null}
-              {tip ? (
-                <WeatherCard tip={tip} minutes={walkMin} reducedGoal={rainy ? goal : null} />
-              ) : null}
-              {cheersText ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityHint="Masquer"
-                  onPress={cheers.dismiss}
-                  style={styles.cardPressable}>
-                  <ThemedView type="backgroundElement" style={styles.card}>
-                    <ThemedText type="smallBold">{cheersText}</ThemedText>
-                    <ThemedText type="small" themeColor="textSecondary">
-                      Une boucle pour leur montrer de quoi vous êtes capable ?
-                    </ThemedText>
-                  </ThemedView>
-                </Pressable>
-              ) : null}
-              {showWeekly && weekly ? (
-                <WeeklyReviewCard
-                  review={weekly.review}
-                  extras={weekly.extras}
-                  onClose={() => weeklyKey && setLocalFlag(weeklyKey, weekly.review.week)}
-                />
-              ) : null}
-              {showSuggestion ? <AdaptiveSuggestion onDismiss={dismissSuggestion} /> : null}
-              {territoryAlert ? <TerritoryCard alerts={territory} /> : null}
               {streak ? <StreakBanner streak={streak} /> : null}
-              {challenge ? <ChallengeCard challenge={challenge} /> : null}
-              {events.active.length > 0 || events.upcoming ? (
-                <EventsCard active={events.active} upcoming={events.upcoming} today={todayKey} />
+
+              {/* Au plus deux cartes du jour, par ordre d'importance ; les autres sur demande. */}
+              {dayCards.slice(0, MAX_DAY_CARDS)}
+              {dayCards.length > MAX_DAY_CARDS ? (
+                moreCards ? (
+                  dayCards.slice(MAX_DAY_CARDS)
+                ) : (
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => setMoreCards(true)}
+                    style={styles.more}>
+                    <ThemedText type="smallBold" themeColor="textSecondary">
+                      {`Voir ${dayCards.length - MAX_DAY_CARDS === 1 ? 'l’autre carte' : `les ${dayCards.length - MAX_DAY_CARDS} autres cartes`} du jour`}
+                    </ThemedText>
+                  </Pressable>
+                )
               ) : null}
-              {memory ? <MemoryCard memory={memory} /> : null}
-              {nextBadge ? <NextBadge badge={nextBadge} /> : null}
 
               {isPartial ? (
                 <ThemedText type="small" themeColor="textSecondary" style={styles.centered}>
@@ -294,6 +328,26 @@ export default function HomeScreen() {
   );
 }
 
+/** Carte qu'on ferme d'une croix visible ; le reste de la carte garde ses propres actions. */
+function DismissibleCard({ onDismiss, children }: { onDismiss: () => void; children: ReactNode }) {
+  const theme = useTheme();
+  return (
+    <ThemedView type="backgroundElement" style={[styles.card, styles.dismissible]}>
+      {children}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Masquer"
+        hitSlop={Spacing.two}
+        onPress={onDismiss}
+        style={styles.close}>
+        <ThemedText type="smallBold" style={{ color: theme.textSecondary }}>
+          ✕
+        </ThemedText>
+      </Pressable>
+    </ThemedView>
+  );
+}
+
 /** Série protégée : jours d'affilée à l'objectif, gels en stock et paliers fêtés. */
 function StreakBanner({ streak }: { streak: ProtectedStreak }) {
   const milestone = milestoneToday(streak);
@@ -305,9 +359,12 @@ function StreakBanner({ streak }: { streak: ProtectedStreak }) {
           <ThemedText type="subtitle">{streak.current}</ThemedText>
         </View>
         <View style={styles.flex}>
-          <ThemedText type="smallBold">
-            {streak.current > 1 ? 'jours d’affilée à l’objectif' : 'jour à l’objectif'}
-          </ThemedText>
+          <View style={styles.titleRow}>
+            <ThemedText type="smallBold">
+              {streak.current > 1 ? 'jours d’affilée à l’objectif' : 'jour à l’objectif'}
+            </ThemedText>
+            <InfoButton topic="streak" />
+          </View>
           <ThemedText type="small" themeColor="textSecondary">
             {streak.todayDone
               ? 'Objectif du jour atteint, la série continue.'
@@ -324,6 +381,7 @@ function StreakBanner({ streak }: { streak: ProtectedStreak }) {
           <ThemedText type="small" themeColor="textSecondary">
             {streak.freezes > 1 ? 'gels' : 'gel'}
           </ThemedText>
+          <InfoButton topic="freeze" />
         </View>
       </View>
       {milestone ? (
@@ -368,7 +426,7 @@ function WeeklyReviewCard({
         </ThemedText>
       ) : null}
       <ThemedText type="small">{weekCheer(review)}</ThemedText>
-      <Button title="C’est noté" variant="secondary" onPress={onClose} />
+      <CardLink title="C’est noté" onPress={onClose} />
     </ThemedView>
   );
 }
@@ -381,7 +439,7 @@ function FirstWalkCard() {
       <ThemedText type="small">
         {`Une boucle d’environ ${formatNumber(FIRST_WALK_STEPS)} pas depuis chez vous, avec un lieu à découvrir. Elle vous rapporte vos premières cases de Conquête, même avant 10 000 pas.`}
       </ThemedText>
-      <Button
+      <CardLink
         title="Préparer ma boucle"
         onPress={() => router.push(`/carte?premiere=${Date.now()}`)}
       />
@@ -401,6 +459,7 @@ function AdaptiveSuggestion({ onDismiss }: { onDismiss: () => void }) {
       </ThemedText>
       <Button
         title="Essayer l’objectif adaptatif"
+        variant="secondary"
         loading={saving}
         onPress={async () => {
           setSaving(true);
@@ -408,7 +467,7 @@ function AdaptiveSuggestion({ onDismiss }: { onDismiss: () => void }) {
           setSaving(false);
         }}
       />
-      <Button title="Garder mon objectif" variant="secondary" onPress={onDismiss} />
+      <CardLink title="Garder mon objectif" onPress={onDismiss} />
     </ThemedView>
   );
 }
@@ -477,9 +536,8 @@ function WeatherCard({
         </View>
       </View>
       {tip.kind !== 'rain' || reducedGoal === null ? (
-        <Button
+        <CardLink
           title="Préparer ma boucle"
-          variant="secondary"
           onPress={() => router.push(`/carte?boucle=${Date.now()}`)}
         />
       ) : null}
@@ -564,9 +622,8 @@ function TerritoryCard({ alerts }: { alerts: TerritoryAlerts }) {
         {alerts.lost.length > 0 ? 'Votre territoire est attaqué' : 'Votre territoire s’efface'}
       </ThemedText>
       <ThemedText type="small">{territoryAlertLabel(alerts)}</ThemedText>
-      <Button
-        title="Défendre"
-        variant="secondary"
+      <CardLink
+        title="Tracer une boucle pour le défendre"
         // Un identifiant à chaque appui : la carte trace une nouvelle boucle même si elle est déjà ouverte.
         onPress={() =>
           router.navigate({ pathname: '/carte', params: { defend: String(Date.now()) } })
@@ -693,5 +750,26 @@ const styles = StyleSheet.create({
   },
   loader: {
     marginVertical: Spacing.six,
+  },
+  more: {
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  dismissible: {
+    paddingRight: Spacing.six,
+  },
+  close: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

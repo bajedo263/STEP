@@ -15,6 +15,8 @@ import { ShareSheet } from '@/components/share-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
+import { CardLink } from '@/components/ui/card-link';
+import { InfoButton } from '@/components/ui/info-button';
 import { BottomTabInset, MaxContentWidth, Spacing, VisitedPoiColor } from '@/constants/theme';
 import { useBadges } from '@/hooks/use-badges';
 import { useDailyGoal } from '@/hooks/use-daily-goal';
@@ -59,6 +61,7 @@ export default function StatsScreen() {
   );
   const badges = useBadges(todaySteps, rule);
 
+  const [expanded, setExpanded] = useState(false);
   const week = useMemo(
     () => (stats.status === 'ready' ? buildWeek(stats.days, new Date(), todaySteps) : null),
     [stats, todaySteps]
@@ -81,13 +84,17 @@ export default function StatsScreen() {
 
           {stats.status === 'ready' && week ? (
             <>
+              {/* Ce qui compte au quotidien en tête ; le reste se déplie sur demande. */}
+              {isFirstWeek(stats.days, stats.walks) ? <FirstWeekCard /> : null}
               <StreakCard days={stats.days} todaySteps={todaySteps} goal={goal} rule={rule} />
               <WeekSummary week={week} goal={goal} rule={rule} />
-              <MonthCard days={stats.days} todaySteps={todaySteps} goal={rule} />
-              <RecordsCard days={stats.days} todaySteps={todaySteps} longestWalk={stats.longestWalk} />
-              <PoiProgress zones={stats.poiZones} />
-              {badges ? <BadgesCard badges={badges} /> : null}
-              <ThemedText type="smallBold">Derniers trajets</ThemedText>
+
+              <View style={styles.sectionRow}>
+                <ThemedText type="smallBold" style={styles.flex}>
+                  Derniers trajets
+                </ThemedText>
+                <CardLink title="Mes souvenirs" onPress={() => router.push('/souvenirs')} />
+              </View>
               {stats.walks.length === 0 ? (
                 <ThemedText themeColor="textSecondary">
                   Aucun trajet pour l’instant. Lancez une boucle depuis la carte !
@@ -95,16 +102,50 @@ export default function StatsScreen() {
               ) : (
                 stats.walks.map((walk) => <WalkItem key={walk.id} walk={walk} />)
               )}
-              {Platform.OS === 'android' ? (
-                <ThemedText type="small" themeColor="textSecondary">
-                  Sur Android, seuls les pas d’aujourd’hui sont affichés tant que Health Connect
-                  n’est pas branché.
-                </ThemedText>
-              ) : null}
+
+              {expanded ? (
+                <>
+                  <MonthCard days={stats.days} todaySteps={todaySteps} goal={rule} />
+                  <RecordsCard
+                    days={stats.days}
+                    todaySteps={todaySteps}
+                    longestWalk={stats.longestWalk}
+                  />
+                  <PoiProgress zones={stats.poiZones} />
+                  {badges ? <BadgesCard badges={badges} /> : null}
+                </>
+              ) : (
+                <Button
+                  title="Mois, records, lieux et badges"
+                  variant="secondary"
+                  onPress={() => setExpanded(true)}
+                />
+              )}
             </>
           ) : null}
         </ScrollView>
       </SafeAreaView>
+    </ThemedView>
+  );
+}
+
+/** Moins de trois jours de pas et aucun trajet : on accueille plutôt qu'aligner des zéros. */
+function isFirstWeek(days: HistoryRow[], walks: WalkRow[]): boolean {
+  return walks.length === 0 && days.filter((day) => day.steps > 0).length < 3;
+}
+
+function FirstWeekCard() {
+  return (
+    <ThemedView type="backgroundElement" style={styles.card}>
+      <ThemedText type="smallBold">Votre première semaine</ThemedText>
+      <ThemedText type="small" themeColor="textSecondary">
+        Vos statistiques se remplissent jour après jour : la série, la semaine, puis vos records.
+        Le plus simple pour commencer, c’est une première boucle.
+      </ThemedText>
+      <CardLink
+        title="Préparer ma boucle"
+        onPress={() => router.navigate(`/carte?boucle=${Date.now()}`)}
+      />
     </ThemedView>
   );
 }
@@ -156,6 +197,12 @@ function WeekSummary({ week, goal, rule }: { week: WeekDay[]; goal: number; rule
         <Stat value={`${totals.daysAtGoal} / 7`} label="jours à l’objectif" />
         <Stat value={formatNumber(totals.steps)} label="pas au total" />
       </View>
+      {Platform.OS === 'android' ? (
+        <ThemedText type="small" themeColor="textSecondary">
+          Sur Android, seuls les pas d’aujourd’hui sont affichés tant que Health Connect n’est pas
+          branché.
+        </ThemedText>
+      ) : null}
     </ThemedView>
   );
 }
@@ -191,7 +238,10 @@ function StreakCard({
     <ThemedView type="backgroundElement" style={styles.card}>
       <View style={styles.streakHeader}>
         <View style={styles.flex}>
-          <ThemedText type="smallBold">Série en cours</ThemedText>
+          <View style={styles.titleRow}>
+            <ThemedText type="smallBold">Série en cours</ThemedText>
+            <InfoButton topic="streak" />
+          </View>
           <ThemedText>
             <ThemedText
               type="subtitle"
@@ -236,10 +286,7 @@ function MonthCard({ days, todaySteps, goal }: HistoryProps & { goal: GoalRule }
         {`${current.daysAtGoal} jour${current.daysAtGoal > 1 ? 's' : ''} à l’objectif sur ${current.days}. `}
         {comparison(current, previous)}
       </ThemedText>
-      <View style={styles.shareRow}>
-        <Button title="Partager mon mois" variant="secondary" onPress={() => setSharing(true)} />
-        <Button title="Souvenirs" variant="secondary" onPress={() => router.push('/souvenirs')} />
-      </View>
+      <CardLink title="Partager mon mois" onPress={() => setSharing(true)} />
       <ShareSheet
         visible={sharing}
         onClose={() => setSharing(false)}
@@ -456,9 +503,13 @@ function Stat({ value, label }: { value: string; label: string }) {
 }
 
 const styles = StyleSheet.create({
-  shareRow: {
+  sectionRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    alignItems: 'center',
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: Spacing.two,
   },
   container: {
