@@ -53,6 +53,14 @@ export function rankLabel(rank: number | null, players: number): string {
   return `${ordinal(rank)} sur ${players} conquérant${players > 1 ? 's' : ''}`;
 }
 
+/** Sa propre place dans la saison, dite pour soi, avec ce qu'il faut pour y entrer. */
+export function seasonMeLabel(rank: number | null, players: number): string {
+  if (rank) return `Vous : ${rankLabel(rank, players)}.`;
+  const others =
+    players > 0 ? ` ${players} conquérant${players > 1 ? 's' : ''} en lice ce mois-ci.` : '';
+  return `Vous n’avez pas encore de case : dès 10 000 pas dans la journée, vos trajets colorent la carte à votre nom.${others}`;
+}
+
 export type SeasonEntry = { id: string; name: string; cells: number; isMe: boolean; rank: number };
 
 /** Classement de la saison entre amis : les cases détenues en ce moment. */

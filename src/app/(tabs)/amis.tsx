@@ -43,7 +43,7 @@ import {
   type RankingEntry,
 } from '@/lib/friends';
 import { ordinal, seasonName, type SeasonRow } from '@/lib/season';
-import { tierName, type LeagueRow } from '@/lib/league';
+import { MIN_LEAGUE_PLAYERS, tierName, type LeagueRow } from '@/lib/league';
 import { localDay } from '@/lib/daily-progress';
 import { DUEL_DAYS, duelLabel, duelPhase, inviteMessage, type DuelRow } from '@/lib/duels';
 import { useAuth } from '@/providers/auth-provider';
@@ -162,6 +162,8 @@ export default function FriendsScreen() {
     steps: today.status === 'ready' ? today.steps : 0,
     cells: myCells,
   });
+  // Seul dans son classement : aucun ami accepté pour l'instant.
+  const noFriends = ranking.length === 1;
 
   return (
     <ThemedView style={styles.container}>
@@ -215,19 +217,23 @@ export default function FriendsScreen() {
                 ))}
               </ThemedView>
             ) : null}
-            {friends.status === 'ready' ? (
+            {friends.status === 'ready' && noFriends ? (
+              // Sans ami, pas de classement vide : une invitation, avec un seul bouton plein.
+              <ThemedView type="backgroundElement" style={styles.card}>
+                <ThemedText type="subtitle">Marchez à plusieurs</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  Avec des amis, vous comparez vos pas chaque jour, vous vous lancez des duels et
+                  vous voyez leurs cases sur la carte, pour aller les reprendre.
+                </ThemedText>
+                {profile?.username ? <Button title="Inviter un ami" onPress={invite} /> : null}
+              </ThemedView>
+            ) : null}
+            {friends.status === 'ready' && !noFriends ? (
               <ThemedView type="backgroundElement" style={styles.card}>
                 <ThemedText type="smallBold">Classement du jour</ThemedText>
-                {ranking.length === 1 ? (
-                  <ThemedText type="small" themeColor="textSecondary">
-                    Ajoutez des amis pour comparer vos pas chaque jour et voir leurs cases sur la
-                    carte, pour aller les reprendre.
-                  </ThemedText>
-                ) : (
-                  ranking.map((entry) => (
-                    <RankingRow key={entry.id} entry={entry} onPress={() => setSelected(entry)} />
-                  ))
-                )}
+                {ranking.map((entry) => (
+                  <RankingRow key={entry.id} entry={entry} onPress={() => setSelected(entry)} />
+                ))}
                 {ranking.length > 1 ? (
                   <View style={styles.legend}>
                     <View style={[styles.swatch, { backgroundColor: ConquestFriendColor }]} />
@@ -254,7 +260,7 @@ export default function FriendsScreen() {
                   {`. Donnez-le à vos amis pour qu’ils vous ajoutent.`}
                 </ThemedText>
               ) : null}
-              {profile?.username ? (
+              {profile?.username && !noFriends ? (
                 <Button title="Inviter un ami" variant="secondary" onPress={invite} />
               ) : null}
               <TextField
@@ -271,12 +277,19 @@ export default function FriendsScreen() {
                 onSubmitEditing={add}
               />
               {message ? <Message {...message} /> : null}
-              <Button
-                title="Envoyer la demande"
-                loading={adding}
-                disabled={username.trim().length < 3}
-                onPress={add}
-              />
+              {/* Le bouton n'apparaît qu'une fois la saisie commencée, avec la raison s'il attend. */}
+              {username.trim().length === 0 ? null : username.trim().length < 3 ? (
+                <ThemedText type="small" themeColor="textSecondary">
+                  Un pseudo fait au moins 3 caractères.
+                </ThemedText>
+              ) : (
+                <Button
+                  title={`Envoyer la demande à ${username.trim()}`}
+                  variant="secondary"
+                  loading={adding}
+                  onPress={add}
+                />
+              )}
             </ThemedView>
 
             <Pressable
@@ -466,7 +479,12 @@ function DuelsCard({
 function competitionsSummary(league: LeagueRow[] | null, season: SeasonRow | null): string {
   const me = league?.find((row) => row.is_me);
   const parts: string[] = [];
-  if (me) parts.push(`${tierName(me.tier)} : ${ordinal(me.rank)} sur ${me.players}`);
+  if (me)
+    parts.push(
+      me.players < MIN_LEAGUE_PLAYERS
+        ? `${tierName(me.tier)} : groupe en formation`
+        : `${tierName(me.tier)} : ${ordinal(me.rank)} sur ${me.players}`
+    );
   if (season?.rank) parts.push(`${seasonName(new Date(season.season_start))} : ${ordinal(season.rank)}`);
   return parts.length > 0 ? parts.join(' · ') : 'Ligue de la semaine et saison de Conquête';
 }

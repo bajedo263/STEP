@@ -40,7 +40,9 @@ test('messages de ligue', () => {
   assert.match(leagueStatusLabel(row(2, 30_000)), /passeriez en Or/);
   assert.match(leagueStatusLabel(row(10, 3_000)), /redescendriez en Bronze/);
   assert.match(leagueStatusLabel(row(6, 20_000)), /Les 4 premiers montent en Or/);
-  assert.match(leagueStatusLabel(row(1, 5_000, { players: 1 })), /vous montez en Or/);
+  // Seul ou à deux, pas de classement : ni montée promise ni descente.
+  assert.match(leagueStatusLabel(row(1, 5_000, { players: 1 })), /groupe se remplit/);
+  assert.match(leagueStatusLabel(row(2, 0, { players: 2 })), /groupe se remplit/);
   assert.equal(
     leagueChangeLabel(row(1, 0, { tier: 2, previous_tier: 1 })),
     'Bravo, vous passez en Or !'
