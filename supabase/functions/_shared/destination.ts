@@ -273,3 +273,94 @@ export function detourWaypoint(start: LatLng, end: LatLng, lengthM: number, side
     longitude: (start.longitude + end.longitude) / 2 + (side * nx * height) / mPerDegLng,
   };
 }
+
+/**
+ * Saisie qui ressemble à une adresse : un numéro en tête, un code postal ou un mot de voie.
+ * Pour celles-là, le géocodeur de l'IGN (la Base adresse nationale) passe avant les autres.
+ */
+export function looksLikeAddress(query: string): boolean {
+  const q = query.toLowerCase();
+  return (
+    /^\s*\d+\s*(bis|ter)?\b/.test(q) ||
+    /\b\d{5}\b/.test(q) ||
+    /\b(rue|avenue|av|boulevard|bd|place|pl|chemin|allée|allee|impasse|quai|cours|route|passage|square|villa|cité|cite)\b/.test(
+      q
+    )
+  );
+}
+
+/** Recherche d'adresses de la Géoplateforme (IGN), centrée sur l'utilisateur. */
+export function ignSearchUrl(query: string, near: LatLng | null): string {
+  const params = new URLSearchParams({
+    q: query.slice(0, 200),
+    index: 'address',
+    limit: '6',
+    autocomplete: '1',
+  });
+  if (near) {
+    params.set('lat', String(near.latitude));
+    params.set('lon', String(near.longitude));
+  }
+  return `https://data.geopf.fr/geocodage/search?${params}`;
+}
+
+/** Score sous lequel une adresse de l'IGN ne correspond plus vraiment à la saisie. */
+const IGN_MIN_SCORE = 0.4;
+
+/** Adresses lues dans une réponse de la recherche de la Géoplateforme (IGN). */
+export function parseIgnPlaces(json: unknown): Place[] {
+  const features = (json as { features?: unknown[] } | null)?.features;
+  if (!Array.isArray(features)) return [];
+  const places: Place[] = [];
+  for (const feature of features) {
+    const { geometry, properties: p } = (feature ?? {}) as {
+      geometry?: { coordinates?: unknown };
+      properties?: Record<string, unknown>;
+    };
+    if (!p) continue;
+    if (typeof p.score === 'number' && p.score < IGN_MIN_SCORE) continue;
+    const coordinates = geometry?.coordinates;
+    if (!Array.isArray(coordinates)) continue;
+    const [longitude, latitude] = coordinates;
+    if (!isFiniteNumber(latitude) || !isFiniteNumber(longitude)) continue;
+    const isAddress = p.type === 'housenumber' || p.type === 'street';
+    const label =
+      (isAddress
+        ? placeLabel({
+            housenumber: p.type === 'housenumber' ? p.housenumber : null,
+            street: text(p.street) ?? p.name,
+            postcode: p.postcode,
+            city: p.city,
+          })
+        : placeLabel({ name: p.name, postcode: p.postcode, city: p.city })) ?? text(p.label);
+    if (!label) continue;
+    places.push({
+      id: `ign:${String(p.id ?? `${latitude},${longitude}`)}`,
+      label,
+      coords: { latitude, longitude },
+    });
+  }
+  return places;
+}
+
+/** Au-delà, un résultat n'est sans doute pas celui qu'on cherche pour une marche. */
+export const FAR_PLACE_M = 50_000;
+
+/**
+ * Résultats de plusieurs services fusionnés : dans l'ordre des listes données, sans doublon (même
+ * libellé ou à moins de 30 m), les lieux trop loin de l'utilisateur en dernier, 6 au plus.
+ */
+export function mergePlaces(lists: Place[][], near: LatLng | null, limit = 6): Place[] {
+  const merged: Place[] = [];
+  for (const place of lists.flat()) {
+    const duplicate = merged.some(
+      (other) =>
+        other.label.toLowerCase() === place.label.toLowerCase() ||
+        straightDistanceM(other.coords, place.coords) < 30
+    );
+    if (!duplicate) merged.push(place);
+  }
+  if (!near) return merged.slice(0, limit);
+  const far = (place: Place) => straightDistanceM(near, place.coords) > FAR_PLACE_M;
+  return [...merged.filter((place) => !far(place)), ...merged.filter(far)].slice(0, limit);
+}

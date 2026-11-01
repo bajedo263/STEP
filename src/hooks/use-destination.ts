@@ -1,7 +1,7 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import type { Place } from '../../supabase/functions/_shared/destination.ts';
+import { FAR_PLACE_M, type Place } from '../../supabase/functions/_shared/destination.ts';
 import type { Poi } from '@/lib/pois';
 import type { LatLng, LoopRoute } from '@/lib/loop';
 import { supabase } from '@/lib/supabase';
@@ -123,3 +123,6 @@ export function useDestinationRoute() {
 
   return { ...state, choose, restoreDetour, clear };
 }
+
+/** Distance au-delà de laquelle un résultat de recherche est jugé lointain. */
+export { FAR_PLACE_M };

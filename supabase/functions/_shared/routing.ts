@@ -8,7 +8,11 @@ import {
   labelWithDistrict,
   parseReverseAddress,
   type Address,
+  ignSearchUrl,
+  looksLikeAddress,
+  mergePlaces,
   orsAutocompleteParams,
+  parseIgnPlaces,
   parseOrsPlaces,
   type Place,
 } from './destination.ts';
@@ -51,11 +55,14 @@ async function ors(path: string, init: RequestInit, apiKey: string): Promise<unk
   }
 }
 
-async function getJson(url: string): Promise<unknown | null> {
+/** L'IGN répond vite ; s'il traîne, on ne fait pas attendre les autres résultats. */
+const IGN_TIMEOUT_MS = 4_000;
+
+async function getJson(url: string, timeoutMs = TIMEOUT_MS): Promise<unknown | null> {
   try {
     const response = await fetch(url, {
       headers: { 'User-Agent': USER_AGENT },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) {
       console.error('Secours', url, response.status);
@@ -100,12 +107,22 @@ export async function orsRoundTrip(
   return json ? parseOrsResponse(json) : null;
 }
 
-/** Lieux correspondant à la saisie, ou null si aucun service n'a répondu. */
+/**
+ * Lieux correspondant à la saisie, ou null si aucun service n'a répondu. Les adresses viennent de
+ * l'IGN (Base adresse nationale, qui comprend les codes postaux), les lieux nommés
+ * d'OpenRouteService puis de Photon ; une saisie qui ressemble à une adresse met l'IGN en tête.
+ */
 export async function searchPlaces(query: string, near: LatLng | null, apiKey: string): Promise<Place[] | null> {
-  const fromOrs = await ors(`/geocode/autocomplete?${orsAutocompleteParams(query, near)}`, {}, apiKey);
-  if (fromOrs) return withDistricts(parseOrsPlaces(fromOrs));
-  const fromPhoton = await getJson(photonUrl(query, near));
-  return fromPhoton ? withDistricts(parsePhotonPlaces(fromPhoton)) : null;
+  const [fromIgn, fromOrs] = await Promise.all([
+    getJson(ignSearchUrl(query, near), IGN_TIMEOUT_MS),
+    ors(`/geocode/autocomplete?${orsAutocompleteParams(query, near)}`, {}, apiKey),
+  ]);
+  const fromPhoton = fromOrs ? null : await getJson(photonUrl(query, near));
+  if (!fromIgn && !fromOrs && !fromPhoton) return null;
+  const addresses = fromIgn ? parseIgnPlaces(fromIgn) : [];
+  const named = fromOrs ? parseOrsPlaces(fromOrs) : fromPhoton ? parsePhotonPlaces(fromPhoton) : [];
+  const places = mergePlaces(looksLikeAddress(query) ? [addresses, named] : [named, addresses], near);
+  return withDistricts(places);
 }
 
 /**
@@ -117,6 +134,8 @@ export async function searchPlaces(query: string, near: LatLng | null, apiKey: s
 async function withDistricts(places: Place[]): Promise<Place[]> {
   return await Promise.all(
     places.map(async (place) => {
+      // Les adresses de l'IGN sont déjà complètes (rue, code postal, arrondissement).
+      if (place.id.startsWith('ign:')) return place;
       // Comme sur un plan, la rue avant le quartier : « Monoprix, 12 Rue X, Paris 15e ».
       if (labelMissingStreet(place.label)) {
         const address = await addressAt(place.coords);
