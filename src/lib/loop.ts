@@ -20,6 +20,41 @@ export function loopTargetDistance(remainingDistanceM: number | null | undefined
   return Math.min(MAX_LOOP_M, Math.max(MIN_LOOP_M, rounded));
 }
 
+/** Boucle la plus courte proposée par défaut : en dessous, la sortie ne vaut pas le détour. */
+export const MIN_DEFAULT_LOOP_M = 2_000;
+
+/**
+ * Boucle proposée par défaut : la distance qui manque pour l'objectif,
+ * sans descendre sous {@link MIN_DEFAULT_LOOP_M} quand il ne reste presque rien.
+ */
+export function defaultLoopDistance(remainingDistanceM: number | null | undefined): number {
+  return Math.max(MIN_DEFAULT_LOOP_M, loopTargetDistance(remainingDistanceM));
+}
+
+/** Pas les plus proches d'une distance, arrondis à la centaine. */
+export function stepsForDistance(distanceM: number, strideM: number): number {
+  return Math.max(100, Math.round(distanceM / strideM / 100) * 100);
+}
+
+/** Bornes, en pas, de ce qu'on peut demander pour une boucle. */
+export function loopStepsRange(strideM: number) {
+  return {
+    min: Math.ceil(MIN_LOOP_M / strideM / 100) * 100,
+    max: Math.floor(MAX_LOOP_M / strideM / 100) * 100,
+  };
+}
+
+/**
+ * Distance de boucle pour un nombre de pas saisi par l'utilisateur,
+ * bornée à ce que le serveur accepte. `null` si la saisie n'est pas un nombre.
+ */
+export function loopDistanceForSteps(steps: number | null, strideM: number): number | null {
+  if (steps == null || !Number.isFinite(steps) || steps <= 0) return null;
+  const { min, max } = loopStepsRange(strideM);
+  const clamped = Math.min(max, Math.max(min, steps));
+  return Math.round((clamped * strideM) / 100) * 100;
+}
+
 /** Région de carte qui englobe toute la boucle, avec une marge. */
 export function regionForCoordinates(points: LatLng[], padding = 1.3) {
   if (points.length === 0) return null;

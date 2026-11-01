@@ -22,6 +22,7 @@ import {
 } from '@/components/loop-handles-overlay';
 import { PoiClusterMarker, PoiMarker, RouteLine } from '@/components/map-route';
 import { ActiveWalkView, confirmFinish } from '@/components/active-walk';
+import { LoopStepsPicker, parseSteps, type LoopStepsChoice } from '@/components/loop-steps-picker';
 import { PoiSheet } from '@/components/poi-sheet';
 import { WalkDone } from '@/components/walk-done';
 import { PhotoZoomOverlay } from '@/components/zoomable-photo';
@@ -75,8 +76,11 @@ import { FIRST_WALK_STEPS, firstWalkDistance } from '@/lib/comeback';
 import { loopHandles, moveHandle } from '@/lib/loop-handles';
 import { dailyProgress, formatDistance } from '@/lib/daily-progress';
 import {
+  defaultLoopDistance,
   formatDuration,
+  loopDistanceForSteps,
   loopTargetDistance,
+  stepsForDistance,
   regionForCoordinates,
   type LoopRoute,
 } from '@/lib/loop';
@@ -179,6 +183,14 @@ function PlanMap() {
   const goalReached = progress?.goalReached ?? false;
   const targetM = loopTargetDistance(progress?.remainingDistanceM);
   const strideM = strideLengthMeters(profile?.height_cm ?? 170, profile?.sex ?? 'unspecified');
+  // Boucle : par défaut ce qui manque pour l'objectif (jamais minuscule), ou un nombre de pas saisi.
+  const [stepsChoice, setStepsChoice] = useState<LoopStepsChoice>('goal');
+  const [stepsText, setStepsText] = useState('');
+  const defaultLoopM = defaultLoopDistance(progress?.remainingDistanceM);
+  const defaultLoopSteps = stepsForDistance(defaultLoopM, strideM);
+  const customLoopM =
+    stepsChoice === 'custom' ? loopDistanceForSteps(parseSteps(stepsText), strideM) : null;
+  const loopM = customLoopM ?? defaultLoopM;
 
   const loopRoute = loop.status === 'ready' ? loop.route : null;
   // Poignées pour redessiner la boucle ; celles qu'on vient de lâcher restent en place pendant le calcul.
@@ -263,8 +275,8 @@ function PlanMap() {
     handledLoop.current = loopRequest;
     setMode('loop');
     setPin(null);
-    loop.generate(here, targetM);
-  }, [loopRequest, here, loop, targetM]);
+    loop.generate(here, loopM);
+  }, [loopRequest, here, loop, loopM]);
 
   // Depuis la collection, une boucle vers les lieux pas encore découverts d'un quartier.
   const [collectionNote, setCollectionNote] = useState<string | null>(null);
@@ -403,6 +415,17 @@ function PlanMap() {
     setMode('destination');
     destination.choose(start, place, goalReached ? null : targetM);
   };
+  const stepsPicker = (
+    <LoopStepsPicker
+      choice={stepsChoice}
+      onChoiceChange={setStepsChoice}
+      defaultSteps={defaultLoopSteps}
+      goalReached={goalReached}
+      text={stepsText}
+      onTextChange={setStepsText}
+      strideM={strideM}
+    />
+  );
   const collapsedLabel = pin
     ? 'Point choisi sur la carte'
     : mode === 'loop'
@@ -647,6 +670,7 @@ function PlanMap() {
                         {loop.refineError ? <ErrorText message={loop.refineError} /> : null}
                         <PoiSummary pois={pois} via={loopRoute?.via ?? []} />
                         <Button title="Partir" onPress={() => go({ mode: 'loop', route, pois })} />
+                        {stepsPicker}
                         <View style={styles.buttonRow}>
                           <Button
                             title="Autre boucle"
@@ -655,7 +679,8 @@ function PlanMap() {
                             onPress={() => {
                               setDefenseNote(null);
                               setCollectionNote(null);
-                              loop.generate(start, targetM);
+                              Keyboard.dismiss();
+                              loop.generate(start, loopM);
                             }}
                           />
                           <Button
@@ -673,22 +698,26 @@ function PlanMap() {
                           <View style={styles.loadingRow}>
                             <ActivityIndicator color={theme.tint} />
                             <ThemedText themeColor="textSecondary" style={styles.flex}>
-                              {`Calcul d’une boucle d’environ ${formatDistance(targetM)} autour de vous…`}
+                              {`Calcul d’une boucle d’environ ${formatDistance(loopM)} autour de vous…`}
                             </ThemedText>
                           </View>
                         ) : (
                           <>
                             <ThemedText themeColor="textSecondary">
-                              {goalReached
-                                ? `Objectif atteint ! Une boucle bonus de ${formatDistance(targetM)} ?`
-                                : `Une boucle d’environ ${formatDistance(targetM)} depuis votre position pour finir votre objectif.`}
+                              {customLoopM != null
+                                ? `Une boucle d’environ ${formatDistance(customLoopM)} depuis votre position.`
+                                : goalReached
+                                  ? `Objectif atteint ! Une boucle bonus de ${formatDistance(loopM)} ?`
+                                  : `Une boucle d’environ ${formatDistance(loopM)} depuis votre position pour finir votre objectif.`}
                             </ThemedText>
+                            {stepsPicker}
                             {loop.status === 'error' ? <ErrorText message={loop.message} /> : null}
                             <Button
                               title="Proposer une boucle"
                               onPress={() => {
                                 setCollectionNote(null);
-                                loop.generate(start, targetM);
+                                Keyboard.dismiss();
+                                loop.generate(start, loopM);
                               }}
                             />
                           </>
