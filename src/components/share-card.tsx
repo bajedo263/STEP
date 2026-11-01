@@ -92,56 +92,57 @@ export function ShareCard({
   );
 }
 
+type SheetContent = { onClose: () => void; title: string; subtitle: string; stats: ShareStat[] };
+
 /**
  * Fenêtre d'aperçu puis partage de l'image (Instagram, WhatsApp…). Les tracés depuis `since`
- * ne sont chargés qu'à l'ouverture.
+ * ne sont chargés qu'à l'ouverture ; `paths` les fournit directement (le trajet qu'on vient de finir).
  */
 export function ShareSheet({
   visible,
-  onClose,
-  since,
-  title,
-  subtitle,
-  stats,
-}: {
+  since = null,
+  paths,
+  ...content
+}: SheetContent & {
   visible: boolean;
-  onClose: () => void;
   /** Début de la période dessinée, ou null pour tous les trajets. */
-  since: string | null;
-  title: string;
-  subtitle: string;
-  stats: ShareStat[];
+  since?: string | null;
+  paths?: { latitude: number; longitude: number }[][];
 }) {
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      {visible ? (
-        <ShareSheetContent
-          onClose={onClose}
-          since={since}
-          title={title}
-          subtitle={subtitle}
-          stats={stats}
-        />
-      ) : null}
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={content.onClose}>
+      {!visible ? null : paths ? (
+        <ShareSheetContent {...content} paths={paths} />
+      ) : (
+        <SavedPathsShareSheet {...content} since={since} />
+      )}
     </Modal>
+  );
+}
+
+function SavedPathsShareSheet({ since, ...content }: SheetContent & { since: string | null }) {
+  const paths = useWalkPaths(since);
+  return (
+    <ShareSheetContent
+      {...content}
+      paths={
+        paths === null ? null : paths === 'unavailable' ? [] : paths.map((path) => path.points)
+      }
+    />
   );
 }
 
 function ShareSheetContent({
   onClose,
-  since,
   title,
   subtitle,
   stats,
-}: {
-  onClose: () => void;
-  since: string | null;
-  title: string;
-  subtitle: string;
-  stats: ShareStat[];
+  paths,
+}: SheetContent & {
+  /** Null pendant le chargement. */
+  paths: { latitude: number; longitude: number }[][] | null;
 }) {
   const card = useRef<ComponentRef<typeof View>>(null);
-  const paths = useWalkPaths(since);
   const [sharing, setSharing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -182,12 +183,7 @@ function ShareSheetContent({
           </View>
         ) : (
           <View ref={card} collapsable={false} style={styles.capture}>
-            <ShareCard
-              title={title}
-              subtitle={subtitle}
-              stats={stats}
-              paths={paths === 'unavailable' ? [] : paths.map((path) => path.points)}
-            />
+            <ShareCard title={title} subtitle={subtitle} stats={stats} paths={paths} />
           </View>
         )}
         {error ? (

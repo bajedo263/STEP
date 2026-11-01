@@ -133,6 +133,7 @@ export default function MapScreen() {
         discovered={walk.discovery.discovered}
         cellCount={walk.cellCount}
         points={walk.tracker.track.points}
+        day={walk.day}
         onRetry={walk.retrySave}
         onClose={endWalk}
       />

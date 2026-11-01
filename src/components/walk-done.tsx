@@ -1,10 +1,11 @@
-import { useEffect } from 'react';
-import { Share, StyleSheet, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
 import MapView from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { formatNumber, Stat } from '@/components/active-walk';
 import { RouteLine } from '@/components/map-route';
+import { ShareSheet } from '@/components/share-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
@@ -14,6 +15,7 @@ import { feedback } from '@/lib/feedback';
 import { formatDistance } from '@/lib/daily-progress';
 import { formatDuration, regionForCoordinates } from '@/lib/loop';
 import { type RoutePoi } from '@/lib/pois';
+import { dayLine } from '@/lib/walk-guidance';
 import { MIN_WALK_M, type WalkSummary } from '@/lib/walk-summary';
 import { type SaveState } from '@/providers/walk-provider';
 
@@ -24,6 +26,7 @@ export function WalkDone({
   discovered,
   cellCount,
   points,
+  day,
   onRetry,
   onClose,
 }: {
@@ -32,6 +35,7 @@ export function WalkDone({
   discovered: RoutePoi[];
   cellCount: number;
   points: { latitude: number; longitude: number }[];
+  day: { steps: number | null; goal: number; streak: number | null };
   onRetry: () => void;
   onClose: () => void;
 }) {
@@ -42,6 +46,9 @@ export function WalkDone({
   useEffect(() => {
     if (saved) feedback.success();
   }, [saved]);
+  const [sharing, setSharing] = useState(false);
+  const today = dayLine(day);
+  const goalDone = day.steps !== null && day.steps >= day.goal;
   const seconds = (summary.endedAt.getTime() - summary.startedAt.getTime()) / 1000;
   const message = {
     saving: 'Enregistrement… Vous pouvez fermer, il continue.',
@@ -63,6 +70,15 @@ export function WalkDone({
         <ThemedText type="subtitle">
           {saveState === 'too-short' ? 'Trajet terminé' : 'Bravo !'}
         </ThemedText>
+        {today ? (
+          // Le moment le plus gratifiant : on y rappelle l'objectif du jour et la série.
+          <ThemedText
+            type="smallBold"
+            themeColor={goalDone ? 'success' : 'textSecondary'}
+            style={styles.centered}>
+            {today}
+          </ThemedText>
+        ) : null}
         {region ? (
           // Aperçu fixe du chemin parcouru. Les gestes sont bloqués par la vue qui l'entoure : iOS
           // réutilise la vue native de cette carte pour la suivante (celle de l'onglet Carte), et un
@@ -105,41 +121,41 @@ export function WalkDone({
         {saveState === 'error' ? (
           <Button title="Réessayer" variant="secondary" onPress={onRetry} />
         ) : null}
-        {saveState === 'saved' ? (
-          <Button
-            title="Partager"
-            variant="secondary"
-            onPress={() =>
-              Share.share({
-                message: shareMessage(summary, seconds, discovered.length, cellCount),
-              }).catch(() => {})
-            }
-          />
+        {saveState === 'saved' && points.length > 1 ? (
+          <Button title="Partager l’image" onPress={() => setSharing(true)} />
         ) : null}
         {/* L'enregistrement continue une fois l'écran fermé : un réseau lent ne bloque personne. */}
-        <Button title="Fermer" onPress={onClose} />
+        <Button
+          title="Fermer"
+          variant={saveState === 'saved' && points.length > 1 ? 'secondary' : 'primary'}
+          onPress={onClose}
+        />
       </SafeAreaView>
+      <ShareSheet
+        visible={sharing}
+        onClose={() => setSharing(false)}
+        paths={[points]}
+        title={summary.mode === 'loop' ? 'Ma boucle' : 'Ma marche'}
+        subtitle={
+          today ?? summary.startedAt.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
+        }
+        stats={shareStats(summary, seconds, discovered.length, cellCount)}
+      />
     </ThemedView>
   );
 }
 
-/** Texte partagé à la fin d'un trajet : les chiffres, puis ce qui le rend unique. */
-function shareMessage(
-  summary: WalkSummary,
-  seconds: number,
-  places: number,
-  cells: number
-): string {
-  const parts = [
-    `${formatDistance(summary.distanceM)} et ${formatNumber(summary.steps)} pas en ${formatDuration(seconds)} avec STEP`,
+/** Chiffres de l'image partagée : les trois classiques, puis ce qui rend ce trajet unique. */
+function shareStats(summary: WalkSummary, seconds: number, places: number, cells: number) {
+  const stats = [
+    { value: formatDistance(summary.distanceM), label: 'parcourus' },
+    { value: formatNumber(summary.steps), label: 'pas' },
+    { value: formatDuration(seconds), label: 'de marche' },
   ];
-  if (places > 0)
-    parts.push(`${places} lieu${places > 1 ? 'x' : ''} découvert${places > 1 ? 's' : ''}`);
-  if (cells > 0)
-    parts.push(
-      `${formatNumber(cells)} case${cells > 1 ? 's' : ''} conquise${cells > 1 ? 's' : ''}`
-    );
-  return `${parts.join(', ')} !`;
+  if (places > 0) stats.push({ value: String(places), label: places > 1 ? 'lieux' : 'lieu' });
+  else if (cells > 0)
+    stats.push({ value: formatNumber(cells), label: cells > 1 ? 'cases' : 'case' });
+  return stats;
 }
 
 const styles = StyleSheet.create({
