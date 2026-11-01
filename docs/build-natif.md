@@ -56,5 +56,6 @@ workflow.
   et refaire un build : sinon une mise à jour pourrait appeler du code absent de l'app installée.
 - **Android** : un APK peut déjà être construit sans compte Apple (workflow, plateforme
   `android`). Les pas viennent de Health Connect s'il est installé.
-- **Restent à faire** : le widget (il demande un « App Group », donc le compte Apple) et la
-  suppression de compte dans l'app, exigée par Apple avant une sortie publique sur l'App Store.
+- **Suppression de compte** : dans le Profil (« Supprimer mon compte »), exigée par Apple avant
+  une sortie publique. Elle demande la migration `20261101000000_suppression_compte.sql`.
+- **Reste à faire** : le widget (il demande un « App Group », donc le compte Apple).
