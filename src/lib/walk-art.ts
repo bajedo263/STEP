@@ -63,3 +63,41 @@ export function projectPaths(
       .join(' ')
   );
 }
+
+/** Rayon autour du cœur de ses trajets au-delà duquel un trajet est mis de côté pour le cadrage. */
+export const FOCUS_RADIUS_M = 20_000;
+
+/**
+ * Trajets autour de chez soi : ceux dont le centre est à moins de `FOCUS_RADIUS_M` du centre
+ * médian. Un trajet de vacances ou un saut du GPS ne fait plus dézoomer la carte ni rétrécir
+ * le dessin en un point.
+ */
+export function focusPaths<T extends LatLng[]>(paths: T[]): T[] {
+  if (paths.length <= 1) return paths;
+  const centers = paths.map(center);
+  const median = (values: number[]) => {
+    const sorted = [...values].sort((a, b) => a - b);
+    return sorted[Math.floor(sorted.length / 2)];
+  };
+  const core = {
+    latitude: median(centers.map((c) => c.latitude)),
+    longitude: median(centers.map((c) => c.longitude)),
+  };
+  const kept = paths.filter((_, index) => distanceM(centers[index], core) <= FOCUS_RADIUS_M);
+  return kept.length > 0 ? kept : paths;
+}
+
+function center(path: LatLng[]): LatLng {
+  const sum = path.reduce(
+    (acc, p) => ({ latitude: acc.latitude + p.latitude, longitude: acc.longitude + p.longitude }),
+    { latitude: 0, longitude: 0 }
+  );
+  return { latitude: sum.latitude / path.length, longitude: sum.longitude / path.length };
+}
+
+function distanceM(a: LatLng, b: LatLng): number {
+  const rad = Math.PI / 180;
+  const x = (b.longitude - a.longitude) * rad * Math.cos(((a.latitude + b.latitude) / 2) * rad);
+  const y = (b.latitude - a.latitude) * rad;
+  return Math.sqrt(x * x + y * y) * 6_371_000;
+}

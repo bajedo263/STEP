@@ -9,7 +9,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { Radius, Spacing } from '@/constants/theme';
 import { useWalkPaths } from '@/hooks/use-walk-paths';
-import { projectPaths } from '@/lib/walk-art';
+import { focusPaths, projectPaths } from '@/lib/walk-art';
 
 export type ShareStat = { value: string; label: string };
 
@@ -34,7 +34,8 @@ export function ShareCard({
   stats: ShareStat[];
   paths: { latitude: number; longitude: number }[][];
 }) {
-  const lines = projectPaths(paths, CARD_WIDTH - 2 * Spacing.four, ART_HEIGHT, 8);
+  // Les trajets loin de chez soi rétréciraient tout le dessin en un point.
+  const lines = projectPaths(focusPaths(paths), CARD_WIDTH - 2 * Spacing.four, ART_HEIGHT, 8);
   return (
     <View style={styles.card} collapsable={false}>
       <Svg style={StyleSheet.absoluteFill} width={CARD_WIDTH} height={CARD_HEIGHT}>
@@ -58,8 +59,8 @@ export function ShareCard({
                 points={points}
                 fill="none"
                 stroke={LINE}
-                strokeOpacity={0.25}
-                strokeWidth={6}
+                strokeOpacity={0.3}
+                strokeWidth={9}
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
@@ -70,7 +71,7 @@ export function ShareCard({
                 points={points}
                 fill="none"
                 stroke={INK}
-                strokeWidth={1.6}
+                strokeWidth={2.6}
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
@@ -154,16 +155,18 @@ function ShareSheetContent({
         setError('Le partage n’est pas disponible sur cet appareil.');
         return;
       }
+      // JPEG : quelques centaines de Ko au lieu d'un PNG de plus de 10 Mo, et un nom lisible.
       const uri = await captureRef(card, {
-        format: 'png',
-        quality: 1,
+        format: 'jpg',
+        quality: 0.9,
         width: 1080,
         height: 1350,
         result: 'tmpfile',
+        fileName: shareFileName(title),
       });
       await Sharing.shareAsync(uri, {
-        mimeType: 'image/png',
-        UTI: 'public.png',
+        mimeType: 'image/jpeg',
+        UTI: 'public.jpeg',
         dialogTitle: title,
       });
     } catch {
@@ -181,6 +184,12 @@ function ShareSheetContent({
           <View style={styles.placeholder}>
             <ActivityIndicator />
           </View>
+        ) : paths.length === 0 ? (
+          // Pas d'image vide à partager : on dit quand elle sera prête.
+          <ThemedText themeColor="textSecondary">
+            Votre image sera prête dès votre premier trajet enregistré sur cette période : vos
+            tracés s’y dessineront.
+          </ThemedText>
         ) : (
           <View ref={card} collapsable={false} style={styles.capture}>
             <ShareCard title={title} subtitle={subtitle} stats={stats} paths={paths} />
@@ -191,7 +200,7 @@ function ShareSheetContent({
             {error}
           </ThemedText>
         ) : null}
-        {Platform.OS !== 'web' ? (
+        {Platform.OS !== 'web' && paths?.length !== 0 ? (
           <Button
             title="Partager l’image"
             loading={sharing}
@@ -203,6 +212,17 @@ function ShareSheetContent({
       </ThemedView>
     </View>
   );
+}
+
+/** « STEP-mon-mois-de-novembre » : le nom que verra la personne qui reçoit l'image. */
+function shareFileName(title: string): string {
+  const slug = title
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+  return `STEP-${slug || 'partage'}`;
 }
 
 const styles = StyleSheet.create({

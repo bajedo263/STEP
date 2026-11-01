@@ -5,12 +5,14 @@ import { Radius } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { WalkPath } from '@/hooks/use-walk-paths';
 import { regionForCoordinates } from '@/lib/loop';
+import { focusPaths } from '@/lib/walk-art';
 
 /** Carte de tous ses trajets, superposés. */
 export function WalkPathsMap({ paths }: { paths: WalkPath[] }) {
   const theme = useTheme();
+  // Cadrée sur le cœur de ses trajets : un trajet de vacances ne fait pas partir de toute la France.
   const region = regionForCoordinates(
-    paths.flatMap((path) => path.points),
+    focusPaths(paths.map((path) => path.points)).flat(),
     1.2
   );
   if (!region) return null;

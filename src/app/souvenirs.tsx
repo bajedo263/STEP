@@ -7,8 +7,9 @@ import { ShareSheet } from '@/components/share-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
+import { CardLink } from '@/components/ui/card-link';
 import { WalkPathsMap } from '@/components/walk-paths-map';
-import { MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { MaxContentWidth, Radius, Spacing, VisitedPoiColor } from '@/constants/theme';
 import { useMemoryState } from '@/hooks/use-memories';
 import { useWalkPathsState } from '@/hooks/use-walk-paths';
 import { formatDistance } from '@/lib/daily-progress';
@@ -148,14 +149,7 @@ export default function SouvenirsScreen() {
                 Lieux découverts
               </ThemedText>
               {months.map((month) => (
-                <ThemedView key={month.month} type="backgroundElement" style={styles.card}>
-                  <ThemedText type="smallBold">
-                    {`${month.month.charAt(0).toUpperCase()}${month.month.slice(1)} · ${month.names.length} lieu${month.names.length > 1 ? 'x' : ''}`}
-                  </ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    {month.names.join(', ')}
-                  </ThemedText>
-                </ThemedView>
+                <MonthPlaces key={month.month} month={month.month} names={month.names} />
               ))}
             </>
           ) : null}
@@ -173,7 +167,51 @@ export default function SouvenirsScreen() {
   );
 }
 
+/** Lieux montrés d'emblée pour chaque mois. */
+const PLACES_SHOWN = 5;
+
+/** Les lieux d'un mois en liste, un par ligne, les plus récents d'abord. */
+function MonthPlaces({ month, names }: { month: string; names: string[] }) {
+  const [showAll, setShowAll] = useState(false);
+  const shown = showAll ? names : names.slice(0, PLACES_SHOWN);
+  return (
+    <ThemedView type="backgroundElement" style={styles.card}>
+      <ThemedText type="smallBold">
+        {`${month.charAt(0).toUpperCase()}${month.slice(1)} · ${names.length} lieu${names.length > 1 ? 'x' : ''}`}
+      </ThemedText>
+      {shown.map((name, index) => (
+        <View key={`${name}-${index}`} style={styles.place}>
+          <View style={[styles.dot, { backgroundColor: VisitedPoiColor }]} />
+          <ThemedText type="small" style={styles.flex}>
+            {name}
+          </ThemedText>
+        </View>
+      ))}
+      {names.length > PLACES_SHOWN ? (
+        <CardLink
+          title={showAll ? 'Voir moins' : `Voir les ${names.length - PLACES_SHOWN} autres`}
+          onPress={() => setShowAll((value) => !value)}
+        />
+      ) : null}
+    </ThemedView>
+  );
+}
+
 const styles = StyleSheet.create({
+  place: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingVertical: 2,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  flex: {
+    flex: 1,
+  },
   container: {
     flex: 1,
     flexDirection: 'row',
