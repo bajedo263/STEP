@@ -747,6 +747,17 @@ function PlanMap() {
                             onPress={() => destination.choose(start, destination.place, null)}
                           />
                         </View>
+                      ) : destination.direct && !goalReached ? (
+                        // Après « Chemin direct », on peut revenir au détour proposé avant.
+                        <Button
+                          title="Avec détour"
+                          variant="secondary"
+                          onPress={() =>
+                            destination.detour
+                              ? destination.restoreDetour()
+                              : destination.choose(start, destination.place, targetM)
+                          }
+                        />
                       ) : null}
                       <Button
                         title="Changer de destination"
