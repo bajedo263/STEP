@@ -40,7 +40,8 @@ test('sans gel, un jour raté remet la série à zéro', () => {
 test('deux jours ratés d’affilée avec un seul gel cassent la série', () => {
   const streak = protectedStreak(rows('1111111001111111111'), today, 0, 10000);
   assert.equal(streak.current, 10);
-  assert.equal(streak.frozenDays.length, 1);
+  // Le jour sauvé appartenait à la série cassée : il ne compte plus.
+  assert.deepEqual(streak.frozenDays, []);
 });
 
 test('un jour sans données compte comme raté', () => {

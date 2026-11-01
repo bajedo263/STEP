@@ -17,8 +17,14 @@ export type LoopRoute = {
 
 export const MIN_LOOP_M = 1_000;
 export const MAX_LOOP_M = 15_000;
-/** Écart accepté entre la distance demandée et celle de la boucle obtenue. */
-export const LOOP_TOLERANCE = 0.1;
+/**
+ * Écart accepté entre la distance demandée et celle de la boucle obtenue. Plus court que prévu,
+ * l'objectif n'est pas atteint à l'arrivée : on tolère à peine 3 % de moins, mais 15 % de plus.
+ */
+export const LOOP_SHORT_TOLERANCE = 0.03;
+export const LOOP_LONG_TOLERANCE = 0.15;
+/** Longueur visée au sein de la fourchette : un peu au-dessus de la demande. */
+const LOOP_AIM = 1.05;
 export const MAX_LOOP_ATTEMPTS = 3;
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
@@ -85,7 +91,9 @@ export function parseOrsResponse(json: unknown): LoopRoute | null {
 }
 
 export function isCloseEnough(targetM: number, actualM: number): boolean {
-  return Math.abs(actualM - targetM) <= targetM * LOOP_TOLERANCE;
+  return (
+    actualM >= targetM * (1 - LOOP_SHORT_TOLERANCE) && actualM <= targetM * (1 + LOOP_LONG_TOLERANCE)
+  );
 }
 
 /**
@@ -94,16 +102,21 @@ export function isCloseEnough(targetM: number, actualM: number): boolean {
  */
 export function nextRequestedLength(targetM: number, requestedM: number, actualM: number): number {
   if (actualM <= 0) return requestedM;
-  return Math.round(clamp((requestedM * targetM) / actualM, MIN_LOOP_M / 2, MAX_LOOP_M * 1.5));
+  return Math.round(
+    clamp((requestedM * targetM * LOOP_AIM) / actualM, MIN_LOOP_M / 2, MAX_LOOP_M * 1.5)
+  );
 }
 
-/** Boucle la plus proche de la distance visée. */
+/**
+ * Boucle la plus proche de la distance visée. Un mètre de moins compte triple : une boucle trop
+ * courte laisse l'objectif inachevé, une boucle un peu longue le dépasse.
+ */
 export function closestRoute<T extends LoopRoute>(targetM: number, routes: T[]): T | null {
+  const cost = (route: T) =>
+    route.distanceM < targetM ? (targetM - route.distanceM) * 3 : route.distanceM - targetM;
   let best: T | null = null;
   for (const route of routes) {
-    if (!best || Math.abs(route.distanceM - targetM) < Math.abs(best.distanceM - targetM)) {
-      best = route;
-    }
+    if (!best || cost(route) < cost(best)) best = route;
   }
   return best;
 }

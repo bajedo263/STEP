@@ -34,6 +34,15 @@ export function profileToForm(profile: Profile | null): ProfileForm {
 }
 
 /** Lit un nombre saisi à la française (virgule décimale, espaces de milliers). */
+/** Bornes et cran de l'objectif quotidien réglé dans le profil. */
+export const GOAL_RANGE = { min: 1_000, max: 100_000, step: 500 };
+
+/** Objectif du formulaire en nombre, l'objectif par défaut s'il est illisible. */
+export function parseGoal(value: string): number {
+  const goal = parseNumber(value);
+  return goal === null || Number.isNaN(goal) ? DEFAULT_DAILY_GOAL : goal;
+}
+
 function parseNumber(value: string): number | null {
   const normalized = value.replace(/[\s  ]/g, '').replace(',', '.');
   if (normalized === '') return null;
@@ -66,7 +75,7 @@ export function validateProfileForm(
   }
 
   const goal = parseNumber(form.dailyGoal);
-  if (goal === null || !Number.isInteger(goal) || goal < 1000 || goal > 100000) {
+  if (goal === null || !Number.isInteger(goal) || goal < GOAL_RANGE.min || goal > GOAL_RANGE.max) {
     errors.dailyGoal = 'Un nombre de pas entre 1 000 et 100 000.';
   }
 

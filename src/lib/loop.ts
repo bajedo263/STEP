@@ -36,6 +36,24 @@ export function stepsForDistance(distanceM: number, strideM: number): number {
   return Math.max(100, Math.round(distanceM / strideM / 100) * 100);
 }
 
+/**
+ * Ce que le trajet fera de l'objectif du jour, à afficher sous ses chiffres. Null quand il n'y a
+ * plus d'objectif à atteindre aujourd'hui.
+ */
+export function goalAtArrival(
+  routeSteps: number,
+  remainingSteps: number | null
+): { reached: boolean; text: string } | null {
+  if (remainingSteps == null || remainingSteps <= 0) return null;
+  // 2 % d'écart ne se voient pas sur le compteur : on ne promet pas un manque de 80 pas.
+  if (routeSteps >= remainingSteps * 0.98) return { reached: true, text: 'Objectif atteint à l’arrivée.' };
+  const missing = Math.max(100, Math.round((remainingSteps - routeSteps) / 100) * 100);
+  return {
+    reached: false,
+    text: `Il manquera environ ${missing.toLocaleString('fr-FR')} pas pour l’objectif.`,
+  };
+}
+
 /** Bornes, en pas, de ce qu'on peut demander pour une boucle. */
 export function loopStepsRange(strideM: number) {
   return {
@@ -74,6 +92,14 @@ export function regionForCoordinates(points: LatLng[], padding = 1.3) {
     latitudeDelta: Math.max((maxLat - minLat) * padding, 0.005),
     longitudeDelta: Math.max((maxLng - minLng) * padding, 0.005),
   };
+}
+
+/** Allure de marche retenue partout dans l'app (4,8 km/h), pour que les durées concordent. */
+export const WALK_M_PER_MIN = 80;
+
+/** Durée de marche estimée pour une distance, en secondes, à l'allure de l'app. */
+export function walkingSeconds(distanceM: number): number {
+  return Math.round((distanceM / WALK_M_PER_MIN) * 60);
 }
 
 /** Durée lisible : « 45 min », « 1 h 05 ». */

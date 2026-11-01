@@ -5,7 +5,7 @@
 export const MECHANICS = {
   streak: {
     title: 'La série',
-    text: 'Chaque jour où vous atteignez votre objectif prolonge votre série. Un jour raté la remet à zéro, sauf si un gel la protège.',
+    text: 'Chaque jour où vous atteignez votre objectif prolonge votre série. Un jour raté la remet à zéro, sauf si un gel la protège : vous en gagnez un tous les 7 jours d’affilée (2 au plus).',
   },
   freeze: {
     title: 'Les gels',

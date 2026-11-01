@@ -21,7 +21,9 @@ import { orsRoundTrip, routeThrough } from '../_shared/routing.ts';
 import { fetchWikipediaPoisNear } from '../_shared/wikipedia.ts';
 
 /** Écart accepté pour une boucle par des points d'intérêt avant de se rabattre sur une boucle libre. */
-const POI_LOOP_TOLERANCE = 0.2;
+/** Une boucle par les lieux se règle mal : on l'accepte de 10 % plus courte à 25 % plus longue. */
+const POI_LOOP_SHORT = 0.1;
+const POI_LOOP_LONG = 0.25;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -74,7 +76,11 @@ async function handle(req: Request): Promise<Response> {
 
   // 1. Une boucle départ → lieu A → lieu B → départ, pour que le trajet ait des choses à voir.
   const poiLoop = await loopThroughPois(apiKey, start, distanceM, seed);
-  if (poiLoop && Math.abs(poiLoop.distanceM - distanceM) <= distanceM * POI_LOOP_TOLERANCE) {
+  if (
+    poiLoop &&
+    poiLoop.distanceM >= distanceM * (1 - POI_LOOP_SHORT) &&
+    poiLoop.distanceM <= distanceM * (1 + POI_LOOP_LONG)
+  ) {
     return json({ ...poiLoop, targetM: distanceM, seed });
   }
 

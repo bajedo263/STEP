@@ -2,7 +2,15 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { bestDay, buildWeek, goalStreaks, historyTotals, monthTotals, weekTotals } from './stats.ts';
+import {
+  bestDay,
+  buildWeek,
+  goalStreaks,
+  historyTotals,
+  monthGoalLine,
+  monthTotals,
+  weekTotals,
+} from './stats.ts';
 
 const today = new Date(2026, 9, 8, 15, 0); // jeudi 8 octobre 2026
 
@@ -91,4 +99,11 @@ test('bestDay et historyTotals', () => {
   assert.deepEqual(bestDay(rows, today, 12000), { day: '2026-10-08', steps: 12000 });
   assert.deepEqual(bestDay([], today, 0), null);
   assert.deepEqual(historyTotals(rows), { steps: 12000, distanceM: 8000, calories: 400 });
+});
+
+test('monthGoalLine ne montre jamais « 0 jour sur 1 »', () => {
+  assert.equal(monthGoalLine(3, 8), '3 jours à l’objectif sur 8.');
+  assert.equal(monthGoalLine(1, 1), '1 jour à l’objectif sur 1.');
+  assert.match(monthGoalLine(0, 1), /Le mois commence/);
+  assert.match(monthGoalLine(0, 12), /Pas encore/);
 });
