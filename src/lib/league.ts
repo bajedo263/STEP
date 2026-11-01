@@ -24,6 +24,12 @@ export const LEAGUE_TIERS = [
 
 export const TOP_TIER = LEAGUE_TIERS.length - 1;
 
+/**
+ * En dessous, un groupe n'a pas de vrai classement : personne ne monte ni ne descend (même règle
+ * que `league_movers` côté serveur).
+ */
+export const MIN_LEAGUE_PLAYERS = 3;
+
 export type LeagueZone = 'promote' | 'safe' | 'demote';
 
 export function tierName(tier: number): string {
@@ -35,6 +41,7 @@ export function tierName(tier: number): string {
 export function leagueZone(
   row: Pick<LeagueRow, 'rank' | 'players' | 'promote' | 'demote' | 'tier' | 'steps'>
 ): LeagueZone {
+  if (row.players < MIN_LEAGUE_PLAYERS) return 'safe';
   if (row.tier < TOP_TIER && row.steps > 0 && row.rank <= row.promote) return 'promote';
   if (row.tier > 0 && (row.steps === 0 || row.rank > row.players - row.demote)) return 'demote';
   return 'safe';
@@ -45,10 +52,8 @@ export function leagueStatusLabel(me: LeagueRow): string {
   const zone = leagueZone(me);
   const next = LEAGUE_TIERS[Math.min(TOP_TIER, me.tier + 1)].name;
   const previous = LEAGUE_TIERS[Math.max(0, me.tier - 1)].name;
-  if (me.players === 1) {
-    return me.steps > 0
-      ? `Personne d’autre dans votre groupe pour l’instant : vous montez en ${next} dimanche soir.`
-      : 'Personne d’autre dans votre groupe pour l’instant. Marchez pour monter de ligue dimanche soir.';
+  if (me.players < MIN_LEAGUE_PLAYERS) {
+    return `Votre groupe se remplit : le classement compte à partir de ${MIN_LEAGUE_PLAYERS} marcheurs. Vos pas de la semaine sont déjà comptés.`;
   }
   if (zone === 'promote') return `Zone de montée : vous passeriez en ${next} dimanche soir.`;
   if (zone === 'demote') {

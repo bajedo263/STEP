@@ -6,6 +6,7 @@ import { InfoButton } from '@/components/ui/info-button';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import {
+  MIN_LEAGUE_PLAYERS,
   leagueChangeLabel,
   leagueStatusLabel,
   leagueZone,
@@ -15,8 +16,8 @@ import {
 } from '@/lib/league';
 import {
   ordinal,
-  rankLabel,
   seasonEndLabel,
+  seasonMeLabel,
   seasonName,
   seasonRanking,
   type SeasonRow,
@@ -45,7 +46,7 @@ export function SeasonCard({
           {`${seasonEndLabel(new Date(season.season_end), new Date())}. Toutes les cases repartent de zéro le 1er du mois.`}
         </ThemedText>
       </View>
-      <ThemedText type="small">{`Vous : ${rankLabel(season.rank, season.players)}.`}</ThemedText>
+      <ThemedText type="small">{seasonMeLabel(season.rank, season.players)}</ThemedText>
       {ranking.length > 1
         ? ranking.map((entry) => (
             <View
@@ -84,6 +85,7 @@ export function LeagueCard({ rows }: { rows: LeagueRow[] }) {
   const me = rows.find((row) => row.is_me);
   if (!me) return null;
   const change = leagueChangeLabel(me);
+  const forming = me.players < MIN_LEAGUE_PLAYERS;
   const overtake = stepsToOvertake(rows);
   // Les 10 premiers, et sa propre place si elle est plus loin.
   const shown = rows.filter((row) => row.rank <= 10 || row.is_me);
@@ -99,13 +101,18 @@ export function LeagueCard({ rows }: { rows: LeagueRow[] }) {
         </ThemedText>
       </View>
       {change ? <ThemedText type="smallBold">{change}</ThemedText> : null}
-      <ThemedText type="small">{`Vous : ${me.rank}${me.rank === 1 ? 'er' : 'e'} sur ${me.players}. ${leagueStatusLabel(me)}`}</ThemedText>
+      {/* Seul ou presque dans son groupe : pas de « 1er sur 1 ». */}
+      <ThemedText type="small">
+        {forming
+          ? `${leagueStatusLabel(me)} Vous : ${formatNumber(me.steps)} pas cette semaine.`
+          : `Vous : ${me.rank}${me.rank === 1 ? 'er' : 'e'} sur ${me.players}. ${leagueStatusLabel(me)}`}
+      </ThemedText>
       {overtake ? (
         <ThemedText type="small" themeColor="textSecondary">
           {`${formatNumber(overtake)} pas pour gagner une place.`}
         </ThemedText>
       ) : null}
-      {rows.length > 1
+      {!forming
         ? shown.map((row) => {
             const zone = leagueZone(row);
             return (

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { rankLabel, seasonEndLabel, seasonName, seasonRanking } from './season.ts';
+import { rankLabel, seasonEndLabel, seasonMeLabel, seasonName, seasonRanking } from './season.ts';
 
 test('seasonName élide devant une voyelle', () => {
   assert.equal(seasonName(new Date('2026-10-01T00:00:00+02:00')), 'Saison d’octobre');
@@ -43,4 +43,11 @@ test('seasonRanking classe les amis confirmés par cases', () => {
       ['Bob', 2],
     ]
   );
+});
+
+test('seasonMeLabel parle pour soi, même sans case', () => {
+  assert.equal(seasonMeLabel(2, 15), 'Vous : 2e sur 15 conquérants.');
+  assert.match(seasonMeLabel(null, 0), /pas encore de case : dès 10 000 pas/);
+  assert.doesNotMatch(seasonMeLabel(null, 0), /Personne/);
+  assert.match(seasonMeLabel(null, 4), /4 conquérants en lice/);
 });
