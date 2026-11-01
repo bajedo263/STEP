@@ -36,7 +36,7 @@ function Banner({ walk }: { walk: ActiveWalk }) {
         onPress={() => router.navigate('/carte')}
         style={({ pressed }) => [
           styles.pill,
-          { backgroundColor: theme.tint },
+          { backgroundColor: theme.tintFill },
           pressed && styles.pressed,
         ]}>
         <View style={styles.dot} />

@@ -21,6 +21,7 @@ import { TerritoryShape, territoryKey } from '@/components/territory-shape';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
+import { SlowHint } from '@/components/ui/slow-hint';
 import {
   BottomTabInset,
   ConquestMineColor,
@@ -342,12 +343,21 @@ export function ActiveWalkView({ walk, onFinish }: { walk: Walk; onFinish: () =>
       ) : (
         <ThemedView style={[StyleSheet.absoluteFill, styles.centeredScreen]}>
           <ThemedText themeColor="textSecondary">Recherche du signal GPS…</ThemedText>
+          <SlowHint text="Le signal tarde : sortez ou approchez-vous d’une fenêtre, loin des grands immeubles." />
         </ThemedView>
       )}
 
       {start ? (
         <Pressable
           accessibilityRole="button"
+          // Le libellé visible annonce l'action ; VoiceOver dit aussi l'état actuel.
+          accessibilityLabel={
+            follow === 'free'
+              ? 'Carte libre. Me recentrer'
+              : followHeading
+                ? 'La carte suit votre cap. Mettre le nord en haut'
+                : 'Nord en haut. Suivre mon cap'
+          }
           onPress={toggleFollow}
           style={({ pressed }) => [
             styles.compassButton,

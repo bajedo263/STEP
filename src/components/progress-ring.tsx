@@ -10,16 +10,29 @@ type ProgressRingProps = {
   size?: number;
   strokeWidth?: number;
   children?: ReactNode;
+  /** Ce que VoiceOver annonce à la place du dessin, par exemple « 6 200 pas sur 10 000 ». */
+  accessibilityLabel?: string;
 };
 
-export function ProgressRing({ progress, size = 240, strokeWidth = 20, children }: ProgressRingProps) {
+export function ProgressRing({
+  progress,
+  size = 240,
+  strokeWidth = 20,
+  children,
+  accessibilityLabel,
+}: ProgressRingProps) {
   const theme = useTheme();
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const clamped = Math.max(0, Math.min(1, progress));
 
   return (
-    <View style={{ width: size, height: size }}>
+    <View
+      accessible={accessibilityLabel !== undefined}
+      accessibilityRole="progressbar"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityValue={{ min: 0, max: 100, now: Math.round(clamped * 100) }}
+      style={{ width: size, height: size }}>
       <Svg width={size} height={size}>
         <Circle
           cx={size / 2}

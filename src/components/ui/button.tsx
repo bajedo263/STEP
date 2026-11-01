@@ -21,7 +21,7 @@ export function Button({ title, variant = 'primary', loading = false, disabled, 
       disabled={isDisabled}
       style={(state) => [
         styles.button,
-        { backgroundColor: isPrimary ? theme.tint : theme.backgroundElement },
+        { backgroundColor: isPrimary ? theme.tintFill : theme.backgroundElement },
         state.pressed && styles.pressed,
         isDisabled && styles.dimmed,
         typeof style === 'function' ? style(state) : style,

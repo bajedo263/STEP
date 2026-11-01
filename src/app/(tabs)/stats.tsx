@@ -158,7 +158,16 @@ function WeekSummary({ week, goal, rule }: { week: WeekDay[]; goal: number; rule
   return (
     <ThemedView type="backgroundElement" style={styles.card}>
       <ThemedText type="smallBold">7 derniers jours</ThemedText>
-      <View style={styles.chart}>
+      {/* VoiceOver lit les pas de chaque jour à la place des barres. */}
+      <View
+        style={styles.chart}
+        accessible
+        accessibilityLabel={week
+          .map(
+            (day) =>
+              `${day.isToday ? 'aujourd’hui' : day.label} : ${formatNumber(day.steps)} pas${day.steps >= goalOn(rule, day.day) ? ', objectif atteint' : ''}`
+          )
+          .join(' ; ')}>
         {/* Ligne de l'objectif */}
         <View
           style={[
@@ -382,6 +391,8 @@ function PoiProgress({ zones }: { zones: PoiZoneStats[] }) {
   const total = zones.reduce((sum, zone) => sum + zone.total, 0);
   const { explored, complete } = collectionCounts(zones);
   const shown = showAll ? zones : zones.slice(0, 5);
+  // Un seul lien « Boucle vers les lieux manquants », sur le premier quartier à compléter.
+  const linkZone = shown.find((zone) => zoneNextStep(zone) !== null);
 
   return (
     <ThemedView type="backgroundElement" style={styles.card}>
@@ -409,12 +420,10 @@ function PoiProgress({ zones }: { zones: PoiZoneStats[] }) {
               <View key={`${zone.zone_x}/${zone.zone_y}`} style={styles.zone}>
                 <View style={styles.zoneHeader}>
                   <ThemedText type="small" numberOfLines={1} style={styles.flex}>
-                    {`${level === 'complete' ? '🏅 ' : level === 'explored' ? '🧭 ' : ''}${
-                      zone.label ? `Autour de : ${zone.label}` : 'Quartier'
-                    }`}
+                    {zone.label ? `Autour de : ${zone.label}` : 'Quartier'}
                   </ThemedText>
                   <ThemedText type="small" themeColor="textSecondary">
-                    {`${zone.visited} / ${zone.total}`}
+                    {`${level === 'complete' ? 'Complet · ' : level === 'explored' ? 'À moitié · ' : ''}${zone.visited} / ${zone.total}`}
                   </ThemedText>
                 </View>
                 <View style={[styles.progressTrack, { backgroundColor: theme.backgroundSelected }]}>
@@ -433,6 +442,7 @@ function PoiProgress({ zones }: { zones: PoiZoneStats[] }) {
                     <ThemedText type="small" themeColor="textSecondary" style={styles.flex}>
                       {next}
                     </ThemedText>
+                    {zone !== linkZone ? null : (
                     <Pressable
                       accessibilityRole="button"
                       hitSlop={Spacing.two}
@@ -447,6 +457,7 @@ function PoiProgress({ zones }: { zones: PoiZoneStats[] }) {
                         Boucle vers les lieux manquants
                       </ThemedText>
                     </Pressable>
+                    )}
                   </View>
                 ) : null}
               </View>

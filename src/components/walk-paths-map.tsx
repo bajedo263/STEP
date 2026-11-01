@@ -17,6 +17,7 @@ export function WalkPathsMap({ paths }: { paths: WalkPath[] }) {
   return (
     <MapView
       style={styles.map}
+      accessibilityLabel={`Carte de vos ${paths.length} trajet${paths.length > 1 ? 's' : ''}`}
       initialRegion={region}
       pitchEnabled={false}
       rotateEnabled={false}

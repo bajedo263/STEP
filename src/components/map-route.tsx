@@ -93,9 +93,10 @@ export function PoiClusterMarker({
 }
 
 const styles = StyleSheet.create({
+  // Zone touchable de 44 pt (minimum conseillé) autour d'un repère dessiné plus petit.
   hitArea: {
-    width: 32,
-    height: 32,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },

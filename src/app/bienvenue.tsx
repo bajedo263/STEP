@@ -218,7 +218,7 @@ function Point({ index, title, text }: { index: number; title: string; text: str
   const theme = useTheme();
   return (
     <ThemedView type="backgroundElement" style={styles.item}>
-      <View style={[styles.badge, { backgroundColor: theme.tint }]}>
+      <View style={[styles.badge, { backgroundColor: theme.tintFill }]}>
         <ThemedText type="smallBold" style={{ color: theme.onTint }}>
           {index}
         </ThemedText>

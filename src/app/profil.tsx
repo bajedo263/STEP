@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { router } from 'expo-router';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -86,19 +87,24 @@ export default function ProfileScreen() {
     };
   }, [userId]);
 
+  // Chaque réglage s'enregistre dès qu'on le quitte : plus de bouton « Enregistrer » à chercher.
+  const dirty = useRef(false);
   function update<K extends keyof ProfileForm>(key: K, value: ProfileForm[K]) {
+    dirty.current = true;
     setForm((current) => ({ ...current, [key]: value }));
     setErrors((current) => ({ ...current, [key]: undefined }));
     setMessage(null);
   }
 
-  async function save() {
-    if (!supabase || !userId) return;
+  /** Enregistre le formulaire s'il a changé ; vrai si tout est enregistré. */
+  async function save(next: ProfileForm = form): Promise<boolean> {
+    if (!dirty.current) return true;
+    if (!supabase || !userId) return false;
 
-    const result = validateProfileForm(form);
+    const result = validateProfileForm(next);
     if (!result.ok) {
       setErrors(result.errors);
-      return;
+      return false;
     }
 
     setSaving(true);
@@ -110,12 +116,24 @@ export default function ProfileScreen() {
 
     if (error?.code === '23505') {
       setErrors({ username: 'Ce pseudo est déjà pris.' });
-    } else if (error) {
-      setMessage({ text: 'L’enregistrement a échoué. Réessayez.', isError: true });
-    } else {
-      setMessage({ text: 'Profil enregistré.', isError: false });
+      return false;
     }
+    if (error) {
+      setMessage({ text: 'L’enregistrement a échoué. Réessayez.', isError: true });
+      return false;
+    }
+    dirty.current = false;
+    setMessage({ text: 'Enregistré.', isError: false });
+    return true;
   }
+
+  // « OK » enregistre ce qui ne l'est pas encore, puis referme le profil.
+  const done = async () => {
+    if (await save()) router.back();
+  };
+  const onBlur = () => {
+    save();
+  };
 
   return (
     <ThemedView style={styles.container}>
@@ -127,6 +145,21 @@ export default function ProfileScreen() {
           style={styles.flex}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+            <View style={styles.topBar}>
+              <ThemedText type="smallBold" style={styles.flex}>
+                Profil
+              </ThemedText>
+              <Pressable
+                accessibilityRole="button"
+                onPress={done}
+                disabled={saving}
+                hitSlop={Spacing.two}
+                style={styles.okButton}>
+                <ThemedText type="smallBold" themeColor="tint">
+                  OK
+                </ThemedText>
+              </Pressable>
+            </View>
             <View style={styles.header}>
               <Avatar
                 name={form.username || session?.user.email || '?'}
@@ -146,35 +179,29 @@ export default function ProfileScreen() {
             <Highlights />
             {trophies ? <TrophiesCard trophies={trophies.trophies} /> : null}
 
-            <ThemedText type="smallBold" style={styles.section}>
-              Réglages
-            </ThemedText>
             {loading ? (
               <ActivityIndicator style={styles.loader} />
             ) : (
               <>
-                <TextField
-                  label="Pseudo"
-                  value={form.username}
-                  onChangeText={(value) => update('username', value)}
-                  placeholder="Visible par vos amis"
-                  autoCapitalize="none"
-                  error={errors.username}
-                />
+                <SectionTitle title="Objectif" />
                 <GoalModeChoice adaptive={adaptive} />
                 {adaptive ? null : (
                   <TextField
                     label="Objectif quotidien (pas)"
                     value={form.dailyGoal}
                     onChangeText={(value) => update('dailyGoal', value)}
+                    onEndEditing={onBlur}
                     keyboardType="number-pad"
                     error={errors.dailyGoal}
                   />
                 )}
+
+                <SectionTitle title="Corps" />
                 <TextField
                   label="Taille (cm)"
                   value={form.heightCm}
                   onChangeText={(value) => update('heightCm', value)}
+                  onEndEditing={onBlur}
                   placeholder="Pour estimer la longueur de vos pas"
                   keyboardType="number-pad"
                   error={errors.heightCm}
@@ -183,6 +210,7 @@ export default function ProfileScreen() {
                   label="Poids (kg)"
                   value={form.weightKg}
                   onChangeText={(value) => update('weightKg', value)}
+                  onEndEditing={onBlur}
                   placeholder="Pour estimer les calories"
                   keyboardType="decimal-pad"
                   error={errors.weightKg}
@@ -191,30 +219,59 @@ export default function ProfileScreen() {
                   label="Sexe"
                   options={SEX_OPTIONS}
                   value={form.sex}
-                  onChange={(value) => update('sex', value)}
+                  onChange={(value) => {
+                    update('sex', value);
+                    save({ ...form, sex: value });
+                  }}
                 />
                 <ThemedText type="small" themeColor="textSecondary">
                   Taille, poids et sexe servent seulement à estimer la longueur de vos pas et les
                   calories. Ils ne sont jamais montrés à vos amis.
                 </ThemedText>
-
-                {message ? (
-                  <ThemedText type="small" style={message.isError ? { color: theme.danger } : undefined}>
-                    {message.text}
-                  </ThemedText>
-                ) : null}
-
-                <Button title="Enregistrer" onPress={save} loading={saving} />
               </>
             )}
 
-            {Platform.OS !== 'web' ? <ReminderSettings /> : null}
+            {Platform.OS !== 'web' ? (
+              <>
+                <SectionTitle title="Rappels" />
+                <ReminderSettings />
+              </>
+            ) : null}
 
+            <SectionTitle title="Compte" />
+            {loading ? null : (
+              <TextField
+                label="Pseudo"
+                value={form.username}
+                onChangeText={(value) => update('username', value)}
+                onEndEditing={onBlur}
+                placeholder="Visible par vos amis"
+                autoCapitalize="none"
+                error={errors.username}
+              />
+            )}
+            {message ? (
+              <ThemedText
+                type="small"
+                accessibilityLiveRegion="polite"
+                style={message.isError ? { color: theme.danger } : undefined}
+                themeColor={message.isError ? undefined : 'textSecondary'}>
+                {message.text}
+              </ThemedText>
+            ) : null}
             <AccountActions />
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
     </ThemedView>
+  );
+}
+
+function SectionTitle({ title }: { title: string }) {
+  return (
+    <ThemedText type="smallBold" themeColor="textSecondary" style={styles.section} accessibilityRole="header">
+      {title}
+    </ThemedText>
   );
 }
 
@@ -325,7 +382,7 @@ const REMINDER_OPTIONS = [
 function ReminderSettings() {
   const hour = useReminderHour();
   return (
-    <View style={[styles.section, { gap: Spacing.two }]}>
+    <View style={{ gap: Spacing.two }}>
       <SegmentedChoice
         label="Rappel du jour"
         options={[...REMINDER_OPTIONS]}
@@ -439,7 +496,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   section: {
-    marginTop: Spacing.two,
+    marginTop: Spacing.three,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  okButton: {
+    minHeight: 44,
+    minWidth: 44,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
   },
   container: {
     flex: 1,

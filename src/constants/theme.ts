@@ -19,8 +19,11 @@ export const Colors = {
     backgroundSelected: '#E2E2EC',
     textSecondary: '#62626F',
     tint: '#4B3FF0',
+    /** Fond des éléments pleins qui portent du texte blanc (boutons, pastilles). */
+    tintFill: '#4B3FF0',
     onTint: '#FFFFFF',
-    success: '#16A34A',
+    // Vert assez foncé pour un texte lisible sur fond clair (5:1).
+    success: '#15803D',
     danger: '#D93036',
   },
   dark: {
@@ -30,6 +33,8 @@ export const Colors = {
     backgroundSelected: '#2C2C3A',
     textSecondary: '#A6A6B4',
     tint: '#6C63FF',
+    // Un cran plus foncé que tint : texte blanc lisible (5,5:1) ; tint reste clair pour les textes sur fond sombre.
+    tintFill: '#5A50F0',
     onTint: '#FFFFFF',
     success: '#3DD56D',
     danger: '#FF6369',

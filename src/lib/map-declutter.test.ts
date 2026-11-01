@@ -31,12 +31,12 @@ test('fanOut écarte les lieux aux coordonnées identiques', () => {
   const region = { ...center, latitudeDelta: 0.002, longitudeDelta: 0.002 };
   const spread = fanOut(pois, center, region, 400);
   assert.equal(spread.length, 3);
-  // 0,002° sur 400 points ≈ 0,37 m par point : 34 points ≈ 12,5 m entre le centre et chaque lieu.
+  // 0,002° sur 400 points ≈ 0,37 m par point : 44 points ≈ 16 m entre le centre et chaque lieu.
   for (const { coords } of spread) {
     const distance = haversineMeters(center, coords);
-    assert.ok(distance > 11 && distance < 14, `distance ${distance}`);
+    assert.ok(distance > 15 && distance < 18, `distance ${distance}`);
   }
-  assert.ok(haversineMeters(spread[0].coords, spread[1].coords) > 15);
+  assert.ok(haversineMeters(spread[0].coords, spread[1].coords) > 20);
   assert.deepEqual(spread.map(({ item }) => item), pois);
 });
 

@@ -19,7 +19,10 @@ export function SegmentedChoice<T extends string>({ label, options, value, onCha
   return (
     <View style={styles.container}>
       {label ? <ThemedText type="smallBold">{label}</ThemedText> : null}
-      <View style={[styles.track, { backgroundColor: theme.backgroundElement }]}>
+      <View
+        accessibilityRole="radiogroup"
+        accessibilityLabel={label}
+        style={[styles.track, { backgroundColor: theme.backgroundElement }]}>
         {options.map((option) => {
           const selected = option.value === value;
           return (
@@ -28,7 +31,7 @@ export function SegmentedChoice<T extends string>({ label, options, value, onCha
               accessibilityRole="radio"
               accessibilityState={{ selected }}
               onPress={() => onChange(option.value)}
-              style={[styles.option, selected && { backgroundColor: theme.tint }]}>
+              style={[styles.option, selected && { backgroundColor: theme.tintFill }]}>
               <ThemedText
                 type={selected ? 'smallBold' : 'small'}
                 themeColor="textSecondary"
@@ -57,6 +60,8 @@ const styles = StyleSheet.create({
   option: {
     flex: 1,
     alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
     paddingVertical: Spacing.two + Spacing.half,
     borderRadius: Radius.pill,
   },

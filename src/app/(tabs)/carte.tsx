@@ -33,6 +33,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { SegmentedChoice } from '@/components/ui/segmented-choice';
+import { SlowHint } from '@/components/ui/slow-hint';
 import { TextField } from '@/components/ui/text-field';
 import {
   BottomTabInset,
@@ -59,6 +60,7 @@ import { useLoopRoute } from '@/hooks/use-loop-route';
 import type { PlannedWalk } from '@/hooks/use-planned-walk';
 import { useProfile } from '@/hooks/use-profile';
 import { useRoutePois } from '@/hooks/use-route-pois';
+import { setLocalFlag, useLocalFlag } from '@/hooks/use-local-flag';
 import { useTheme } from '@/hooks/use-theme';
 import { useTodaySteps } from '@/hooks/use-today-steps';
 import {
@@ -147,16 +149,22 @@ export default function MapScreen() {
   if (starting) {
     return (
       <ThemedView style={[styles.container, styles.centeredScreen]}>
+        <ActivityIndicator />
         <ThemedText themeColor="textSecondary">Démarrage du trajet…</ThemedText>
+        <SlowHint text="Le téléphone cherche votre position. Mettez-vous près d’une fenêtre ou dehors, loin des grands immeubles." />
       </ThemedView>
     );
   }
   return <PlanMap />;
 }
 
+/** Astuce de l'appui long, affichée jusqu'au premier essai. */
+const LONG_PRESS_TIP_KEY = 'step.long-press-tip-seen';
+
 /** Préparation d'un trajet : boucle ou destination, lieux à voir, Conquête. */
 function PlanMap() {
   const theme = useTheme();
+  const longPressTipSeen = useLocalFlag(LONG_PRESS_TIP_KEY) !== null;
   const location = useCurrentLocation();
   const loop = useLoopRoute();
   const destination = useDestinationRoute();
@@ -469,6 +477,7 @@ function PlanMap() {
           setSelectedId(null);
         }}
         onLongPress={(event) => {
+          setLocalFlag(LONG_PRESS_TIP_KEY, '1');
           setPin(event.nativeEvent.coordinate);
           setSelectedId(null);
           panel.expand();
@@ -568,9 +577,10 @@ function PlanMap() {
             key={place.id}
             coordinate={place.coords}
             title={place.label}
-            description={`À ${formatDistance(haversineMeters(start, place.coords))} · touchez pour y aller`}
+            description={`À ${formatDistance(haversineMeters(start, place.coords))}`}
             pinColor={theme.tint}
-            onCalloutPress={() => choosePlace(place)}
+            // Un seul toucher sur l'épingle lance l'itinéraire, comme dans la liste.
+            onPress={() => choosePlace(place)}
           />
         ))}
         {mode === 'destination' && destination.status !== 'idle' ? (
@@ -848,6 +858,12 @@ function PlanMap() {
                         autoCorrect={false}
                         returnKeyType="search"
                       />
+                      {longPressTipSeen ? null : (
+                        <ThemedText type="small" themeColor="textSecondary">
+                          Astuce : un appui long sur la carte choisit n’importe quel point
+                          d’arrivée.
+                        </ThemedText>
+                      )}
                       {goalReached ? null : (
                         <ThemedText type="small" themeColor="textSecondary">
                           {`Si le lieu est proche, l’itinéraire fera un détour pour atteindre environ ${formatDistance(targetM)}, ce qu’il vous reste pour l’objectif.`}

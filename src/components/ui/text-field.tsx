@@ -16,6 +16,9 @@ export function TextField({ label, error, style, ...inputProps }: TextFieldProps
     <View style={styles.container}>
       <ThemedText type="smallBold">{label}</ThemedText>
       <TextInput
+        // VoiceOver lit l'étiquette au-dessus du champ, et l'erreur en indication.
+        accessibilityLabel={label}
+        accessibilityHint={error}
         placeholderTextColor={theme.textSecondary}
         style={[
           styles.input,
