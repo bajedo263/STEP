@@ -17,6 +17,8 @@ seulement ce que l'app affiche.
   (pas l'email, pas les tracés, pas la taille ni le poids).
 - Les Edge Functions vérifient la session ; la clé `service_role` ne sert que côté serveur, avec
   l'identifiant tiré du jeton, jamais du corps de la requête.
+- Aucun lien profond (`step://…`) n'ouvre une session sans contrôle : un lien qui porte des jetons
+  doit répondre à une demande faite depuis ce téléphone (voir `src/lib/recovery-guard.ts`).
 - Aucun secret dans `.env`, `app.json` ou le code : seules l'URL et la clé publiable y sont.
 
 ## Limites connues (triche, pas fuite de données)
