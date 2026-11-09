@@ -113,28 +113,44 @@ async function ensureZones(admin: SupabaseClient, zones: Zone[]): Promise<void> 
   }
 }
 
+/** Lignes lues par page : l'API en renvoie au plus 1 000 par requête (max_rows). */
+const PAGE_ROWS = 1000;
+/** Plafond de lieux lus pour une même demande (60 quartiers très denses). */
+const MAX_ROWS = 20_000;
+
 /** Lieux en base des quartiers donnés, avec ceux que l'utilisateur a déjà visités. */
 async function storedPois(admin: SupabaseClient, zones: Zone[], userId: string): Promise<StoredPoi[]> {
-  const { data, error } = await admin
-    .from('pois')
-    .select('id, osm_id, name, category, description, wikipedia_url, score, latitude, longitude')
-    .or(poiZonesFilter(zones))
-    .returns<PoiRow[]>();
-  if (error) throw error;
-  const rows = data ?? [];
+  // En ville, quelques quartiers dépassent vite 1 000 lieux : sans pagination, la liste était
+  // coupée au hasard et des lieux du trajet manquaient.
+  const rows: PoiRow[] = [];
+  for (let from = 0; from < MAX_ROWS; from += PAGE_ROWS) {
+    const { data, error } = await admin
+      .from('pois')
+      .select('id, osm_id, name, category, description, wikipedia_url, score, latitude, longitude')
+      .or(poiZonesFilter(zones))
+      .order('id')
+      .range(from, from + PAGE_ROWS - 1)
+      .returns<PoiRow[]>();
+    if (error) throw error;
+    rows.push(...(data ?? []));
+    if ((data ?? []).length < PAGE_ROWS) break;
+  }
 
+  // Toutes les visites de l'utilisateur plutôt qu'un filtre sur des milliers d'identifiants, qui
+  // faisait échouer la requête (adresse trop longue) et affichait chaque lieu comme jamais vu.
   const visited = new Set<number>();
   if (rows.length > 0) {
-    const { data: visits, error: visitsError } = await admin
-      .from('poi_visits')
-      .select('poi_id')
-      .eq('user_id', userId)
-      .in(
-        'poi_id',
-        rows.map((row) => row.id)
-      );
-    if (visitsError) throw visitsError;
-    for (const visit of visits ?? []) visited.add(visit.poi_id);
+    for (let from = 0; ; from += PAGE_ROWS) {
+      const { data: visits, error: visitsError } = await admin
+        .from('poi_visits')
+        .select('poi_id')
+        .eq('user_id', userId)
+        .order('poi_id')
+        .range(from, from + PAGE_ROWS - 1);
+      if (visitsError) throw visitsError;
+      for (const visit of visits ?? []) visited.add(visit.poi_id);
+      if ((visits ?? []).length < PAGE_ROWS) break;
+    }
   }
 
   return rows.map((row) => ({

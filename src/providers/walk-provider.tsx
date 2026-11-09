@@ -1,3 +1,4 @@
+import * as Crypto from 'expo-crypto';
 import { useKeepAwake } from 'expo-keep-awake';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
@@ -110,6 +111,9 @@ export function WalkHost() {
 function WalkSession({ planned }: { planned: PlannedWalk }) {
   const [summary, setSummary] = useState<WalkSummary | null>(null);
   const [saveState, setSaveState] = useState<SaveState>('saving');
+  // Identifiant choisi ici : « Réessayer » après une réponse perdue (réseau coupé) ne crée pas
+  // un second trajet, la base refuse simplement le doublon.
+  const [walkId] = useState(() => Crypto.randomUUID());
   // La Conquête s'active dès 10 000 pas dans la journée, y compris en cours de trajet. La toute
   // première marche fait exception : elle rapporte ses premières cases, pour goûter au jeu.
   const today = useTodaySteps();
@@ -143,13 +147,15 @@ function WalkSession({ planned }: { planned: PlannedWalk }) {
       return;
     }
     setSaveState('saving');
-    const row = walkRow(userId, walk, conquers);
+    const row = { id: walkId, ...walkRow(userId, walk, conquers) };
     let { error } = await supabase.from('walks').insert(row);
     if (error?.code === 'PGRST204') {
       // Base pas encore migrée (colonne conquers absente) : on enregistre sans.
       const { conquers: _ignored, ...legacyRow } = row;
       ({ error } = await supabase.from('walks').insert(legacyRow));
     }
+    // 23505 : ce trajet est déjà enregistré (le premier envoi avait abouti).
+    if (error?.code === '23505') error = null;
     setSaveState(error ? 'error' : 'saved');
     if (!error) setLocalFlag(firstWalkDoneKey(userId), '1');
   };
