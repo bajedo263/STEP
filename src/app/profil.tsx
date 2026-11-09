@@ -23,7 +23,7 @@ import { MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useBadges } from '@/hooks/use-badges';
 import { setAdaptiveGoal, useAdaptiveSince, useDailyGoal } from '@/hooks/use-daily-goal';
 import { setReminderHour, useReminderHour } from '@/hooks/use-daily-reminders';
-import { useProfile } from '@/hooks/use-profile';
+import { profileChanged, useProfile } from '@/hooks/use-profile';
 import { useStepHistory } from '@/hooks/use-step-history';
 import { useTodaySteps } from '@/hooks/use-today-steps';
 import { useTheme } from '@/hooks/use-theme';
@@ -126,6 +126,7 @@ export default function ProfileScreen() {
       return false;
     }
     dirty.current = false;
+    profileChanged();
     setMessage({ text: 'Enregistré.', isError: false });
     return true;
   }
