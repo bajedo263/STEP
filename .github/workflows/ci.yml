@@ -18,3 +18,6 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+      # Le bundle publié sur Expo doit se construire (React 19.3 : un getServerSnapshot manquant ne
+      # casse que l'export web, et donc la publication automatique après fusion).
+      - run: npx expo export --platform all --output-dir dist

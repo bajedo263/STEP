@@ -3,22 +3,27 @@ import { useSyncExternalStore } from 'react';
 // Petits drapeaux propres à ce téléphone (premier lancement vu, objectif déjà fêté…),
 // gardés dans le localStorage fourni par expo-sqlite.
 const listeners = new Set<() => void>();
-const memory = new Map<string, string>();
+// Valeurs déjà lues : sans ce cache, chaque rendu de chaque écran relisait la base SQLite.
+const memory = new Map<string, string | null>();
 
 function read(key: string): string | null {
+  if (memory.has(key)) return memory.get(key) ?? null;
+  let value: string | null = null;
   try {
-    return typeof localStorage === 'undefined' ? null : localStorage.getItem(key);
+    value = typeof localStorage === 'undefined' ? null : localStorage.getItem(key);
   } catch {
-    return null;
+    value = null;
   }
+  memory.set(key, value);
+  return value;
 }
 
 export function setLocalFlag(key: string, value: string) {
+  memory.set(key, value);
   try {
     localStorage.setItem(key, value);
   } catch {
     // Sans stockage, le drapeau vaut pour cette session seulement.
-    memory.set(key, value);
   }
   listeners.forEach((listener) => listener());
 }
@@ -30,12 +35,12 @@ function subscribe(listener: () => void) {
 
 /** Lecture ponctuelle d'un drapeau local. */
 export function localFlag(key: string): string | null {
-  return memory.get(key) ?? read(key);
+  return read(key);
 }
 
 /** Valeur d'un drapeau local, mise à jour dès qu'un écran la change. */
 export function useLocalFlag(key: string | null): string | null {
-  const snapshot = () => (key ? (memory.get(key) ?? read(key)) : null);
+  const snapshot = () => (key ? read(key) : null);
   return useSyncExternalStore(subscribe, snapshot, snapshot);
 }
 
