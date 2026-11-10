@@ -11,7 +11,7 @@ import { SegmentedChoice } from '@/components/ui/segmented-choice';
 import { TextField } from '@/components/ui/text-field';
 import { MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { onboardedKey, setLocalFlag } from '@/hooks/use-local-flag';
-import { useProfile } from '@/hooks/use-profile';
+import { profileChanged, useProfile } from '@/hooks/use-profile';
 import { useTheme } from '@/hooks/use-theme';
 import { feedback } from '@/lib/feedback';
 import { healthAvailable, requestHealthAccess } from '@/lib/health';
@@ -60,7 +60,9 @@ export default function WelcomeScreen() {
     // Au mieux : l'objectif reste modifiable dans le Profil si l'enregistrement échoue.
     if (supabase && userId && chosenGoal) {
       supabase.from('profiles').update({ daily_goal: Number(goal) }).eq('id', userId).then(
-        () => {},
+        ({ error }) => {
+          if (!error) profileChanged();
+        },
         () => {}
       );
     }
@@ -84,7 +86,10 @@ export default function WelcomeScreen() {
     setSavingPseudo(false);
     if (error?.code === '23505') setPseudoError('Ce pseudo est déjà pris.');
     else if (error) setPseudoError('Le pseudo n’a pas pu être enregistré. Réessayez.');
-    else setStep(3);
+    else {
+      profileChanged();
+      setStep(3);
+    }
   };
 
   const askPermissions = async () => {

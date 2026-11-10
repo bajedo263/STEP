@@ -1,38 +1,27 @@
-import { useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
-
+import { useUserResource } from '@/hooks/use-user-resource';
 import type { Profile } from '@/lib/profile';
 import { supabase } from '@/lib/supabase';
-import { useAuth } from '@/providers/auth-provider';
+import { createUserResource } from '@/lib/user-resource';
 
-/** Profil de l'utilisateur connecté, relu à chaque fois que l'écran reprend le focus. */
+/** Le profil ne change que depuis l'app : entre deux modifications, on le relit rarement. */
+const PROFILE_FRESH_MS = 5 * 60_000;
+
+const profileResource = createUserResource<Profile>(async (userId) => {
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, username, height_cm, weight_kg, sex, daily_goal')
+    .eq('id', userId)
+    .maybeSingle<Profile>();
+  return error ? null : data;
+}, PROFILE_FRESH_MS);
+
+/** Profil de l'utilisateur connecté, partagé par tous les écrans. */
 export function useProfile(): Profile | null {
-  const { session } = useAuth();
-  const userId = session?.user.id;
-  const [profile, setProfile] = useState<Profile | null>(null);
+  return useUserResource(profileResource);
+}
 
-  useFocusEffect(
-    useCallback(() => {
-      if (!supabase || !userId) return;
-      let cancelled = false;
-
-      supabase
-        .from('profiles')
-        .select('id, username, height_cm, weight_kg, sex, daily_goal')
-        .eq('id', userId)
-        .maybeSingle<Profile>()
-        .then(
-          ({ data }) => {
-            if (!cancelled && data) setProfile(data);
-          },
-          () => {}
-        );
-
-      return () => {
-        cancelled = true;
-      };
-    }, [userId])
-  );
-
-  return profile;
+/** À appeler après chaque modification du profil : tous les écrans voient la nouvelle valeur. */
+export function profileChanged() {
+  profileResource.invalidate();
 }

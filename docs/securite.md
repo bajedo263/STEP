@@ -27,8 +27,11 @@ Les pas (`daily_steps`), les trajets (`walks`, dont `conquers`), les défis réu
 envoyée à `record_poi_visit` viennent de l'app : un utilisateur qui appelle l'API lui-même peut
 les inventer et fausser ligues, duels, badges et Conquête. Il ne peut pas toucher aux données des
 autres. Les gels offerts (`user_metadata.gift_freezes`) sont modifiables par l'utilisateur.
-Y remédier demandera une vérification côté serveur (HealthKit / Health Connect, plausibilité des
-tracés).
+Garde-fous en place (migration `20261110000000_vraisemblance.sql`) : pas plafonnés à 120 000 par
+jour, jours acceptés d'il y a 7 jours à demain seulement (le passé plus ancien est figé), trajets
+ni futurs ni vieux de plus de 7 jours et non modifiables une fois enregistrés, défis validés le
+jour même. Ils bornent la triche sans l'empêcher : y remédier vraiment demandera une vérification
+côté serveur (HealthKit / Health Connect, plausibilité des tracés).
 
 ## Réglages du tableau de bord Supabase (Authentication)
 

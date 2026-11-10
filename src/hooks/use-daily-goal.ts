@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 
+import { profileChanged } from '@/hooks/use-profile';
 import { useRainDays } from '@/hooks/use-weather';
 
 import { adaptivePlan, type AdaptivePlan } from '@/lib/adaptive-goal';
@@ -67,7 +68,9 @@ export function useDailyGoal(
       .update({ daily_goal: plan.goal })
       .eq('id', profileId)
       .then(
-        () => {},
+        ({ error }) => {
+          if (!error) profileChanged();
+        },
         () => {}
       );
   }, [plan, profileId, profileGoal]);
